@@ -2,7 +2,15 @@ import { notFound } from 'next/navigation';
 import { formatIls, storyboardDurationSec, timelineApprovalReason } from '@kampora/shared';
 import { Badge, Card, CardTitle, PageHeader } from '@/components/ui';
 import { he } from '@/i18n/he';
-import { ApiRequestError, USD_TO_ILS, api, type ProjectDetail, type VoicesResponse } from '@/lib/api';
+import {
+  ApiRequestError,
+  USD_TO_ILS,
+  api,
+  type ProjectDetail,
+  type SceneImagesResponse,
+  type VoicesResponse,
+} from '@/lib/api';
+import { SceneImagePanel } from './images';
 import { ApproveButton, ApproveScriptButton, ProductionPanel } from './production';
 import { VoicePanel } from './voice';
 
@@ -10,12 +18,14 @@ const ROLE_TONE = { HOOK: 'accent', OFFER: 'primary', CTA: 'success' } as const;
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [project, voices] = await Promise.all([
+  const [project, voices, images] = await Promise.all([
     api<ProjectDetail>(`/v1/projects/${id}`).catch((e) => {
       if (e instanceof ApiRequestError && (e.status === 404 || e.status === 400)) notFound();
       throw e;
     }),
     api<VoicesResponse>('/v1/voices'),
+    // Images are optional: the page works without them (e.g. image generation disabled).
+    api<SceneImagesResponse>(`/v1/projects/${id}/images`).catch(() => null),
   ]);
   const plan = project.plan;
   const scenes = [...project.storyboard.scenes].sort((a, b) => a.order - b.order);
@@ -27,6 +37,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // Is the current production version built from this narration (and the current timing rules)?
   const expectedReason = timelineApprovalReason(
     narration ? `${narration.voiceId}:${narration.segments.map((s) => s.assetId).join(',')}` : null,
+    project.imagesKey,
   );
   const needsUpdate = approved && narrationReady && project.versions[0]?.reason !== expectedReason;
   const narrationBusy = narration?.status === 'QUEUED' || narration?.status === 'RUNNING';
@@ -47,6 +58,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <ol className="space-y-4">
           {scenes.map((scene, i) => {
             const scenePlan = plan?.scenes.find((s) => s.sceneKey === scene.key);
+            const imageQuote = images?.scenes.find((q) => q.sceneKey === scene.key);
             return (
               <li key={scene.key}>
                 <Card className="grid gap-5 sm:grid-cols-[auto_1fr]">
@@ -87,6 +99,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                       <p className="text-xs text-muted">
                         {he.planning.editorNote}: {scene.direction.editorNote}
                       </p>
+                    )}
+                    {images && imageQuote && (
+                      <SceneImagePanel
+                        projectId={project.id}
+                        quote={imageQuote}
+                        initialImages={images.images.filter((i) => i.sceneKey === scene.key)}
+                        setup={images}
+                        needed={scenePlan?.strategy === 'AI_IMAGE_MOTION' && scenePlan.assetIds.length === 0}
+                        usdToIls={USD_TO_ILS}
+                      />
                     )}
                     {/* Router warnings are internal (English, technical); customers get a plain-Hebrew note. */}
                     {scenePlan && scenePlan.warnings.length > 0 && (

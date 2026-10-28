@@ -72,11 +72,18 @@ export interface ImageGenerationCapabilities {
   aspectRatios: string[];
 }
 
+export interface ReferenceImage {
+  data: Buffer;
+  mimeType: string;
+  name: string;
+}
+
 export interface ImageGenerationRequest {
   prompt: string;
   negativePrompt?: string;
-  aspectRatio: '9:16' | '1:1' | '16:9';
-  referenceImageUrls?: string[];
+  aspectRatio: '9:16' | '4:5' | '1:1' | '16:9';
+  /** Customer photos (product accuracy). Providers without reference support must reject, not ignore, them. */
+  referenceImages?: ReferenceImage[];
   seed?: number;
 }
 

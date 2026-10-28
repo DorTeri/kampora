@@ -128,6 +128,8 @@ export interface ProjectDetail {
   scriptApprovedAt: string | null;
   narration: NarrationDto | null;
   currentTimelineVersionId: string | null;
+  /** Approved scene images, as part of the timeline approval key. */
+  imagesKey?: string;
   versions: Array<{ id: string; version: number; reason: string; createdAt: string }>;
   renders: RenderDto[];
 }
@@ -216,6 +218,40 @@ export interface VoiceLabSample {
   ratedAt: string | null;
   createdAt: string;
   url: string | null;
+}
+
+export interface SceneImageQuoteDto {
+  sceneKey: string;
+  eligible: boolean;
+  estimatedUsd: number;
+  paid: boolean;
+  referenceCount: number;
+  nextVersion: number;
+}
+
+export interface SceneImageDto {
+  id: string;
+  sceneKey: string;
+  version: number;
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  error: string | null;
+  decision: 'PENDING' | 'APPROVED' | 'REJECTED';
+  style: string;
+  estimatedUsd: number;
+  chargeType: 'SIMULATED' | 'ESTIMATED' | 'CONFIRMED' | null;
+  cached: boolean;
+  createdAt: string;
+  url: string | null;
+}
+
+export interface SceneImagesResponse {
+  provider: 'mock' | 'openai' | 'none';
+  ready: boolean;
+  paid: boolean;
+  paidEnabled: boolean;
+  maxVersions: number;
+  scenes: SceneImageQuoteDto[];
+  images: SceneImageDto[];
 }
 
 /** Internal voice comparison page (shows providers and models on purpose). */

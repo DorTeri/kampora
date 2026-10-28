@@ -12,6 +12,7 @@ import { UuidPipe, ZodPipe, openApiSchema } from '../common/zod';
 import { BusinessService } from './business.service';
 import { NarrationService } from './narration.service';
 import { PaidOperationsService } from './paid.service';
+import { SceneImagesService } from './scene-images.service';
 import { StudioService } from './studio.service';
 import { VoiceLabService } from './voice-lab.service';
 
@@ -32,6 +33,11 @@ const NarrationRequestSchema = z.object({
   style: VoiceStyleSchema.default('natural'),
 });
 type NarrationRequest = z.infer<typeof NarrationRequestSchema>;
+
+const SceneImageRequestSchema = z.object({ approvedUsd: z.number().nonnegative().max(5).optional() });
+type SceneImageRequest = z.infer<typeof SceneImageRequestSchema>;
+const SceneImageDecisionRequestSchema = z.object({ decision: z.enum(['APPROVED', 'REJECTED']) });
+type SceneImageDecisionRequest = z.infer<typeof SceneImageDecisionRequestSchema>;
 
 const NarrationLineRequestSchema = z.object({
   voiceId: z.string().min(1).max(64),
@@ -114,7 +120,42 @@ export class ProjectsController {
   constructor(
     private readonly studio: StudioService,
     private readonly narration: NarrationService,
+    private readonly images: SceneImagesService,
   ) {}
+
+  @Get(':id/images')
+  @ApiOperation({ summary: 'Scene images: per-scene quote and every generated version' })
+  listImages(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
+    return this.images.list(ctx, id);
+  }
+
+  @Post(':id/scenes/:sceneKey/image')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Generate a (new version of the) scene image; paid providers require approvedUsd',
+  })
+  @ApiBody({ schema: openApiSchema(SceneImageRequestSchema) })
+  requestImage(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Param('sceneKey') sceneKey: string,
+    @Body(new ZodPipe(SceneImageRequestSchema)) body: SceneImageRequest,
+  ) {
+    return this.images.request(ctx, id, sceneKey, body.approvedUsd);
+  }
+
+  @Post(':id/images/:imageId/decision')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Approve or reject a scene image version (re-plans the project)' })
+  @ApiBody({ schema: openApiSchema(SceneImageDecisionRequestSchema) })
+  decideImage(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Param('imageId', UuidPipe) imageId: string,
+    @Body(new ZodPipe(SceneImageDecisionRequestSchema)) body: SceneImageDecisionRequest,
+  ) {
+    return this.images.decide(ctx, id, imageId, body.decision);
+  }
 
   @Get(':id')
   get(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {

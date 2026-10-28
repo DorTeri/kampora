@@ -3,6 +3,7 @@ import { Queue } from 'bullmq';
 import { PriceCatalog, budgetPolicyFromEnv } from '@kampora/cost-engine';
 import { createDatabase, type DatabaseHandle } from '@kampora/database';
 import { ttsSetupFromEnv } from '@kampora/hebrew-voice';
+import { imageSetupFromEnv } from '@kampora/media-providers';
 import { NARRATION_QUEUE_NAME, RENDER_QUEUE_NAME } from '@kampora/shared';
 import { storageFromEnv } from '@kampora/storage';
 import { loadConfig, type AppConfig } from '../config';
@@ -19,6 +20,7 @@ import {
   RENDER_QUEUE,
   STORAGE,
   TTS_SETUP,
+  IMAGE_SETUP,
 } from './tokens';
 
 function redisConnection(url: string) {
@@ -66,6 +68,8 @@ function redisConnection(url: string) {
       inject: [CREATIVE_PROVIDER],
     },
     { provide: TTS_SETUP, useFactory: () => ttsSetupFromEnv() },
+    // IMAGE_PROVIDER=mock (default) | openai | none.
+    { provide: IMAGE_SETUP, useFactory: () => imageSetupFromEnv() },
   ],
   exports: [
     CONFIG,
@@ -78,6 +82,7 @@ function redisConnection(url: string) {
     CREATIVE_PROVIDER,
     LLM_PROVIDER,
     TTS_SETUP,
+    IMAGE_SETUP,
   ],
 })
 export class InfraModule implements OnApplicationShutdown {

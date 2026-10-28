@@ -125,6 +125,38 @@ export async function rerecordLineAction(
   }
 }
 
+/** Generates a new version of a scene image. Paid providers send the approved estimate. */
+export async function requestSceneImageAction(
+  projectId: string,
+  sceneKey: string,
+  approvedUsd?: number,
+): Promise<{ error?: string }> {
+  try {
+    await api(`/v1/projects/${projectId}/scenes/${encodeURIComponent(sceneKey)}/image`, {
+      method: 'POST',
+      body: { approvedUsd },
+    });
+    return {};
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+}
+
+/** Approves or rejects a scene image; the API re-plans the project. */
+export async function decideSceneImageAction(
+  projectId: string,
+  imageId: string,
+  decision: 'APPROVED' | 'REJECTED',
+): Promise<{ error?: string }> {
+  try {
+    await api(`/v1/projects/${projectId}/images/${imageId}/decision`, { method: 'POST', body: { decision } });
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+  revalidatePath(`/studio/projects/${projectId}`);
+  return {};
+}
+
 /** Voice lab (internal): record one reading. Paid voices send the approved estimate. */
 export async function requestVoiceLabSampleAction(
   candidateId: string,

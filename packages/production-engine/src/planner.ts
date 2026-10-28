@@ -6,7 +6,7 @@ import {
   type QualityTier,
   type Storyboard,
 } from '@kampora/shared';
-import { roundUsd, type PriceCatalog } from '@kampora/cost-engine';
+import { roundUsd, type PriceCatalog, type PriceEntry } from '@kampora/cost-engine';
 import { routeScene } from './router';
 
 export interface PlanProductionInput {
@@ -17,6 +17,9 @@ export interface PlanProductionInput {
   qualityTier: QualityTier;
   allowTextToVideo?: boolean;
   catalog: PriceCatalog;
+  /** sceneKey → approved AI image asset id (the asset must be in `assets`). */
+  approvedImages?: Readonly<Record<string, string>>;
+  imagePrice?: PriceEntry;
 }
 
 /** Routes every scene in order, spending the budget as it goes, and estimates render compute. */
@@ -31,6 +34,8 @@ export function planProduction(input: PlanProductionInput): ProductionPlan {
         perGenerationMaxUsd: input.perGenerationMaxUsd,
         allowTextToVideo: input.allowTextToVideo ?? false,
         catalog: input.catalog,
+        approvedImageId: input.approvedImages?.[scene.key],
+        imagePrice: input.imagePrice,
       });
       remaining -= plan.estimatedCostUsd;
       return plan;

@@ -26,6 +26,7 @@ import type {
   Storyboard,
   StoryboardScene,
   VideoProject,
+  VisualScenePlan,
 } from '@kampora/shared';
 
 /**
@@ -88,8 +89,10 @@ export const approvalSubject = pgEnum('approval_subject', [
   'CREATIVE_GENERATION',
   'NARRATION',
   'VOICE_TEST',
+  'SCENE_IMAGE',
 ]);
 export const approvalDecision = pgEnum('approval_decision', ['APPROVED', 'REJECTED']);
+export const sceneImageDecision = pgEnum('scene_image_decision', ['PENDING', 'APPROVED', 'REJECTED']);
 
 // ── Identity & tenancy ────────────────────────────────────────────────
 
@@ -548,6 +551,42 @@ export const voiceLabSamples = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('voice_lab_samples_org_idx').on(t.orgId, t.createdAt)],
+);
+
+/**
+ * Versioned AI image per storyboard scene. Each generate/regenerate adds a version; the owner approves one, which
+ * then feeds the production plan. The plan (prompt, refs, style) is stored so any version can be reproduced.
+ */
+export const sceneImages = pgTable(
+  'scene_images',
+  {
+    id: id(),
+    orgId: orgId(),
+    videoProjectId: uuid('video_project_id')
+      .notNull()
+      .references(() => videoProjects.id, { onDelete: 'cascade' }),
+    sceneKey: text('scene_key').notNull(),
+    version: integer('version').notNull(),
+    plan: jsonb('plan').$type<VisualScenePlan>().notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    status: jobStatus('status').notNull().default('QUEUED'),
+    error: text('error'),
+    assetId: uuid('asset_id').references(() => generatedAssets.id, { onDelete: 'set null' }),
+    estimatedMicroUsd: bigint('estimated_micro_usd', { mode: 'number' }).notNull(),
+    chargeType: chargeType('charge_type'),
+    cached: boolean('cached').notNull().default(false),
+    decision: sceneImageDecision('decision').notNull().default('PENDING'),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('scene_images_project_idx').on(t.videoProjectId, t.sceneKey),
+    uniqueIndex('scene_images_version_uq').on(t.videoProjectId, t.sceneKey, t.version),
+  ],
 );
 
 export const auditLog = pgTable(

@@ -17,6 +17,7 @@
     "@kampora/creative-engine": "0.1.0",
     "@kampora/database": "0.1.0",
     "@kampora/hebrew-voice": "0.1.0",
+    "@kampora/media-providers": "0.1.0",
     "@kampora/production-engine": "0.1.0",
     "@kampora/shared": "0.1.0",
     "@kampora/storage": "0.1.0",

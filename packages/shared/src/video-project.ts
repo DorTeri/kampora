@@ -228,7 +228,11 @@ export type RenderInput = z.infer<typeof RenderInputSchema>;
  */
 export const TIMELINE_RULES_VERSION = 'r6';
 
-/** Approval key of a timeline built from these inputs (also used by the web app to detect stale versions). */
-export function timelineApprovalReason(narrationKey: string | null | undefined): string {
-  return `plan-approved:${TIMELINE_RULES_VERSION}:${narrationKey ?? 'no-narration'}`;
+/**
+ * Approval key of a timeline built from these inputs (also used by the web app to detect stale versions).
+ * `imagesKey` (approved scene images) is only appended when present, so keys without images stay unchanged.
+ */
+export function timelineApprovalReason(narrationKey: string | null | undefined, imagesKey?: string): string {
+  const base = `plan-approved:${TIMELINE_RULES_VERSION}:${narrationKey ?? 'no-narration'}`;
+  return imagesKey ? `${base}:img:${imagesKey}` : base;
 }

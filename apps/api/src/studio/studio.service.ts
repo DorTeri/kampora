@@ -18,8 +18,10 @@ import {
   type Database,
 } from '@kampora/database';
 import { buildVideoProject, planProduction, sceneContentHash } from '@kampora/production-engine';
+import type { ImageSetup } from '@kampora/media-providers';
 import {
   assertProjectTransition,
+  sceneImagesKey,
   timelineApprovalReason,
   type CampaignRequest,
   type RenderJobPayload,
@@ -28,10 +30,11 @@ import {
 import type { StorageDriver } from '@kampora/storage';
 import type { AuthContext } from '../common/auth';
 import { ApiError, notFound } from '../common/errors';
-import { BUDGET_POLICY, DATABASE, PRICE_CATALOG, RENDER_QUEUE, STORAGE } from '../infra/tokens';
+import { BUDGET_POLICY, DATABASE, IMAGE_SETUP, PRICE_CATALOG, RENDER_QUEUE, STORAGE } from '../infra/tokens';
 import { BusinessService, toAvailableAssets, toMediaAssets } from './business.service';
 import { NarrationService } from './narration.service';
 import { PaidOperationsService } from './paid.service';
+import { approvedSceneImages, imagePriceEntry } from './scene-image-assets';
 
 const TARGET_DURATION_SEC = 20;
 
@@ -48,6 +51,7 @@ export class StudioService {
     @Inject(RENDER_QUEUE) private readonly queue: Queue,
     @Inject(PRICE_CATALOG) private readonly catalog: PriceCatalog,
     @Inject(BUDGET_POLICY) private readonly policy: BudgetPolicy,
+    @Inject(IMAGE_SETUP) private readonly imageSetup: ImageSetup,
     private readonly businesses: BusinessService,
     private readonly paid: PaidOperationsService,
     private readonly narration: NarrationService,
@@ -254,6 +258,7 @@ export class StudioService {
       perGenerationMaxUsd: this.policy.perGenerationMaxUsd,
       qualityTier: brief.brief.qualityTier,
       catalog: this.catalog,
+      imagePrice: this.imagePrice(),
     });
 
     const projectId = await this.db.transaction(async (tx) => {
@@ -306,6 +311,49 @@ export class StudioService {
 
   // ── Projects ─────────────────────────────────────────────────────────
 
+  /** Price of the configured image provider, when it can be used (planning falls back to the default otherwise). */
+  private imagePrice() {
+    return this.imageSetup.ready ? imagePriceEntry(this.catalog, this.imageSetup) : undefined;
+  }
+
+  /**
+   * Re-routes every scene with the owner's approved scene images (they replace planned image generations) and
+   * stores the new plan. Called whenever an image is approved or rejected.
+   */
+  async refreshPlan(ctx: AuthContext, projectId: string) {
+    const project = await this.projectRow(ctx, projectId);
+    const [storyboard] = await this.db
+      .select()
+      .from(storyboards)
+      .where(eq(storyboards.id, project.storyboardId));
+    const brief = await this.briefRow(ctx, project.briefId);
+    const assetRows = await this.businesses.assets(ctx, project.businessId);
+    const approved = await approvedSceneImages(this.db, ctx.orgId, projectId);
+    const plan = planProduction({
+      storyboard: storyboard!.storyboard,
+      assets: [...toAvailableAssets(assetRows), ...approved.map((a) => a.available)],
+      approvedImages: Object.fromEntries(approved.map((a) => [a.sceneKey, a.assetId])),
+      budgetUsd: brief.brief.productionBudgetUsd,
+      perGenerationMaxUsd: this.policy.perGenerationMaxUsd,
+      qualityTier: brief.brief.qualityTier,
+      catalog: this.catalog,
+      imagePrice: this.imagePrice(),
+    });
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(videoProjects)
+        .set({ plan })
+        .where(and(eq(videoProjects.id, projectId), eq(videoProjects.orgId, ctx.orgId)));
+      for (const scenePlan of plan.scenes) {
+        await tx
+          .update(scenes)
+          .set({ plan: scenePlan })
+          .where(and(eq(scenes.videoProjectId, projectId), eq(scenes.sceneKey, scenePlan.sceneKey)));
+      }
+    });
+    return plan;
+  }
+
   private async projectRow(ctx: AuthContext, projectId: string) {
     const [row] = await this.db
       .select()
@@ -337,6 +385,7 @@ export class StudioService {
       .where(and(eq(timelineVersions.videoProjectId, projectId), eq(timelineVersions.orgId, ctx.orgId)))
       .orderBy(desc(timelineVersions.version));
     const renders = await this.listRenders(ctx, projectId);
+    const approvedImages = await approvedSceneImages(this.db, ctx.orgId, projectId);
     return {
       id: project.id,
       title: project.title,
@@ -351,6 +400,8 @@ export class StudioService {
       scriptApprovedAt: project.scriptApprovedAt,
       narration: await this.narration.describe(ctx, project, storyboard!.storyboard),
       currentTimelineVersionId: project.currentTimelineVersionId,
+      /** Part of the timeline approval key (see timelineApprovalReason). */
+      imagesKey: sceneImagesKey(approvedImages),
       versions,
       renders,
       costs: await this.projectCosts(ctx, projectId),
@@ -405,6 +456,19 @@ export class StudioService {
     if (!plan) throw new ApiError(HttpStatus.CONFLICT, 'PLAN_MISSING', 'Project has no production plan');
     if (!plan.withinBudget)
       throw new ApiError(HttpStatus.CONFLICT, 'BUDGET_EXCEEDED', 'Plan exceeds the project budget');
+    const imagesUsable =
+      this.imageSetup.ready && (!this.imageSetup.paid || this.policy.paidGenerationEnabled);
+    const needImages = plan.scenes
+      .filter((s) => s.strategy === 'AI_IMAGE_MOTION' && s.assetIds.length === 0)
+      .map((s) => s.sceneKey);
+    if (needImages.length && imagesUsable) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'SCENE_IMAGES_REQUIRED',
+        'Create and approve an image for every scene that needs one',
+        { sceneKeys: needImages },
+      );
+    }
     if (plan.requiresPaidApproval && !this.policy.paidGenerationEnabled) {
       throw new ApiError(
         HttpStatus.CONFLICT,
@@ -423,7 +487,8 @@ export class StudioService {
     const assetRows = await this.businesses.assets(ctx, project.businessId);
     const music = assetRows.find((a) => a.kind === 'audio' && a.tags.includes('music'));
     const narration = await this.narration.timelineVoiceovers(ctx, project, storyboard!.storyboard);
-    const reason = timelineApprovalReason(narration?.key);
+    const images = await approvedSceneImages(this.db, ctx.orgId, projectId);
+    const reason = timelineApprovalReason(narration?.key, sceneImagesKey(images));
     const [latest] = await this.db
       .select({ reason: timelineVersions.reason })
       .from(timelineVersions)
@@ -446,7 +511,7 @@ export class StudioService {
       brief: brief.brief,
       storyboard: storyboard!.storyboard,
       plan,
-      assets: [...toMediaAssets(assetRows), ...(narration?.assets ?? [])],
+      assets: [...toMediaAssets(assetRows), ...images.map((i) => i.media), ...(narration?.assets ?? [])],
       voiceovers: narration?.voiceovers,
       musicAssetId: music?.id,
       logoAssetId: profile.logoAssetId,

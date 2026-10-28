@@ -9,3 +9,4 @@ export const LLM_PROVIDER = Symbol('LLM_PROVIDER');
 export const CREATIVE_PROVIDER = Symbol('CREATIVE_PROVIDER');
 export const TTS_SETUP = Symbol('TTS_SETUP');
 export const NARRATION_QUEUE = Symbol('NARRATION_QUEUE');
+export const IMAGE_SETUP = Symbol('IMAGE_SETUP');

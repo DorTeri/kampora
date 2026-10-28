@@ -49,6 +49,25 @@ function openAiEntry(
 }
 
 /**
+ * gpt-image-2 per-image price at 1024x1536 (the size Kampora requests for portrait formats; 1024x1024 is cheaper,
+ * so square images are over- rather than under-estimated). Not re-checked against the live page in this
+ * session: kept as a planning estimate (ESTIMATED charges) until verified.
+ */
+function openAiImageEntry(quality: 'low' | 'medium' | 'high', usd: number): PriceEntry {
+  return {
+    provider: 'openai',
+    model: `gpt-image-2@${quality}`,
+    operation: 'IMAGE_GENERATION',
+    unit: 'image',
+    unitPriceUsd: usd,
+    basis: 'PLANNING_ESTIMATE',
+    reviewedAt: '2026-10-29',
+    sourceUrl: OPENAI_PRICING_URL,
+    note: `${quality} quality, 1024x1536, output only; reference photos add input-token cost (planning surcharge)`,
+  };
+}
+
+/**
  * Default catalog. Entries are PLANNING ESTIMATES unless marked VERIFIED (with source URL and review date). They let the planner rank strategies and enforce budgets before
  * real providers exist. Override with verified prices via KAMPORA_PRICE_CATALOG_PATH; never treat these as facts.
  */
@@ -123,6 +142,19 @@ export const DEFAULT_PRICE_CATALOG: readonly PriceEntry[] = [
     reviewedAt: '2026-10-28',
     note: 'Simulated narration (development/test)',
   },
+  {
+    provider: 'mock',
+    model: 'mock-image-v1',
+    operation: 'IMAGE_GENERATION',
+    unit: 'image',
+    unitPriceUsd: 0,
+    basis: 'PLANNING_ESTIMATE',
+    reviewedAt: '2026-10-29',
+    note: 'Simulated scene image (development/test)',
+  },
+  openAiImageEntry('low', 0.005),
+  openAiImageEntry('medium', 0.041),
+  openAiImageEntry('high', 0.165),
   openAiEntry('gpt-6.1-terra', 1.0, 0.05, 5.0),
   openAiEntry('gpt-6-luna', 0.1, 0.01, 0.5),
   openAiEntry('gpt-6.1-sol', 2.0, 0.1, 10.0),

@@ -3,10 +3,12 @@ import pino from 'pino';
 import { PriceCatalog, budgetPolicyFromEnv } from '@kampora/cost-engine';
 import { createDatabase } from '@kampora/database';
 import { createTtsProvider, ttsSetupFromEnv, voiceLabExtraVoices } from '@kampora/hebrew-voice';
+import { createImageProvider, imagePriceModel, imageSetupFromEnv } from '@kampora/media-providers';
 import {
   NARRATION_QUEUE_NAME,
   NarrationJobPayloadSchema,
   VoiceLabJobPayloadSchema,
+  SceneImageJobPayloadSchema,
   RENDER_QUEUE_NAME,
   RenderJobPayloadSchema,
 } from '@kampora/shared';
@@ -14,6 +16,7 @@ import { storageFromEnv } from '@kampora/storage';
 import { getServeUrl } from '@kampora/video-renderer';
 import { processNarrationJob } from './narration-job';
 import { processVoiceLabJob } from './voice-lab-job';
+import { processSceneImageJob } from './scene-image-job';
 import { RenderJobNotFoundError, processRenderJob } from './render-job';
 import { redisConnection } from './redis';
 
@@ -80,9 +83,32 @@ async function main() {
     extraVoices: voiceLabExtraVoices(narrationDeps.setup),
     labMaxUsd: Number(process.env.VOICE_LAB_MAX_USD ?? 1),
   };
+  // A paid image provider without a price entry is never used: the budget guard could not bound its spend.
+  const imageSetup = imageSetupFromEnv();
+  const imagePrice = deps.catalog.find(imageSetup.provider, imagePriceModel(imageSetup), 'IMAGE_GENERATION');
+  const sceneImageDeps = {
+    db,
+    storage: deps.storage,
+    policy: narrationDeps.policy,
+    logger,
+    provider:
+      imageSetup.ready && (imagePrice || !imageSetup.paid)
+        ? createImageProvider(imageSetup, {
+            unitPriceUsd: imagePrice?.unitPriceUsd ?? 0,
+            verified: imagePrice?.basis === 'VERIFIED',
+          })
+        : null,
+  };
+  // Narration, voice-lab and scene-image jobs share this queue; concurrency 1 serializes paid calls.
   const narrationWorker = new Worker(
     NARRATION_QUEUE_NAME,
     async (job) => {
+      if (job.name === 'scene-image') {
+        const image = SceneImageJobPayloadSchema.safeParse(job.data);
+        if (!image.success) throw new UnrecoverableError('Invalid scene image job payload');
+        await processSceneImageJob(sceneImageDeps, image.data);
+        return;
+      }
       if (job.name === 'voice-lab') {
         const lab = VoiceLabJobPayloadSchema.safeParse(job.data);
         if (!lab.success) throw new UnrecoverableError('Invalid voice lab job payload');
@@ -97,7 +123,7 @@ async function main() {
   );
   narrationWorker.on('ready', () =>
     logger.info(
-      { queue: NARRATION_QUEUE_NAME, tts: narrationDeps.setup.provider },
+      { queue: NARRATION_QUEUE_NAME, tts: narrationDeps.setup.provider, images: imageSetup.provider },
       'narration worker listening',
     ),
   );

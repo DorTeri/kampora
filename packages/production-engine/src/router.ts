@@ -6,7 +6,7 @@ import type {
   ScenePlan,
   StoryboardScene,
 } from '@kampora/shared';
-import type { PriceCatalog } from '@kampora/cost-engine';
+import type { PriceCatalog, PriceEntry } from '@kampora/cost-engine';
 
 export interface RouterContext {
   qualityTier: QualityTier;
@@ -16,6 +16,10 @@ export interface RouterContext {
   /** Premium text-to-video is opt-in only. */
   allowTextToVideo: boolean;
   catalog: PriceCatalog;
+  /** AI image the owner approved for this scene (must be in `assets`). Takes precedence over tag matching. */
+  approvedImageId?: string;
+  /** Price of the configured image provider (else the catalog's planning default). A free provider is not paid. */
+  imagePrice?: PriceEntry;
 }
 
 export interface MatchedAssets {
@@ -54,7 +58,8 @@ function generation(
   quantity: number,
   purpose: string,
 ): PlannedGeneration {
-  const entry = ctx.catalog.defaultFor(operation);
+  const entry =
+    operation === 'IMAGE_GENERATION' && ctx.imagePrice ? ctx.imagePrice : ctx.catalog.defaultFor(operation);
   return {
     operation,
     provider: entry.provider,
@@ -62,7 +67,7 @@ function generation(
     quantity,
     unit: entry.unit,
     estimatedCostUsd: ctx.catalog.estimate(entry, quantity),
-    paid: true,
+    paid: entry.unitPriceUsd > 0,
     purpose,
   };
 }
@@ -83,7 +88,10 @@ export function routeScene(
   assets: readonly AvailableAsset[],
   ctx: RouterContext,
 ): ScenePlan {
-  const matched = matchAssets(scene, assets);
+  const approved = ctx.approvedImageId
+    ? assets.find((a) => a.id === ctx.approvedImageId && a.kind === 'image')
+    : undefined;
+  const matched = { ...matchAssets(scene, assets), ...(approved ? { image: approved } : {}) };
   const reasons: string[] = [];
   const warnings: string[] = [];
   const needsRealMotion = scene.quality.requiresHumanMotion || scene.quality.requiresComplexAction;
@@ -138,6 +146,13 @@ export function routeScene(
   if (scene.visualKind === 'GRAPHIC') {
     reasons.push('Text/offer-led scene: motion graphics are clearer and free to produce.');
     return result('MOTION_GRAPHICS', matched.image ? [matched.image.id] : []);
+  }
+
+  if (approved) {
+    reasons.push(`Approved AI image "${approved.id}" animated programmatically (${scene.motion.preset}).`);
+    if (scene.quality.requiresProductAccuracy)
+      reasons.push('The owner approved this generated image as a stand-in for a product photo.');
+    return result(scene.motion.preset === 'parallax' ? 'LAYERED_PARALLAX' : 'AI_IMAGE_MOTION', [approved.id]);
   }
 
   if (matched.image) {

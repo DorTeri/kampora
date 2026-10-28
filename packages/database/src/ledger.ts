@@ -114,7 +114,11 @@ export async function spentUsdFor(
 ): Promise<number> {
   const entries = await ledgerEntriesFor(db, orgId, scope);
   const micro = entries
-    .filter((e) => e.chargeType === 'CONFIRMED' || (e.chargeType === 'ESTIMATED' && e.operation === 'TTS'))
+    .filter(
+      (e) =>
+        e.chargeType === 'CONFIRMED' ||
+        (e.chargeType === 'ESTIMATED' && (e.operation === 'TTS' || e.operation === 'IMAGE_GENERATION')),
+    )
     .reduce((sum, e) => sum + e.amountMicroUsd, 0);
   return micro / 1_000_000;
 }

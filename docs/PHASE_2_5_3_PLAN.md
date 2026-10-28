@@ -80,3 +80,22 @@ Before the run:
 3. Turn paid generation on for the session only.
 
 Nothing has been generated. No voice is called "best" until people have listened and rated.
+
+## Milestone C: AI scene images
+
+- **Provider:** OpenAI Images (`gpt-image-2`). The SDK was checked: `images.generate` for text-only prompts, and `images.edit` when the business's product photos are sent as references. `input_fidelity` is not sent, because the SDK says to omit it for gpt-image-2. Output is one JPEG, with SDK retries off. Portrait formats use 1024x1536 and the renderer crops to cover. The default is the free `mock` provider, which makes deterministic brand-coloured placeholders.
+- **Planner:** `planSceneVisual` is deterministic, with no LLM. It produces a `VisualScenePlan` covering style, shot, a look shared by all scenes of the ad, brand palette, mood, references, safe zones, an avoid-list that always forbids text, letters, logos and watermarks, the prompt, and a fingerprint. Styles are photographic by default (product or lifestyle photo); illustration only when the concept asks for it.
+- **Gating:** API and worker apply the same checks:
+  - kill switch
+  - an approval for this exact image version at least as high as the estimate
+  - per-generation cap
+  - project budget: estimated image charges now count toward spend
+  - at most 6 versions per scene
+
+  A fingerprint match reuses the existing image and is never paid for twice.
+- **Flow:** the image is generated as a new version, and the owner approves or rejects it. Approving re-plans the project: the scene switches to `AI_IMAGE_MOTION` (or parallax) with the image, and the planned generation cost is dropped. The approved images are part of the timeline approval key. Text always stays in Kampora's RTL overlays.
+- **Prices** (planning estimates, not re-verified in this session; charges are ESTIMATED): gpt-image-2 at 1024x1536 costs $0.005 (low), $0.041 (medium) and $0.165 (high). Each reference photo adds a planning surcharge of $0.01.
+
+### Real-provider image validation (waiting for approval)
+
+Generate 3 scenes (hook, product with one reference photo, CTA) at `medium` quality, then 1 regeneration. That is 4 calls, about $0.041 × 4 + $0.01 = **about $0.17** (cap of $0.25). People review the images for realism, product fidelity, text-free output and consistency between scenes; passing tests is not enough. This needs `IMAGE_PROVIDER=openai`, `KAMPORA_ALLOW_PAID_GENERATION=true` and your explicit approval.
