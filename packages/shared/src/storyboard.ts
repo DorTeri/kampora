@@ -1,6 +1,16 @@
 import { z } from 'zod';
 
-export const SceneRoleSchema = z.enum(['HOOK', 'PROBLEM', 'SOLUTION', 'PRODUCT', 'PROOF', 'OFFER', 'CTA']);
+export const SceneRoleSchema = z.enum([
+  'HOOK',
+  'PROBLEM',
+  'SOLUTION',
+  'PRODUCT',
+  'DEMO',
+  'BENEFIT',
+  'PROOF',
+  'OFFER',
+  'CTA',
+]);
 export type SceneRole = z.infer<typeof SceneRoleSchema>;
 
 export const ProductionStrategySchema = z.enum([
@@ -50,6 +60,28 @@ export const SceneQualitySchema = z.object({
 });
 export type SceneQuality = z.infer<typeof SceneQualitySchema>;
 
+/** Framing an editor/photographer can act on. Consecutive scenes should not repeat the same framing and motion. */
+export const ShotTypeSchema = z.enum([
+  'extreme-close-up',
+  'close-up',
+  'medium',
+  'wide',
+  'overhead',
+  'detail',
+  'graphic',
+]);
+export type ShotType = z.infer<typeof ShotTypeSchema>;
+
+/** Editor guidance for one scene (Phase 3 storyboards; older ones have none). */
+export const SceneDirectionSchema = z.object({
+  /** What this scene must achieve for the viewer, in one sentence. */
+  purpose: z.string().min(1),
+  shot: ShotTypeSchema,
+  /** Practical note for the editor (pacing, cut, what to emphasize), or empty. */
+  editorNote: z.string().optional(),
+});
+export type SceneDirection = z.infer<typeof SceneDirectionSchema>;
+
 export const StoryboardSceneSchema = z.object({
   key: z.string().regex(/^[a-z0-9-]+$/),
   order: z.number().int().nonnegative(),
@@ -64,6 +96,7 @@ export const StoryboardSceneSchema = z.object({
   requiredAssets: z.array(AssetRequirementSchema),
   motion: z.object({ preset: MotionPresetSchema, notes: z.string().optional() }),
   quality: SceneQualitySchema,
+  direction: SceneDirectionSchema.optional(),
 });
 export type StoryboardScene = z.infer<typeof StoryboardSceneSchema>;
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { QualityTierSchema } from './common';
+import { VoiceStyleSchema } from './narration';
 
 export const CampaignGoalSchema = z.enum(['LEADS', 'SALES', 'PRODUCT_PROMO', 'OFFER', 'AWARENESS']);
 export type CampaignGoal = z.infer<typeof CampaignGoalSchema>;
@@ -30,16 +31,62 @@ export const CampaignBriefSchema = z.object({
 });
 export type CampaignBrief = z.infer<typeof CampaignBriefSchema>;
 
+/** Concept types. Each has its own hook mechanism, structure and emotional driver (see CONCEPT_TYPES). */
 export const ConceptAngleSchema = z.enum([
   'PROBLEM_SOLUTION',
   'UGC',
   'PRODUCT_DEMO',
   'EMOTIONAL',
   'OFFER_DRIVEN',
+  'HUMOR',
+  'EDUCATIONAL',
+  'LIFESTYLE',
 ]);
 export type ConceptAngle = z.infer<typeof ConceptAngleSchema>;
 
 export const ComplexitySchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
+
+/**
+ * How the ad should look. Photographic styles are the default for products; illustration is a deliberate choice,
+ * never a fallback. Text is never part of the picture (overlays are added by the renderer).
+ */
+export const VisualStyleSchema = z.enum([
+  'photoreal-product',
+  'lifestyle-photo',
+  'cinematic',
+  'ugc-handheld',
+  'flat-graphic',
+  'illustration',
+]);
+export type VisualStyle = z.infer<typeof VisualStyleSchema>;
+
+/** How the video is produced (what the editor/renderer builds it from). */
+export const ProductionFormatSchema = z.enum([
+  'image-motion',
+  'motion-graphics',
+  'ugc-style',
+  'product-demo',
+  'mixed',
+]);
+export type ProductionFormat = z.infer<typeof ProductionFormatSchema>;
+
+/** The strategic core of a concept: what it is for, what it believes, and how it should feel and be made. */
+export const ConceptStrategySchema = z.object({
+  /** The one thing this ad should achieve (measurable where possible). */
+  objective: z.string().min(1),
+  /** Audience truth the idea is built on (an observation, not an invented statistic). */
+  insight: z.string().min(1),
+  /** What this concept tests: "if we X, then Y because Z". */
+  hypothesis: z.string().min(1),
+  /** Story beats in order, e.g. ["hook: ...", "problem: ...", "solution: ...", "cta: ..."]. */
+  storyStructure: z.array(z.string().min(1)).min(3).max(6),
+  emotionalDirection: z.string().min(1),
+  visualStyle: VisualStyleSchema,
+  productionFormat: ProductionFormatSchema,
+  /** Narration delivery style suggested for this concept (the owner can change it). */
+  voiceStyle: VoiceStyleSchema,
+});
+export type ConceptStrategy = z.infer<typeof ConceptStrategySchema>;
 
 export const CreativeConceptSchema = z.object({
   key: z.string().min(1),
@@ -55,6 +102,8 @@ export const CreativeConceptSchema = z.object({
   complexity: ComplexitySchema,
   /** Intended ad length; the storyboard and narration are checked against it. */
   estimatedDurationSec: z.number().int().min(8).max(60).default(20),
+  /** Phase 3 concepts carry their strategy; concepts stored before it do not. */
+  strategy: ConceptStrategySchema.optional(),
 });
 export type CreativeConcept = z.infer<typeof CreativeConceptSchema>;
 

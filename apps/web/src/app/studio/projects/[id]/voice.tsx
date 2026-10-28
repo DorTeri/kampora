@@ -29,16 +29,19 @@ export function VoicePanel({
   projectId,
   voices,
   initialNarration,
+  suggestedStyle,
   usdToIls,
 }: {
   projectId: string;
   voices: VoicesResponse;
   initialNarration: NarrationDto | null;
+  /** The concept's suggested delivery; the owner can change it. */
+  suggestedStyle?: VoiceStyle;
   usdToIls: number;
 }) {
   const router = useRouter();
   const [voiceId, setVoiceId] = useState(initialNarration?.voiceId ?? voices.voices[0]?.id ?? '');
-  const [style, setStyle] = useState<VoiceStyle>(initialNarration?.style ?? 'natural');
+  const [style, setStyle] = useState<VoiceStyle>(initialNarration?.style ?? suggestedStyle ?? 'natural');
   const [quote, setQuote] = useState<NarrationQuote | null>(null);
   const [lineQuote, setLineQuote] = useState<NarrationQuote | null>(null);
   const [narration, setNarration] = useState(initialNarration);

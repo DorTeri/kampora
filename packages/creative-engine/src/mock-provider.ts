@@ -4,7 +4,21 @@ import type {
   StructuredGenerationRequest,
   StructuredGenerationResult,
 } from '@kampora/media-providers';
-import type { ConceptSetLlm, StoryboardLlm } from './llm-schemas';
+import type { ConceptAngle } from '@kampora/shared';
+import { CONCEPT_TYPES } from './concept-types';
+import type { ConceptLlm, ConceptSetLlm, StoryboardLlm } from './llm-schemas';
+
+/** Strategy fields that come straight from the concept type (the copy-specific ones are written per concept). */
+const typeDefaults = (angle: ConceptAngle) => {
+  const t = CONCEPT_TYPES[angle];
+  return {
+    angle,
+    emotionalDirection: t.emotionalDriver,
+    visualStyle: t.visualStyle,
+    productionFormat: t.productionFormat,
+    voiceStyle: t.voiceStyle,
+  };
+};
 import { ConceptsStepInputSchema, StoryboardStepInputSchema } from './steps';
 
 const MOCK_PRICE = DEFAULT_PRICE_CATALOG.find(
@@ -47,8 +61,8 @@ export class MockCreativeLlmProvider implements LlmProvider {
     return {
       concepts: [
         {
+          ...typeDefaults('OFFER_DRIVEN'),
           title: 'המבצע במרכז',
-          angle: 'OFFER_DRIVEN',
           audience: brief.audience,
           hook: brief.offer ? `רגע, ראיתם את המבצע ב-${business.name}?` : `${brief.productName} כמו שצריך`,
           script: [`ב-${business.name} ${claimA}.`, offerLine, `${brief.cta}!`].filter(Boolean).join(' '),
@@ -59,10 +73,14 @@ export class MockCreativeLlmProvider implements LlmProvider {
           rationale: 'מטרת הקמפיין היא מבצע: מחיר ברור בשניות הראשונות מגדיל הקלקות ומבקרים.',
           complexity: 'LOW',
           estimatedDurationSec: 18,
+          objective: brief.offer ? 'להביא מבקרים לנצל את המבצע' : `לגרום לקהל לנסות את ${brief.productName}`,
+          insight: 'כשההצעה ברורה מהשנייה הראשונה, קל להחליט לבוא',
+          hypothesis: 'אם נפתח במבצע עצמו, יותר אנשים יעצרו ויגיעו, כי הערך ברור מיד',
+          storyStructure: ['פתיחה: המבצע', 'מה מקבלים', 'המחיר והתנאים', 'קריאה לפעולה'],
         },
         {
+          ...typeDefaults('PROBLEM_SOLUTION'),
           title: 'הבוקר שמגיע לך',
-          angle: 'PROBLEM_SOLUTION',
           audience: brief.audience,
           hook: `נמאס מ${brief.productName} סתמי בדרך לעבודה?`,
           script: `נמאס מ${brief.productName} סתמי? ב-${business.name} ${claimA}${claimB ? `, ו${claimB}` : ''}.`,
@@ -72,26 +90,78 @@ export class MockCreativeLlmProvider implements LlmProvider {
           rationale: 'מזהה כאב יומיומי של קהל היעד ומציג את העסק כפתרון פשוט וקרוב.',
           complexity: 'MEDIUM',
           estimatedDurationSec: 20,
+          objective: `לבנות העדפה ל-${business.name} כפתרון לבוקר רגיל`,
+          insight: `${brief.productName} סתמי בדרך לעבודה הוא פשרה שכולם מכירים`,
+          hypothesis: 'אם נזכיר תסכול מוכר ונציג פתרון קרוב, הקהל יזדהה ויגיע',
+          storyStructure: ['פתיחה: התסכול', 'למה זה קורה', `הפתרון: ${business.name}`, 'קריאה לפעולה'],
         },
-        {
-          title: 'הרגע הקטן שלך',
-          angle: 'EMOTIONAL',
-          audience: brief.audience,
-          hook: 'יש רגעים קטנים שעושים את כל היום',
-          script: `יש רגעים קטנים שעושים את כל היום. ב-${business.name} ${claimA}.`,
-          mainMessage: `${business.name} – המקום לרגע הקטן שלך`,
-          visualDirection: 'צילומי אווירה רכים, אור בוקר, קצב רגוע ומוזיקה חמה.',
-          cta: brief.cta,
-          rationale: 'בונה זיכרון מותג וחיבור רגשי; מתאים לקהל מקומי וחוזר.',
-          complexity: 'MEDIUM',
-          estimatedDurationSec: 20,
-        },
+        this.thirdConcept(business, brief, claimA),
       ],
       recommendedIndex,
       recommendationReason:
         recommendedIndex === 0
           ? 'המטרה היא מבצע, וכשהמחיר ברור כבר בפתיחה התגובה בדרך כלל גבוהה יותר.'
           : 'פתיחה שמזהה בעיה מוכרת עוצרת גלילה ומובילה בטבעיות למסר של העסק.',
+    };
+  }
+
+  /** A third, different idea: a demo for product promotions, lifestyle for awareness, otherwise emotional. */
+  private thirdConcept(
+    business: ReturnType<typeof ConceptsStepInputSchema.parse>['business'],
+    brief: ReturnType<typeof ConceptsStepInputSchema.parse>['brief'],
+    claimA: string,
+  ): ConceptLlm {
+    const common = {
+      audience: brief.audience,
+      cta: brief.cta,
+      complexity: 'MEDIUM' as const,
+      estimatedDurationSec: 20,
+    };
+    if (brief.goal === 'PRODUCT_PROMO') {
+      return {
+        ...typeDefaults('PRODUCT_DEMO'),
+        ...common,
+        title: `${brief.productName} מקרוב`,
+        hook: `ככה נראה ${brief.productName} אמיתי`,
+        script: `ככה נראה ${brief.productName} אמיתי. ב-${business.name} ${claimA}.`,
+        mainMessage: claimA,
+        visualDirection: 'קלוז-אפים חדים על המוצר, פרטים ומרקמים, תנועות מצלמה קצרות.',
+        rationale: 'מראה את המוצר עצמו ומאפשר לקהל להחליט לפי מה שהוא רואה.',
+        objective: `לעורר רצון לנסות את ${brief.productName}`,
+        insight: 'אנשים סומכים על מה שהם רואים יותר מאשר על תיאורים',
+        hypothesis: 'אם נראה את המוצר מקרוב, הרצון לנסות יעלה',
+        storyStructure: ['פתיחה: רגע המוצר', 'הדגמה: מה מקבלים', 'היתרון', 'קריאה לפעולה'],
+      };
+    }
+    if (brief.goal === 'AWARENESS') {
+      return {
+        ...typeDefaults('LIFESTYLE'),
+        ...common,
+        title: `הבוקר עם ${business.name}`,
+        hook: 'ככה נראה בוקר טוב בשכונה',
+        script: `ככה נראה בוקר טוב בשכונה. ב-${business.name} ${claimA}.`,
+        mainMessage: `${business.name} הוא חלק מהבוקר הטוב`,
+        visualDirection: 'אווירת בוקר בשכונה, אור טבעי, המוצר כחלק מהשגרה.',
+        rationale: 'בונה מודעות דרך שגרה שהקהל רוצה להיות חלק ממנה.',
+        objective: `להכיר את ${business.name} לתושבי האזור`,
+        insight: 'בוקר טוב מתחיל ממקום קבוע וקרוב',
+        hypothesis: 'אם נראה את העסק כחלק מבוקר רצוי, הקהל יזכור אותו',
+        storyStructure: ['פתיחה: בוקר בשכונה', 'המוצר בתוך השגרה', 'המותג', 'קריאה לפעולה'],
+      };
+    }
+    return {
+      ...typeDefaults('EMOTIONAL'),
+      ...common,
+      title: 'הרגע הקטן שלך',
+      hook: 'יש רגעים קטנים שעושים את כל היום',
+      script: `יש רגעים קטנים שעושים את כל היום. ב-${business.name} ${claimA}.`,
+      mainMessage: `${business.name} – המקום לרגע הקטן שלך`,
+      visualDirection: 'צילומי אווירה רכים, אור בוקר, קצב רגוע ומוזיקה חמה.',
+      rationale: 'בונה זיכרון מותג וחיבור רגשי; מתאים לקהל מקומי וחוזר.',
+      objective: `לבנות חיבור רגשי ל-${business.name}`,
+      insight: 'רגע קטן ונעים בבוקר משפיע על כל היום',
+      hypothesis: 'אם נתחבר לרגע מוכר ונעים, המותג ייזכר לטובה',
+      storyStructure: ['פתיחה: הרגע', 'מה הופך אותו למיוחד', 'איפה זה קורה', 'קריאה לפעולה'],
     };
   }
 
@@ -113,6 +183,9 @@ export class MockCreativeLlmProvider implements LlmProvider {
           motionPreset: 'cinematic-zoom',
           ...flags,
           requiresProductAccuracy: true,
+          purpose: 'לעצור את הגלילה ולהציג את ההבטחה המרכזית',
+          shot: 'extreme-close-up',
+          editorNote: 'הטקסט נכנס כבר בשנייה הראשונה; חיתוך מהיר לסצנה הבאה',
         },
         {
           role: 'PRODUCT',
@@ -125,6 +198,9 @@ export class MockCreativeLlmProvider implements LlmProvider {
           motionPreset: 'pan-left',
           ...flags,
           requiresProductAccuracy: true,
+          purpose: 'להראות מה מקבלים בפועל',
+          shot: 'detail',
+          editorNote: null,
         },
         brief.offer
           ? {
@@ -138,6 +214,9 @@ export class MockCreativeLlmProvider implements LlmProvider {
               motionPreset: 'static',
               ...flags,
               requiresProductAccuracy: false,
+              purpose: 'להבהיר את המחיר והתנאים בדיוק כפי שאושרו',
+              shot: 'graphic',
+              editorNote: 'המחיר הוא הדבר הגדול ביותר על המסך',
             }
           : {
               role: 'PROOF',
@@ -150,6 +229,9 @@ export class MockCreativeLlmProvider implements LlmProvider {
               motionPreset: 'ken-burns-out',
               ...flags,
               requiresProductAccuracy: false,
+              purpose: 'לבסס אמון דרך המקום עצמו',
+              shot: 'wide',
+              editorNote: null,
             },
         {
           role: 'CTA',
@@ -162,6 +244,9 @@ export class MockCreativeLlmProvider implements LlmProvider {
           motionPreset: 'parallax',
           ...flags,
           requiresProductAccuracy: false,
+          purpose: 'להגיד בדיוק מה לעשות ואיפה',
+          shot: 'wide',
+          editorNote: 'הלוגו והכתובת נשארים על המסך עד הסוף',
         },
       ],
     };

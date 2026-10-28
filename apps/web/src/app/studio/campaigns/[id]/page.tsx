@@ -70,6 +70,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
               <div className="flex flex-wrap items-center gap-2">
                 {isSelected && <Badge tone="success">✓ {he.concepts.chosen}</Badge>}
                 {isRecommended && !isSelected && <Badge tone="primary">★ {he.concepts.recommended}</Badge>}
+                <Badge tone="accent">{he.concepts.angles[concept.angle]}</Badge>
                 <Badge>{he.concepts.complexity[concept.complexity]}</Badge>
               </div>
               <div>
@@ -84,6 +85,34 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                   <dt className="font-semibold text-muted">{he.concepts.message}</dt>
                   <dd className="mt-0.5">{concept.mainMessage}</dd>
                 </div>
+                {concept.strategy && (
+                  <>
+                    <div>
+                      <dt className="font-semibold text-muted">{he.concepts.objective}</dt>
+                      <dd className="mt-0.5">{concept.strategy.objective}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold text-muted">{he.concepts.insight}</dt>
+                      <dd className="mt-0.5">{concept.strategy.insight}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold text-muted">{he.concepts.hypothesis}</dt>
+                      <dd className="mt-0.5">{concept.strategy.hypothesis}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold text-muted">{he.concepts.structure}</dt>
+                      <dd className="mt-1">
+                        <ol className="flex flex-wrap gap-1.5">
+                          {concept.strategy.storyStructure.map((beat, i) => (
+                            <li key={i} className="rounded-full bg-ink/[0.05] px-2.5 py-0.5 text-xs">
+                              {i + 1}. {beat}
+                            </li>
+                          ))}
+                        </ol>
+                      </dd>
+                    </div>
+                  </>
+                )}
                 <div>
                   <dt className="font-semibold text-muted">{he.concepts.visual}</dt>
                   <dd className="mt-0.5">{concept.visualDirection}</dd>

@@ -20,6 +20,8 @@ import { assessScriptLength, estimateSpeechSec, normalizeHebrewForSpeech } from 
 import type { LlmProvider } from '@kampora/media-providers';
 import { runReasoningStep, StepValidationError, type UsageRecorder } from './step-runner';
 import { checkClaims, checkFacts, type ClaimFlag } from './claims';
+import { conceptTypesGuide } from './concept-types';
+import { conceptQa, qaErrors, storyboardQa } from './creative-qa';
 import {
   ConceptSetLlmSchema,
   StoryboardLlmSchema,
@@ -163,7 +165,10 @@ const RULES = [
 const CONCEPTS_SYSTEM = [
   "You are Kampora's Creative Strategist, writing vertical (9:16) Instagram/Facebook Reels ads for Israeli small businesses.",
   RULES,
-  'Return exactly 3 concepts with genuinely different angles: different hook mechanism, structure and emotional driver — never three rewrites of one idea.',
+  'Return exactly 3 concepts with genuinely different angles: different hook mechanism, structure and emotional driver — never three rewrites of one idea. Choose from these concept types (prefer types whose "best for" includes the brief goal):',
+  conceptTypesGuide(),
+  'Each concept carries ONE message. objective: the single thing it should achieve. insight: a real audience observation (never an invented number). hypothesis: what this concept tests. storyStructure: 3–6 short beats in order. Pick visualStyle (photographic styles for real products; illustration only when it clearly serves the idea), productionFormat and voiceStyle that fit the type.',
+  'Hooks: max ~8 words, specific to this business and audience; no generic openers like "הכירו את" or "מחפשים?" alone.',
   'hook: the opening spoken line that stops the scroll in the first 2 seconds. script: the complete voiceover in short spoken sentences, written to FILL estimatedDurationSec at a natural pace (~2.3 words per second, so a 20-second ad needs ~40 words); estimatedDurationSec must not exceed the brief target.',
   'recommendedIndex: the concept most likely to achieve the brief goal; explain why in recommendationReason (Hebrew).',
 ].join('\n');
@@ -175,6 +180,7 @@ const STORYBOARD_SYSTEM = [
   'First scene role HOOK, last scene role CTA. If offerExactText exists include one OFFER scene with visualKind GRAPHIC whose onScreenText contains the exact price.',
   'assetTags: choose only from availableTags so existing business media is reused. Prefer PHOTO scenes with camera motion presets.',
   'Set requiresHumanMotion / requiresComplexAction true ONLY when the scene is impossible without real movement. onScreenText: max ~6 words or null. Never put text inside images.',
+  'Follow the concept storyStructure. Every scene states its purpose for the viewer, a shot framing and (when useful) an editorNote an editor can act on. Visual variety: consecutive scenes must differ in shot framing or motion preset. One OFFER scene at most; the hook scene lands within 2–3 seconds.',
 ].join('\n');
 
 // ── Concepts ──────────────────────────────────────────────────────────
@@ -194,6 +200,16 @@ function toConceptSet(output: ConceptSetLlm, target: number): ConceptSet {
       rationale: c.rationale,
       complexity: c.complexity,
       estimatedDurationSec: Math.min(c.estimatedDurationSec, Math.max(target, 10)),
+      strategy: {
+        objective: c.objective,
+        insight: c.insight,
+        hypothesis: c.hypothesis,
+        storyStructure: c.storyStructure,
+        emotionalDirection: c.emotionalDirection,
+        visualStyle: c.visualStyle,
+        productionFormat: c.productionFormat,
+        voiceStyle: c.voiceStyle,
+      },
     })),
     recommendedKey: output.concepts[output.recommendedIndex]?.angle.toLowerCase().replace(/_/g, '-'),
     recommendationReason: output.recommendationReason,
@@ -242,6 +258,7 @@ export async function generateConcepts(
         i.business,
         i.brief.targetDurationSec,
       ),
+      ...set.concepts.flatMap((c) => qaErrors(conceptQa(c))),
     ],
     provider: ctx.provider,
     recorder: ctx.recorder,
@@ -282,6 +299,7 @@ function toStoryboard(output: StoryboardLlm, input: StoryboardStepInput): Storyb
         requiresProductAccuracy: s.requiresProductAccuracy,
         brandCritical: s.role === 'OFFER' || s.role === 'CTA',
       },
+      direction: { purpose: s.purpose, shot: s.shot, editorNote: s.editorNote ?? undefined },
     };
   });
   const storyboard = StoryboardSchema.parse({ conceptKey: input.concept.key, aspectRatio: '9:16', scenes });
@@ -316,6 +334,7 @@ export async function generateStoryboard(
           cta: i.concept.cta,
           visualDirection: i.concept.visualDirection,
           estimatedDurationSec: i.concept.estimatedDurationSec,
+          strategy: i.concept.strategy ?? null,
         }),
         dataBlock('media', {
           availableTags: [...new Set(i.assets.flatMap((a) => a.tags))],
@@ -333,6 +352,7 @@ export async function generateStoryboard(
         i.business,
         i.brief.targetDurationSec,
       ),
+      ...qaErrors(storyboardQa(sb)),
     ],
     provider: ctx.provider,
     recorder: ctx.recorder,

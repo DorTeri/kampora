@@ -1,5 +1,14 @@
 import { z } from 'zod';
-import { ComplexitySchema, ConceptAngleSchema, MotionPresetSchema, SceneRoleSchema } from '@kampora/shared';
+import {
+  ComplexitySchema,
+  ConceptAngleSchema,
+  MotionPresetSchema,
+  ProductionFormatSchema,
+  SceneRoleSchema,
+  ShotTypeSchema,
+  VisualStyleSchema,
+  VoiceStyleSchema,
+} from '@kampora/shared';
 
 /**
  * Provider-facing output schemas. They follow OpenAI Structured Outputs rules (docs checked 2026-10-28):
@@ -21,6 +30,16 @@ export const ConceptLlmSchema = z.object({
   rationale: z.string().describe('Why this angle fits the goal and audience'),
   complexity: ComplexitySchema,
   estimatedDurationSec: z.number().int().min(10).max(30),
+  objective: z.string().describe('The one thing this ad should achieve (Hebrew)'),
+  insight: z
+    .string()
+    .describe('An audience truth the idea is built on: an observation, never an invented statistic'),
+  hypothesis: z.string().describe('What this concept tests: "if we ..., then ... because ..." (Hebrew)'),
+  storyStructure: z.array(z.string()).min(3).max(6).describe('Story beats in order (Hebrew, short)'),
+  emotionalDirection: z.string(),
+  visualStyle: VisualStyleSchema,
+  productionFormat: ProductionFormatSchema,
+  voiceStyle: VoiceStyleSchema,
 });
 export type ConceptLlm = z.infer<typeof ConceptLlmSchema>;
 
@@ -45,6 +64,12 @@ export const SceneLlmSchema = z.object({
   requiresHumanMotion: z.boolean(),
   requiresComplexAction: z.boolean(),
   requiresProductAccuracy: z.boolean(),
+  purpose: z.string().describe('What this scene must achieve for the viewer, one Hebrew sentence'),
+  shot: ShotTypeSchema,
+  editorNote: z
+    .string()
+    .nullable()
+    .describe('Practical note for the editor (pacing, cut, emphasis), or null'),
 });
 export type SceneLlm = z.infer<typeof SceneLlmSchema>;
 

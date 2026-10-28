@@ -64,7 +64,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                         {he.planning.roles[scene.role]}
                       </Badge>
                       {scenePlan && <Badge>{he.planning.strategies[scenePlan.strategy]}</Badge>}
+                      {scene.direction && <Badge>{he.planning.shots[scene.direction.shot]}</Badge>}
                     </div>
+                    {scene.direction && (
+                      <p className="text-sm">
+                        <span className="font-semibold text-muted">{he.planning.purpose}: </span>
+                        {scene.direction.purpose}
+                      </p>
+                    )}
                     <p className="text-ink-soft">{scene.visual}</p>
                     {scene.onScreenText && (
                       <p>
@@ -76,6 +83,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                       <span className="text-sm font-semibold text-muted">{he.planning.voiceover}: </span>
                       {scene.voiceover}
                     </p>
+                    {scene.direction?.editorNote && (
+                      <p className="text-xs text-muted">
+                        {he.planning.editorNote}: {scene.direction.editorNote}
+                      </p>
+                    )}
                     {/* Router warnings are internal (English, technical); customers get a plain-Hebrew note. */}
                     {scenePlan && scenePlan.warnings.length > 0 && (
                       <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
@@ -127,6 +139,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
               projectId={project.id}
               voices={voices}
               initialNarration={narration}
+              suggestedStyle={project.concept.strategy?.voiceStyle}
               usdToIls={USD_TO_ILS}
             />
           ) : (

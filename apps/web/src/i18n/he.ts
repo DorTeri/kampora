@@ -1,4 +1,4 @@
-import type { CampaignGoal, ProductionStrategy, SceneRole } from '@kampora/shared';
+import type { CampaignGoal, ConceptAngle, ProductionStrategy, SceneRole, ShotType } from '@kampora/shared';
 
 /**
  * Hebrew UI dictionary. All customer-facing copy lives here (not in components), so adding a locale means
@@ -91,12 +91,37 @@ export const he = {
     brief: 'תקציר הקמפיין',
     audience: 'קהל',
     cta: 'קריאה לפעולה',
+    angles: {
+      PROBLEM_SOLUTION: 'בעיה ופתרון',
+      EMOTIONAL: 'רגשי',
+      HUMOR: 'הומור',
+      PRODUCT_DEMO: 'הדגמת מוצר',
+      OFFER_DRIVEN: 'מבצע',
+      UGC: 'סגנון לקוח',
+      EDUCATIONAL: 'טיפ / הסבר',
+      LIFESTYLE: 'סגנון חיים',
+    } satisfies Record<ConceptAngle, string>,
+    objective: 'המטרה',
+    insight: 'התובנה',
+    hypothesis: 'מה הרעיון בודק',
+    structure: 'מבנה הסיפור',
   },
   planning: {
     title: 'תכנון הסרטון',
     subtitle: 'כך ייראה הסרטון, סצנה אחר סצנה. אפשר לעבור על הכול לפני שמתחילים להפיק.',
     scene: 'סצנה',
     seconds: (n: number) => `${n.toLocaleString('he-IL', { maximumFractionDigits: 1 })} שניות`,
+    purpose: 'מטרת הסצנה',
+    editorNote: 'הערה לעריכה',
+    shots: {
+      'extreme-close-up': 'תקריב קיצוני',
+      'close-up': 'תקריב',
+      medium: 'צילום בינוני',
+      wide: 'צילום רחב',
+      overhead: 'צילום מלמעלה',
+      detail: 'פרט',
+      graphic: 'גרפיקה',
+    } satisfies Record<ShotType, string>,
     onScreen: 'טקסט על המסך',
     voiceover: 'קריינות / כתוביות',
     how: 'איך נפיק',
@@ -122,6 +147,8 @@ export const he = {
       PROBLEM: 'הבעיה',
       SOLUTION: 'הפתרון',
       PRODUCT: 'המוצר',
+      DEMO: 'הדגמה',
+      BENEFIT: 'היתרון',
       PROOF: 'הוכחה',
       OFFER: 'המבצע',
       CTA: 'קריאה לפעולה',
