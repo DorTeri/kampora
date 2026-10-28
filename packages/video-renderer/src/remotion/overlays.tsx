@@ -1,12 +1,17 @@
-import type { CSSProperties } from 'react';
+import { Fragment, type CSSProperties } from 'react';
 import { AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 import { chunkCaption, stripNiqqud, type CaptionCue, type Overlay } from '@kampora/shared';
 import { FONT_FAMILY, alpha, useAsset, useRenderContext } from './context';
 
+/**
+ * Every text block is a right-to-left paragraph regardless of its first character. Never `unicode-bidi: plaintext`:
+ * it takes the direction from the first strong character, so "Luz …" or "29.90 ₪" became LTR lines, and a line
+ * whose words are atomic boxes (no strong characters at all) fell back to LTR and painted the words reversed.
+ */
 const textBase: CSSProperties = {
   fontFamily: FONT_FAMILY,
   direction: 'rtl',
-  unicodeBidi: 'plaintext',
+  unicodeBidi: 'isolate',
   textAlign: 'center',
   margin: 0,
 };
@@ -23,7 +28,10 @@ export function HeadlineOverlay({ text, position }: { text: string; position: 't
   const { fps } = useVideoConfig();
   const { project } = useRenderContext();
   const { safeArea } = project;
-  const words = stripNiqqud(text).split(/\s+/);
+  // Split on ordinary whitespace only: no-break spaces keep an amount and its ₪ in one word.
+  const words = keepPricesTogether(stripNiqqud(text))
+    .trim()
+    .split(/[ \t\r\n]+/);
   return (
     <AbsoluteFill
       style={{
@@ -35,6 +43,7 @@ export function HeadlineOverlay({ text, position }: { text: string; position: 't
     >
       <h1
         dir="rtl"
+        data-kampora-text="headline"
         style={{
           ...textBase,
           fontSize: 84,
@@ -45,20 +54,18 @@ export function HeadlineOverlay({ text, position }: { text: string; position: 't
           letterSpacing: -0.5,
         }}
       >
+        {/* Words stay plain inline text joined by real spaces, so the browser applies the same Unicode bidi
+            rules as for subtitles (mixed Hebrew/English, numbers, ₪, punctuation). Inline-block words would be
+            atomic boxes that bidi cannot reorder. The rise uses relative offset, which works on inline boxes. */}
         {words.map((word, i) => {
           const p = spring({ frame: frame - 4 - i * 3, fps, config: { damping: 16, stiffness: 160 } });
           return (
-            <span
-              key={i}
-              style={{
-                display: 'inline-block',
-                opacity: p,
-                transform: `translateY(${interpolate(p, [0, 1], [30, 0])}px)`,
-                marginInline: 10,
-              }}
-            >
-              {word}
-            </span>
+            <Fragment key={i}>
+              {i > 0 && ' '}
+              <span style={{ position: 'relative', top: interpolate(p, [0, 1], [30, 0]), opacity: p }}>
+                {word}
+              </span>
+            </Fragment>
           );
         })}
       </h1>
@@ -94,6 +101,7 @@ export function PriceTag({ price, label, note }: { price: string; label?: string
         {label && (
           <p
             dir="rtl"
+            data-kampora-text="price-label"
             style={{ ...textBase, fontSize: 76, fontWeight: 800, color: colors.text, lineHeight: 1.1 }}
           >
             {stripNiqqud(label)}
@@ -111,6 +119,7 @@ export function PriceTag({ price, label, note }: { price: string; label?: string
           {/* Isolated RTL run: the same visual order as the price inside Hebrew subtitles. */}
           <bdi
             dir="rtl"
+            data-kampora-text="price"
             style={{
               ...textBase,
               display: 'block',
@@ -124,7 +133,11 @@ export function PriceTag({ price, label, note }: { price: string; label?: string
           </bdi>
         </div>
         {note && (
-          <p dir="rtl" style={{ ...textBase, fontSize: 40, fontWeight: 500, color: alpha(colors.text, 0.7) }}>
+          <p
+            dir="rtl"
+            data-kampora-text="price-note"
+            style={{ ...textBase, fontSize: 40, fontWeight: 500, color: alpha(colors.text, 0.7) }}
+          >
             {note}
           </p>
         )}
@@ -162,7 +175,7 @@ export function CtaOverlay({ text, subtext }: { text: string; subtext?: string }
             boxShadow: `0 24px 60px ${alpha(colors.accent, 0.45)}`,
           }}
         >
-          <p dir="rtl" style={{ ...textBase, fontSize: 66, fontWeight: 900 }}>
+          <p dir="rtl" data-kampora-text="cta" style={{ ...textBase, fontSize: 66, fontWeight: 900 }}>
             {stripNiqqud(text)}
           </p>
           <div
@@ -180,6 +193,7 @@ export function CtaOverlay({ text, subtext }: { text: string; subtext?: string }
         {subtext && (
           <p
             dir="rtl"
+            data-kampora-text="cta-subtext"
             style={{
               ...textBase,
               fontSize: 46,
@@ -225,6 +239,7 @@ export function LogoBadge({ assetId }: { assetId?: string }) {
           <Img src={logo.url} style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
         ) : (
           <span
+            data-kampora-text="logo"
             style={{ ...textBase, fontSize: 110, fontWeight: 900, color: colors.primary, letterSpacing: -2 }}
           >
             {businessName}
@@ -279,6 +294,7 @@ export function AnimatedCaption({
     >
       <p
         dir="rtl"
+        data-kampora-text="caption"
         style={{
           ...textBase,
           fontSize: 58,

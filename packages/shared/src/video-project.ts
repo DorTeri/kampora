@@ -223,10 +223,10 @@ export const RenderInputSchema = z.object({
 export type RenderInput = z.infer<typeof RenderInputSchema>;
 
 /**
- * Version of the timeline-building rules (scene timing, pauses). Part of the production approval key, so
+ * Version of the timeline-building and rendering rules (scene timing, pauses, text layout). Part of the production approval key, so
  * re-approving after a rules change rebuilds the timeline instead of reusing the old one.
  */
-export const TIMELINE_RULES_VERSION = 'r4';
+export const TIMELINE_RULES_VERSION = 'r5';
 
 /** Approval key of a timeline built from these inputs (also used by the web app to detect stale versions). */
 export function timelineApprovalReason(narrationKey: string | null | undefined): string {
