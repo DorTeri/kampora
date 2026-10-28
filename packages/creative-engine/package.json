@@ -8,9 +8,10 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@kampora/shared": "0.1.0",
-    "@kampora/media-providers": "0.1.0",
     "@kampora/cost-engine": "0.1.0",
+    "@kampora/hebrew-voice": "0.1.0",
+    "@kampora/media-providers": "0.1.0",
+    "@kampora/shared": "0.1.0",
     "zod": "4.6.7"
   }
 }

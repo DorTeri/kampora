@@ -4,15 +4,36 @@ import { useActionState, useEffect, useState, useTransition } from 'react';
 import { Badge, Button, Card, CardTitle, ErrorNote } from '@/components/ui';
 import { errorMessage, he } from '@/i18n/he';
 import type { RenderDto } from '@/lib/api';
-import { approvePlanAction, requestRenderAction, type ActionState } from '../../actions';
+import { approvePlanAction, approveScriptAction, requestRenderAction, type ActionState } from '../../actions';
 
-export function ApproveButton({ projectId }: { projectId: string }) {
+export function ApproveScriptButton({ projectId }: { projectId: string }) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(approveScriptAction, {});
+  return (
+    <form action={action} className="space-y-3">
+      <input type="hidden" name="projectId" value={projectId} />
+      <Button type="submit" variant="secondary" disabled={pending} className="w-full">
+        {pending ? he.planning.approvingScript : he.planning.approveScript}
+      </Button>
+      {state.error && <ErrorNote message={errorMessage(state.error)} />}
+    </form>
+  );
+}
+
+export function ApproveButton({
+  projectId,
+  label,
+  disabled,
+}: {
+  projectId: string;
+  label?: string;
+  disabled?: boolean;
+}) {
   const [state, action, pending] = useActionState<ActionState, FormData>(approvePlanAction, {});
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="projectId" value={projectId} />
-      <Button type="submit" disabled={pending} className="w-full">
-        {pending ? he.planning.approving : he.planning.approve}
+      <Button type="submit" disabled={pending || disabled} className="w-full">
+        {pending ? he.planning.approving : (label ?? he.planning.approve)}
       </Button>
       {state.error && <ErrorNote message={errorMessage(state.error)} />}
     </form>

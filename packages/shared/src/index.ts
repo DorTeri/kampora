@@ -6,3 +6,4 @@ export * from './production';
 export * from './video-project';
 export * from './workflow';
 export * from './text';
+export * from './narration';

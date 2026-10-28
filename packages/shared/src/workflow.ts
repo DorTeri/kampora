@@ -16,8 +16,8 @@ const PROJECT_TRANSITIONS: Record<ProjectStatus, readonly ProjectStatus[]> = {
   PLAN_READY: ['APPROVED', 'STORYBOARD_READY'],
   APPROVED: ['RENDERING', 'PLAN_READY'],
   RENDERING: ['RENDERED', 'FAILED'],
-  RENDERED: ['RENDERING', 'PLAN_READY'],
-  FAILED: ['RENDERING', 'PLAN_READY'],
+  RENDERED: ['RENDERING', 'PLAN_READY', 'APPROVED'],
+  FAILED: ['RENDERING', 'PLAN_READY', 'APPROVED'],
 };
 
 export function canTransitionProject(from: ProjectStatus, to: ProjectStatus): boolean {

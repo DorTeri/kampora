@@ -8,7 +8,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "node --env-file-if-exists=../../.env --watch dist/main.js",
     "start": "node --env-file-if-exists=../../.env dist/main.js",
-    "render:demo": "node --env-file-if-exists=../../.env dist/render-demo.js"
+    "render:demo": "node --env-file-if-exists=../../.env dist/render-demo.js",
+    "voices:list": "node --env-file-if-exists=../../.env dist/voice-tools.js list",
+    "voice:compare": "node --env-file-if-exists=../../.env dist/voice-tools.js compare"
   },
   "dependencies": {
     "@kampora/cost-engine": "0.1.0",

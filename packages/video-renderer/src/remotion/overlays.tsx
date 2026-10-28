@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { chunkCaption, stripNiqqud, type Overlay } from '@kampora/shared';
+import { chunkCaption, stripNiqqud, type CaptionCue, type Overlay } from '@kampora/shared';
 import { FONT_FAMILY, alpha, useAsset, useRenderContext } from './context';
 
 const textBase: CSSProperties = {
@@ -249,11 +249,22 @@ export function OverlayView({ overlay }: { overlay: Overlay }) {
 }
 
 /** Hebrew RTL subtitles: short chunks inside the bottom safe area, readable without niqqud. */
-export function AnimatedCaption({ text, durationInFrames }: { text: string; durationInFrames: number }) {
+export function AnimatedCaption({
+  text,
+  cues,
+  durationInFrames,
+}: {
+  text: string;
+  /** Speech-timed cues (from narration). Without them, chunks are spread over the scene. */
+  cues?: CaptionCue[];
+  durationInFrames: number;
+}) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const { project } = useRenderContext();
-  const chunks = chunkCaption(text, durationInFrames, project.captions.maxWordsPerChunk);
+  const chunks = cues?.length
+    ? cues.map((c) => ({ text: stripNiqqud(c.text), startFrame: c.startFrame, endFrame: c.endFrame }))
+    : chunkCaption(text, durationInFrames, project.captions.maxWordsPerChunk);
   const active = chunks.find((c) => frame >= c.startFrame && frame < c.endFrame);
   if (!active) return null;
   const p = spring({ frame: frame - active.startFrame, fps, config: { damping: 18, stiffness: 220 } });

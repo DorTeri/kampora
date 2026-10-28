@@ -13,11 +13,26 @@ Cost is a product requirement. The metric we optimize is **cost per accepted usa
 Amounts are stored as integer **micro-USD** (`amount_micro_usd`) to avoid float drift.
 Customer-facing prices are in ₪ and are a separate billing concern (Phase 4).
 
+## Phase 2 conventions
+
+| Operation | Pre-call line | Post-call line | Counts as spend |
+|---|---|---|---|
+| OpenAI (LLM) | `ESTIMATED` reservation (worst case: prompt + full output cap) | `CONFIRMED` from reported tokens × verified price | the `CONFIRMED` line |
+| ElevenLabs (TTS) | none (the customer approved a quote) | `ESTIMATED` charge: characters × planning price (billed in plan credits) | the `ESTIMATED` TTS line |
+| Mock providers | none | `SIMULATED` | never |
+| Cache hits | none | amount 0, `reused=true` | no |
+
+Approvals: `CREATIVE_GENERATION` (campaign ceiling, covers concepts + storyboard + retries), `STORYBOARD`
+(script approved, free), `NARRATION` (voice + quoted estimate), and `PRODUCTION_PLAN`. The worker re-checks the
+narration approval and the budget before calling a paid provider.
+
 ## Price catalog
 
-`packages/cost-engine/src/catalog.ts` holds **planning estimates** only. Every entry carries `basis: "PLANNING_ESTIMATE"`,
-`reviewedAt` and a note. Real provider prices change, so they must be verified against official pricing pages and
-loaded via `KAMPORA_PRICE_CATALOG_PATH` (JSON). We never hardcode them as facts.
+`packages/cost-engine/src/catalog.ts`: entries are `PLANNING_ESTIMATE` unless marked `VERIFIED` with a `sourceUrl`
+and a `reviewedAt` date (OpenAI token prices, read from the official pricing page on 2026-10-28). ElevenLabs bills in
+plan credits, so its USD per character stays a planning estimate. Prices change: override or refresh them via
+`KAMPORA_PRICE_CATALOG_PATH` (JSON) after re-checking the official pages. An OpenAI model without a catalog entry is
+disabled, because spend could not be bounded.
 
 ## Budget guard (`evaluateGenerationRequest`)
 

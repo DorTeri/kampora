@@ -99,3 +99,22 @@ export async function projectSpend(db: Database, orgId: string, projectId: strin
     .where(and(eq(costLedger.orgId, orgId), eq(costLedger.videoProjectId, projectId)));
   return { confirmedMicroUsd: Number(row?.confirmed ?? 0), simulatedMicroUsd: Number(row?.simulated ?? 0) };
 }
+
+/**
+ * Money actually spent (for budget checks), following the ledger conventions:
+ *  - CONFIRMED lines are real charges.
+ *  - ESTIMATED lines for TTS are the charge itself (ElevenLabs bills credits; USD is our estimate).
+ *  - ESTIMATED lines for LLM calls are pre-call reservations, superseded by their CONFIRMED line → excluded.
+ *  - SIMULATED lines are never money.
+ */
+export async function spentUsdFor(
+  db: Database,
+  orgId: string,
+  scope: { projectIds?: string[]; briefIds?: string[] },
+): Promise<number> {
+  const entries = await ledgerEntriesFor(db, orgId, scope);
+  const micro = entries
+    .filter((e) => e.chargeType === 'CONFIRMED' || (e.chargeType === 'ESTIMATED' && e.operation === 'TTS'))
+    .reduce((sum, e) => sum + e.amountMicroUsd, 0);
+  return micro / 1_000_000;
+}

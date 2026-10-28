@@ -53,6 +53,8 @@ export const CreativeConceptSchema = z.object({
   cta: z.string().min(1),
   rationale: z.string(),
   complexity: ComplexitySchema,
+  /** Intended ad length; the storyboard and narration are checked against it. */
+  estimatedDurationSec: z.number().int().min(8).max(60).default(20),
 });
 export type CreativeConcept = z.infer<typeof CreativeConceptSchema>;
 

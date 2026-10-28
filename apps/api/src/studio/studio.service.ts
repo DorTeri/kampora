@@ -2,7 +2,7 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { and, asc, desc, eq, isNull, max } from 'drizzle-orm';
 import { summarizeLedger, usdToMicro, type BudgetPolicy, type PriceCatalog } from '@kampora/cost-engine';
-import { generateCampaignBrief, generateConcepts, generateStoryboard } from '@kampora/creative-engine';
+import { buildCampaignBrief, generateConcepts, generateStoryboard } from '@kampora/creative-engine';
 import {
   approvals,
   auditLog,
@@ -17,7 +17,6 @@ import {
   videoProjects,
   type Database,
 } from '@kampora/database';
-import type { LlmProvider } from '@kampora/media-providers';
 import { buildVideoProject, planProduction, sceneContentHash } from '@kampora/production-engine';
 import {
   assertProjectTransition,
@@ -28,9 +27,10 @@ import {
 import type { StorageDriver } from '@kampora/storage';
 import type { AuthContext } from '../common/auth';
 import { ApiError, notFound } from '../common/errors';
-import { BUDGET_POLICY, DATABASE, LLM_PROVIDER, PRICE_CATALOG, RENDER_QUEUE, STORAGE } from '../infra/tokens';
+import { BUDGET_POLICY, DATABASE, PRICE_CATALOG, RENDER_QUEUE, STORAGE } from '../infra/tokens';
 import { BusinessService, toAvailableAssets, toMediaAssets } from './business.service';
-import { BufferedUsageRecorder } from './usage-recorder';
+import { NarrationService } from './narration.service';
+import { PaidOperationsService } from './paid.service';
 
 const TARGET_DURATION_SEC = 20;
 
@@ -47,8 +47,9 @@ export class StudioService {
     @Inject(RENDER_QUEUE) private readonly queue: Queue,
     @Inject(PRICE_CATALOG) private readonly catalog: PriceCatalog,
     @Inject(BUDGET_POLICY) private readonly policy: BudgetPolicy,
-    @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
     private readonly businesses: BusinessService,
+    private readonly paid: PaidOperationsService,
+    private readonly narration: NarrationService,
   ) {}
 
   private audit(
@@ -65,27 +66,39 @@ export class StudioService {
 
   // ── Campaigns ────────────────────────────────────────────────────────
 
-  async createCampaign(ctx: AuthContext, businessId: string, request: CampaignRequest) {
+  /**
+   * Creates the campaign: deterministic brief (no AI call), then AI concepts. With a paid creative provider
+   * the customer must first approve the quoted ceiling (`aiApprovalUsd`); it covers concepts + storyboard.
+   */
+  async createCampaign(
+    ctx: AuthContext,
+    businessId: string,
+    request: CampaignRequest,
+    aiApprovalUsd?: number,
+  ) {
+    const quote = this.paid.assertCreativeApproval(aiApprovalUsd);
     const profile = await this.businesses.loadProfile(ctx, businessId);
-    const recorder = new BufferedUsageRecorder();
-    const brief = await generateCampaignBrief(
-      {
-        business: profile,
-        request,
-        defaults: {
-          budgetUsd: this.policy.projectMaxUsd,
-          qualityTier: 'standard',
-          targetDurationSec: TARGET_DURATION_SEC,
-        },
+    const brief = buildCampaignBrief({
+      business: profile,
+      request,
+      defaults: {
+        budgetUsd: this.policy.projectMaxUsd,
+        qualityTier: 'standard',
+        targetDurationSec: TARGET_DURATION_SEC,
       },
-      { provider: this.llm, recorder },
-    );
+    });
     const [row] = await this.db
       .insert(campaignBriefs)
       .values({ orgId: ctx.orgId, businessId, brief, createdBy: ctx.userId })
       .returning();
-    await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: row!.id });
-    await this.audit(ctx, 'campaign.created', 'campaign_brief', row!.id, { goal: request.goal });
+    if (quote.paid && aiApprovalUsd !== undefined) {
+      await this.paid.recordCreativeApproval(ctx, row!.id, aiApprovalUsd);
+    }
+    await this.audit(ctx, 'campaign.created', 'campaign_brief', row!.id, {
+      goal: request.goal,
+      creativeProvider: quote.provider,
+      approvedAiUsd: aiApprovalUsd,
+    });
     await this.generateConceptBatch(ctx, row!.id);
     return this.getCampaign(ctx, row!.id);
   }
@@ -110,11 +123,15 @@ export class StudioService {
       );
     }
     const profile = await this.businesses.loadProfile(ctx, brief.businessId);
-    const recorder = new BufferedUsageRecorder();
-    const { conceptSet, claimFlags } = await generateConcepts(
-      { business: profile, brief: brief.brief },
-      { provider: this.llm, recorder },
-    );
+    const { provider, recorder } = this.paid.creativeProviderFor(ctx, briefId);
+    let result: Awaited<ReturnType<typeof generateConcepts>>;
+    try {
+      result = await generateConcepts({ business: profile, brief: brief.brief }, { provider, recorder });
+    } finally {
+      // Spend is recorded even when the step fails.
+      await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: briefId });
+    }
+    const { conceptSet, claimFlags } = result;
     const [{ value: lastBatch } = { value: 0 }] = await this.db
       .select({ value: max(creativeConcepts.batch) })
       .from(creativeConcepts)
@@ -139,7 +156,6 @@ export class StudioService {
       .update(campaignBriefs)
       .set({ status: 'CONCEPTS_READY' })
       .where(eq(campaignBriefs.id, briefId));
-    await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: briefId });
     return this.getCampaign(ctx, briefId);
   }
 
@@ -218,11 +234,18 @@ export class StudioService {
     const profile = await this.businesses.loadProfile(ctx, brief.businessId);
     const assetRows = await this.businesses.assets(ctx, brief.businessId);
     const available = toAvailableAssets(assetRows);
-    const recorder = new BufferedUsageRecorder();
-    const { storyboard, claimFlags } = await generateStoryboard(
-      { business: profile, brief: brief.brief, concept: concept.concept, assets: available },
-      { provider: this.llm, recorder },
-    );
+    const { provider, recorder } = this.paid.creativeProviderFor(ctx, briefId);
+    let generated: Awaited<ReturnType<typeof generateStoryboard>>;
+    try {
+      generated = await generateStoryboard(
+        { business: profile, brief: brief.brief, concept: concept.concept, assets: available },
+        { provider, recorder },
+      );
+    } catch (error) {
+      await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: briefId });
+      throw error;
+    }
+    const { storyboard, claimFlags } = generated;
     const plan = planProduction({
       storyboard,
       assets: available,
@@ -324,6 +347,8 @@ export class StudioService {
       concept: concept!.concept,
       storyboard: storyboard!.storyboard,
       claimFlags: storyboard!.claimFlags,
+      scriptApprovedAt: project.scriptApprovedAt,
+      narration: await this.narration.describe(ctx, project, storyboard!.storyboard),
       currentTimelineVersionId: project.currentTimelineVersionId,
       versions,
       renders,
@@ -338,15 +363,43 @@ export class StudioService {
     );
   }
 
+  /** The customer approved the script (voiceover lines). Required before narration and production. */
+  async approveScript(ctx: AuthContext, projectId: string) {
+    const project = await this.projectRow(ctx, projectId);
+    if (!project.scriptApprovedAt) {
+      await this.db
+        .update(videoProjects)
+        .set({ scriptApprovedAt: new Date() })
+        .where(and(eq(videoProjects.id, projectId), eq(videoProjects.orgId, ctx.orgId)));
+      await this.db.insert(approvals).values({
+        orgId: ctx.orgId,
+        videoProjectId: projectId,
+        subject: 'STORYBOARD',
+        subjectRef: project.storyboardId,
+        decision: 'APPROVED',
+        approvedEstimateMicroUsd: 0,
+        decidedBy: ctx.userId,
+      });
+      await this.audit(ctx, 'script.approved', 'video_project', projectId);
+    }
+    return this.getProject(ctx, projectId);
+  }
+
   /**
-   * The customer approves the production plan and its estimate. Paid generation is not available in
-   * Increment 1, so plans that need it are refused rather than silently downgraded.
+   * The customer approves production. Builds a timeline version from the storyboard, the production plan and —
+   * when recorded — the narration (scenes retimed to the measured speech). Re-approving with unchanged inputs
+   * is a no-op; new narration produces a new version. Paid media generation is not available yet, so plans
+   * that need it are refused rather than silently downgraded.
    */
   async approvePlan(ctx: AuthContext, projectId: string) {
     const project = await this.projectRow(ctx, projectId);
-    if (project.currentTimelineVersionId && project.status !== 'PLAN_READY')
-      return this.getProject(ctx, projectId);
-    assertProjectTransition(project.status, 'APPROVED');
+    if (!project.scriptApprovedAt) {
+      throw new ApiError(HttpStatus.CONFLICT, 'SCRIPT_NOT_APPROVED', 'Approve the script first');
+    }
+    if (project.status === 'RENDERING') {
+      throw new ApiError(HttpStatus.CONFLICT, 'RENDER_IN_PROGRESS', 'Wait for the render to finish');
+    }
+    if (project.status !== 'APPROVED') assertProjectTransition(project.status, 'APPROVED');
     const plan = project.plan;
     if (!plan) throw new ApiError(HttpStatus.CONFLICT, 'PLAN_MISSING', 'Project has no production plan');
     if (!plan.withinBudget)
@@ -368,6 +421,23 @@ export class StudioService {
     const profile = await this.businesses.loadProfile(ctx, project.businessId);
     const assetRows = await this.businesses.assets(ctx, project.businessId);
     const music = assetRows.find((a) => a.kind === 'audio' && a.tags.includes('music'));
+    const narration = await this.narration.timelineVoiceovers(ctx, project, storyboard!.storyboard);
+    const reason = `plan-approved:${narration?.key ?? 'no-narration'}`;
+    const [latest] = await this.db
+      .select({ reason: timelineVersions.reason })
+      .from(timelineVersions)
+      .where(and(eq(timelineVersions.videoProjectId, projectId), eq(timelineVersions.orgId, ctx.orgId)))
+      .orderBy(desc(timelineVersions.version))
+      .limit(1);
+    if (latest?.reason === reason && project.currentTimelineVersionId) {
+      if (project.status !== 'APPROVED' && project.status !== 'RENDERED') {
+        await this.db
+          .update(videoProjects)
+          .set({ status: 'APPROVED' })
+          .where(eq(videoProjects.id, projectId));
+      }
+      return this.getProject(ctx, projectId);
+    }
     const timeline = buildVideoProject({
       projectId,
       title: project.title,
@@ -375,7 +445,8 @@ export class StudioService {
       brief: brief.brief,
       storyboard: storyboard!.storyboard,
       plan,
-      assets: toMediaAssets(assetRows),
+      assets: [...toMediaAssets(assetRows), ...(narration?.assets ?? [])],
+      voiceovers: narration?.voiceovers,
       musicAssetId: music?.id,
       logoAssetId: profile.logoAssetId,
     });
@@ -392,7 +463,7 @@ export class StudioService {
           videoProjectId: projectId,
           version: (last ?? 0) + 1,
           project: timeline,
-          reason: 'plan-approved',
+          reason,
           createdBy: ctx.userId,
         })
         .returning();

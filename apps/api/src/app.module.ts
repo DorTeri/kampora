@@ -11,12 +11,15 @@ import { DATABASE } from './infra/tokens';
 import { MediaController } from './media/media.controller';
 import { BusinessService } from './studio/business.service';
 import {
+  AiController,
   BusinessesController,
   CampaignsController,
   ProjectsController,
   RendersController,
 } from './studio/studio.controller';
 import { StudioService } from './studio/studio.service';
+import { NarrationService } from './studio/narration.service';
+import { PaidOperationsService } from './studio/paid.service';
 
 @ApiTags('health')
 @Controller('health')
@@ -43,10 +46,13 @@ class HealthController {
     CampaignsController,
     ProjectsController,
     RendersController,
+    AiController,
     MediaController,
   ],
   providers: [
     BusinessService,
+    PaidOperationsService,
+    NarrationService,
     StudioService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: DevAuthGuard },

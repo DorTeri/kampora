@@ -1,10 +1,17 @@
 import { UnrecoverableError, Worker } from 'bullmq';
 import pino from 'pino';
-import { PriceCatalog } from '@kampora/cost-engine';
+import { PriceCatalog, budgetPolicyFromEnv } from '@kampora/cost-engine';
 import { createDatabase } from '@kampora/database';
-import { RENDER_QUEUE_NAME, RenderJobPayloadSchema } from '@kampora/shared';
+import { createTtsProvider, ttsSetupFromEnv } from '@kampora/hebrew-voice';
+import {
+  NARRATION_QUEUE_NAME,
+  NarrationJobPayloadSchema,
+  RENDER_QUEUE_NAME,
+  RenderJobPayloadSchema,
+} from '@kampora/shared';
 import { storageFromEnv } from '@kampora/storage';
 import { getServeUrl } from '@kampora/video-renderer';
+import { processNarrationJob } from './narration-job';
 import { RenderJobNotFoundError, processRenderJob } from './render-job';
 import { redisConnection } from './redis';
 
@@ -56,8 +63,35 @@ async function main() {
   worker.on('ready', () => logger.info({ queue: RENDER_QUEUE_NAME }, 'worker listening'));
   worker.on('failed', (job, err) => logger.warn({ jobId: job?.id, err: err.message }, 'job attempt failed'));
 
+  // Narration: one job at a time keeps paid TTS calls serialized (no unbounded parallel spend).
+  const narrationDeps = {
+    db,
+    storage: deps.storage,
+    catalog: deps.catalog,
+    policy: budgetPolicyFromEnv(),
+    setup: ttsSetupFromEnv(),
+    logger,
+    createProvider: (voice: Parameters<typeof createTtsProvider>[0]) => createTtsProvider(voice),
+  };
+  const narrationWorker = new Worker(
+    NARRATION_QUEUE_NAME,
+    async (job) => {
+      const parsed = NarrationJobPayloadSchema.safeParse(job.data);
+      if (!parsed.success) throw new UnrecoverableError('Invalid narration job payload');
+      await processNarrationJob(narrationDeps, parsed.data);
+    },
+    { connection: redisConnection(redisUrl), concurrency: 1, lockDuration: 120_000 },
+  );
+  narrationWorker.on('ready', () =>
+    logger.info(
+      { queue: NARRATION_QUEUE_NAME, tts: narrationDeps.setup.provider },
+      'narration worker listening',
+    ),
+  );
+
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
+    await narrationWorker.close();
     await worker.close();
     await close();
     process.exit(0);

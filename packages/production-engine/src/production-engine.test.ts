@@ -261,7 +261,9 @@ describe('creative → plan → timeline pipeline (mock provider)', () => {
       ],
       voiceovers: { hook: { assetId: 'vo-hook', durationSec: 6 } },
     });
-    expect(withVoice.scenes[0]!.durationInFrames).toBe(Math.round(6.4 * 30));
+    // First scene: 0.3s lead-in + 6s measured speech + 0.4s tail, never cut or sped up.
+    expect(withVoice.scenes[0]!.durationInFrames).toBe(Math.ceil(6.7 * 30));
+    expect(withVoice.scenes[0]!.voiceover).toMatchObject({ startOffsetFrames: 9, durationInFrames: 180 });
     expect(withVoice.assets.some((a) => a.id === 'vo-hook')).toBe(true);
   });
 });

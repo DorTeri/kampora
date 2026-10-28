@@ -11,7 +11,15 @@ const GOALS: CampaignGoal[] = ['OFFER', 'SALES', 'LEADS', 'PRODUCT_PROMO', 'AWAR
 const inputClass =
   'mt-2 block w-full rounded-2xl border border-line bg-surface px-4 py-3 text-base outline-none transition placeholder:text-muted/80 focus:border-primary focus:ring-4 focus:ring-primary/15';
 
-export function CampaignForm({ businessId }: { businessId: string }) {
+export interface AiCostInfo {
+  paid: boolean;
+  ready: boolean;
+  maxUsd: number;
+  /** Pre-formatted ₪ ceiling (computed on the server). */
+  maxIls: string;
+}
+
+export function CampaignForm({ businessId, ai }: { businessId: string; ai: AiCostInfo }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(createCampaignAction, {});
 
   return (
@@ -79,10 +87,33 @@ export function CampaignForm({ businessId }: { businessId: string }) {
         </label>
       </Card>
 
+      <Card className={cn(ai.paid && ai.ready && 'border-primary/30 bg-primary-soft/40')}>
+        {!ai.ready ? (
+          <p className="font-semibold text-warn">{he.campaign.aiUnavailable}</p>
+        ) : ai.paid ? (
+          <div className="space-y-3">
+            <p className="font-bold">{he.campaign.aiCostTitle}</p>
+            <p className="text-sm text-ink-soft">{he.campaign.aiCostLine(ai.maxIls)}</p>
+            <input type="hidden" name="aiMaxUsd" value={ai.maxUsd} />
+            <label className="flex items-center gap-3 font-semibold">
+              <input
+                type="checkbox"
+                name="aiApproved"
+                required
+                className="size-5 accent-[var(--color-primary)]"
+              />
+              {he.campaign.aiCostApprove}
+            </label>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">{he.campaign.aiDemoMode}</p>
+        )}
+      </Card>
+
       {state.error && <ErrorNote message={errorMessage(state.error)} />}
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={pending} className="min-w-56">
+        <Button type="submit" disabled={pending || !ai.ready} className="min-w-56">
           {pending ? (
             <>
               <span

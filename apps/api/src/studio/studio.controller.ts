@@ -1,14 +1,29 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CampaignRequestSchema, RenderQualitySchema, type CampaignRequest } from '@kampora/shared';
+import { CampaignRequestSchema, RenderQualitySchema } from '@kampora/shared';
 import { Auth, type AuthContext } from '../common/auth';
 import { UuidPipe, ZodPipe, openApiSchema } from '../common/zod';
 import { BusinessService } from './business.service';
+import { NarrationService } from './narration.service';
+import { PaidOperationsService } from './paid.service';
 import { StudioService } from './studio.service';
 
 const RenderRequestSchema = z.object({ quality: RenderQualitySchema.default('final') });
 type RenderRequest = z.infer<typeof RenderRequestSchema>;
+
+/** The owner's request plus, for paid AI providers, the approved spending ceiling (USD) from the quote. */
+const CreateCampaignSchema = CampaignRequestSchema.extend({
+  aiApprovalUsd: z.number().positive().max(100).optional(),
+});
+type CreateCampaign = z.infer<typeof CreateCampaignSchema>;
+
+const NarrationRequestSchema = z.object({
+  voiceId: z.string().min(1).max(64),
+  /** Required for paid voices: the approved estimate (USD) from the narration quote. */
+  approvedUsd: z.number().positive().max(100).optional(),
+});
+type NarrationRequest = z.infer<typeof NarrationRequestSchema>;
 
 @ApiTags('businesses')
 @ApiBearerAuth()
@@ -33,13 +48,14 @@ export class BusinessesController {
 
   @Post(':id/campaigns')
   @ApiOperation({ summary: 'Create a campaign: goal → brief → three concepts' })
-  @ApiBody({ schema: openApiSchema(CampaignRequestSchema) })
+  @ApiBody({ schema: openApiSchema(CreateCampaignSchema) })
   createCampaign(
     @Auth() ctx: AuthContext,
     @Param('id', UuidPipe) id: string,
-    @Body(new ZodPipe(CampaignRequestSchema)) body: CampaignRequest,
+    @Body(new ZodPipe(CreateCampaignSchema)) body: CreateCampaign,
   ) {
-    return this.studio.createCampaign(ctx, id, body);
+    const { aiApprovalUsd, ...request } = body;
+    return this.studio.createCampaign(ctx, id, request, aiApprovalUsd);
   }
 }
 
@@ -81,7 +97,10 @@ export class CampaignsController {
 @ApiBearerAuth()
 @Controller('v1/projects')
 export class ProjectsController {
-  constructor(private readonly studio: StudioService) {}
+  constructor(
+    private readonly studio: StudioService,
+    private readonly narration: NarrationService,
+  ) {}
 
   @Get(':id')
   get(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
@@ -92,6 +111,37 @@ export class ProjectsController {
   @ApiOperation({ summary: 'Cost ledger summary (simulated / estimated / confirmed kept apart)' })
   costs(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
     return this.studio.projectCosts(ctx, id);
+  }
+
+  @Post(':id/approve-script')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Approve the script (voiceover lines) of the storyboard' })
+  approveScript(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
+    return this.studio.approveScript(ctx, id);
+  }
+
+  @Get(':id/narration/quote')
+  @ApiOperation({
+    summary: 'Narration estimate: characters, cost (ESTIMATED), speaking time, script-length check',
+  })
+  narrationQuote(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Query('voiceId') voiceId: string,
+  ) {
+    return this.narration.quote(ctx, id, String(voiceId ?? ''));
+  }
+
+  @Post(':id/narration')
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Record narration (paid voices require approvedUsd ≥ quote)' })
+  @ApiBody({ schema: openApiSchema(NarrationRequestSchema) })
+  narrate(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Body(new ZodPipe(NarrationRequestSchema)) body: NarrationRequest,
+  ) {
+    return this.narration.request(ctx, id, body.voiceId, body.approvedUsd);
   }
 
   @Post(':id/approve')
@@ -110,6 +160,28 @@ export class ProjectsController {
     @Body(new ZodPipe(RenderRequestSchema)) body: RenderRequest,
   ) {
     return this.studio.requestRender(ctx, id, body.quality);
+  }
+}
+
+@ApiTags('ai')
+@ApiBearerAuth()
+@Controller('v1')
+export class AiController {
+  constructor(
+    private readonly paid: PaidOperationsService,
+    private readonly narration: NarrationService,
+  ) {}
+
+  @Get('creative/quote')
+  @ApiOperation({ summary: 'Creative AI provider status and spending ceiling to approve' })
+  creativeQuote() {
+    return this.paid.creativeQuote();
+  }
+
+  @Get('voices')
+  @ApiOperation({ summary: 'Configured narration voices and provider status' })
+  voices() {
+    return this.narration.voices();
   }
 }
 

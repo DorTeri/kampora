@@ -2,24 +2,38 @@ import { notFound } from 'next/navigation';
 import { formatIls, storyboardDurationSec } from '@kampora/shared';
 import { Badge, Card, CardTitle, PageHeader } from '@/components/ui';
 import { he } from '@/i18n/he';
-import { ApiRequestError, api, type ProjectDetail } from '@/lib/api';
-import { ApproveButton, ProductionPanel } from './production';
-
-/** Display-only conversion for customer-facing estimates (internal costs stay in USD). */
-const USD_TO_ILS = Number(process.env.DISPLAY_USD_TO_ILS ?? 3.7);
+import { ApiRequestError, USD_TO_ILS, api, type ProjectDetail, type VoicesResponse } from '@/lib/api';
+import { ApproveButton, ApproveScriptButton, ProductionPanel } from './production';
+import { VoicePanel } from './voice';
 
 const ROLE_TONE = { HOOK: 'accent', OFFER: 'primary', CTA: 'success' } as const;
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const project = await api<ProjectDetail>(`/v1/projects/${id}`).catch((e) => {
-    if (e instanceof ApiRequestError && (e.status === 404 || e.status === 400)) notFound();
-    throw e;
-  });
+  const [project, voices] = await Promise.all([
+    api<ProjectDetail>(`/v1/projects/${id}`).catch((e) => {
+      if (e instanceof ApiRequestError && (e.status === 404 || e.status === 400)) notFound();
+      throw e;
+    }),
+    api<VoicesResponse>('/v1/voices'),
+  ]);
   const plan = project.plan;
   const scenes = [...project.storyboard.scenes].sort((a, b) => a.order - b.order);
   const approved = Boolean(project.currentTimelineVersionId);
   const paid = plan?.estimatedPaidCostUsd ?? 0;
+  const scriptApproved = Boolean(project.scriptApprovedAt);
+  const narration = project.narration;
+  const narrationReady = narration?.status === 'READY' && !narration.stale;
+  // The current production version already includes this narration?
+  const narrationKey = narration
+    ? `plan-approved:${narration.voiceId}:${narration.segments.map((s) => s.assetId).join(',')}`
+    : '';
+  const needsUpdate = approved && narrationReady && project.versions[0]?.reason !== narrationKey;
+  const narrationBusy = narration?.status === 'QUEUED' || narration?.status === 'RUNNING';
+  const currentRenders = project.renders.filter(
+    (r) => r.timelineVersionId === project.currentTimelineVersionId,
+  );
+  const usdToIls = (usd: number) => formatIls(usd * USD_TO_ILS);
 
   return (
     <div className="animate-rise">
@@ -95,19 +109,55 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
               </div>
             </dl>
             {paid === 0 && <p className="mt-2 text-sm text-success">{he.planning.noExtraCost}</p>}
-            <div className="mt-6">
-              {approved ? (
+          </Card>
+
+          <Card>
+            <CardTitle hint={he.planning.scriptHint}>{he.planning.scriptTitle}</CardTitle>
+            {scriptApproved ? (
+              <p className="rounded-xl bg-success-soft px-4 py-3 text-sm font-semibold text-success">
+                ✓ {he.planning.scriptApproved}
+              </p>
+            ) : (
+              <ApproveScriptButton projectId={project.id} />
+            )}
+          </Card>
+
+          {scriptApproved ? (
+            <VoicePanel
+              projectId={project.id}
+              voices={voices}
+              initialNarration={narration}
+              usdToIls={USD_TO_ILS}
+            />
+          ) : (
+            <p className="px-2 text-sm text-muted">{he.planning.approveFirst}</p>
+          )}
+
+          {scriptApproved && (
+            <Card>
+              {approved && !needsUpdate ? (
                 <p className="rounded-xl bg-success-soft px-4 py-3 text-sm font-semibold text-success">
                   ✓ {he.planning.approvedNote}
                 </p>
               ) : (
-                <ApproveButton projectId={project.id} />
+                <ApproveButton
+                  projectId={project.id}
+                  label={needsUpdate ? he.planning.updateProduction : undefined}
+                  disabled={narrationBusy}
+                />
               )}
-            </div>
-          </Card>
+              {paid > 0 && <p className="mt-2 text-sm">{usdToIls(paid)}</p>}
+            </Card>
+          )}
 
           <div id="production">
-            {approved && <ProductionPanel projectId={project.id} initialRenders={project.renders} />}
+            {approved && !needsUpdate && (
+              <ProductionPanel
+                key={project.currentTimelineVersionId}
+                projectId={project.id}
+                initialRenders={currentRenders}
+              />
+            )}
           </div>
         </aside>
       </div>

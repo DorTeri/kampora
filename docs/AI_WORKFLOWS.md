@@ -16,6 +16,24 @@ runReasoningStep({
 Steps have no tools, shell, network or code execution. They return JSON. Deterministic TypeScript does everything else
 (routing, costing, timeline building, rendering).
 
+## Phase 2: real creative generation (OpenAI)
+
+- `CREATIVE_PROVIDER=openai` uses the official OpenAI Node SDK (v7) Responses API with **Structured Outputs**:
+  `responses.parse` + `zodTextFormat(schema)` from strict, provider-facing Zod schemas
+  (`packages/creative-engine/src/llm-schemas.ts`). The output is then mapped to, and re-validated by, the domain schemas.
+- Strict-schema rules (docs 2026-10-28): every field is required, so "optional" is expressed as nullable. There are
+  no string-length keywords, and arrays are bounded with min/max items.
+- The **brief is deterministic** (no model call). Only concepts and storyboard use the model, so a campaign makes
+  2 calls, plus at most 1 retry each.
+- **Grounding checks** run after every response and trigger a retry carrying the problem list. Any number not in
+  the business data is rejected, as are discounts or "free" claims not in the offer, testimonials or reviews,
+  three concepts sharing an angle, a script too long for the target, and a storyboard that doesn't start with
+  HOOK and end with CTA.
+- **Cost:** default model `gpt-6.1-terra` ($1 in / $5 out per 1M tokens, official pricing page 2026-10-28);
+  `gpt-6-luna` is ~10× cheaper if quality holds. `OPENAI_MAX_OUTPUT_TOKENS` caps the worst case. `store: false`.
+- Every paid call goes through `GuardedLlmProvider` (approval ceiling, per-call cap, project budget, concurrency).
+  The pre-call estimate is logged as `ESTIMATED`, and the provider-reported usage as `CONFIRMED`.
+
 ## Steps in Increment 1
 
 | Future agent role | MVP implementation | Input → Output |

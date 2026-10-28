@@ -6,3 +6,6 @@ export const RENDER_QUEUE = Symbol('RENDER_QUEUE');
 export const PRICE_CATALOG = Symbol('PRICE_CATALOG');
 export const BUDGET_POLICY = Symbol('BUDGET_POLICY');
 export const LLM_PROVIDER = Symbol('LLM_PROVIDER');
+export const CREATIVE_PROVIDER = Symbol('CREATIVE_PROVIDER');
+export const TTS_SETUP = Symbol('TTS_SETUP');
+export const NARRATION_QUEUE = Symbol('NARRATION_QUEUE');

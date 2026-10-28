@@ -53,6 +53,41 @@ npm run e2e:journey             # full API journey against running api + worker 
 node scripts/e2e-journey.mjs final
 ```
 
+## AI providers and API keys (Phase 2)
+
+Keys live **only** in the root `.env` (git-ignored), and are read by the API and worker processes. They are never
+sent to the browser or written to logs. Paid calls additionally need `KAMPORA_ALLOW_PAID_GENERATION=true` **and**
+an explicit approval in the UI (or `--approve-paid` in the E2E script).
+
+```bash
+# .env
+CREATIVE_PROVIDER=openai
+OPENAI_API_KEY=sk-...            # https://platform.openai.com/api-keys (use a project key with a spend limit)
+OPENAI_MODEL=gpt-6.1-terra       # must exist in the price catalog
+TTS_PROVIDER=elevenlabs
+ELEVENLABS_API_KEY=...           # ElevenLabs → Developers → API keys (restrict to Text to Speech + Voices: read)
+ELEVENLABS_MODEL_ID=eleven_v3    # or eleven_v4
+ELEVENLABS_VOICES=<voiceId>|נועה|female;<voiceId2>|דני|male
+KAMPORA_ALLOW_PAID_GENERATION=true
+```
+
+Restart the API and worker after changing `.env`.
+
+### Test without paid APIs (default)
+
+```bash
+npm test                                   # unit + integration tests (mocks, local Postgres, ffprobe)
+npm run e2e:journey -- final               # full journey with mock creative + mock voice → MP4 with audio track
+```
+
+### Test with real APIs (only after approving the spend)
+
+```bash
+npm run voices:list                                                   # free
+npm run voice:compare -- --approve-paid --max-generations=8          # paid, small, listen to the result
+npm run e2e:journey -- final --approve-paid --voice=<voiceId> --max-usd=1
+```
+
 ## What's real vs simulated (Increment 1)
 
 | Area | Status |

@@ -11,6 +11,7 @@ import { ZodError } from 'zod';
 import { InvalidTransitionError } from '@kampora/shared';
 import { ReasoningStepError } from '@kampora/creative-engine';
 import { TimelineBuildError } from '@kampora/production-engine';
+import { BudgetDeniedError } from '@kampora/cost-engine';
 
 /**
  * API errors carry a stable machine `code`. The web app maps codes to Hebrew copy, so customer-facing
@@ -47,6 +48,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
     if (exception instanceof InvalidTransitionError) {
       return send(409, 'INVALID_STATE', exception.message);
+    }
+    if (exception instanceof BudgetDeniedError) {
+      return send(409, 'BUDGET_DENIED', exception.message, { reasons: exception.reasons });
     }
     if (exception instanceof ReasoningStepError) {
       this.logger.error(exception.message);

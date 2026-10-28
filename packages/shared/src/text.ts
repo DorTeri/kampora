@@ -19,17 +19,12 @@ export interface CaptionChunk {
 }
 
 /**
- * Splits a caption into short chunks and spreads them over the scene, weighted by character length,
- * so longer phrases stay on screen longer. Keeps numbers and their currency together.
+ * Splits a caption into short, readable chunks (max N words, sentence-aware). Keeps "29.90 ₪" together,
+ * drops standalone dashes and avoids a dangling single word.
  */
-export function chunkCaption(
-  text: string,
-  durationInFrames: number,
-  maxWordsPerChunk = 4,
-  leadInFrames = 4,
-): CaptionChunk[] {
+export function splitCaptionChunks(text: string, maxWordsPerChunk = 4): string[] {
   const clean = stripNiqqud(text).replace(/\s+/g, ' ').trim();
-  if (!clean || durationInFrames <= leadInFrames) return [];
+  if (!clean) return [];
 
   // Glue "29.90 ₪" / "₪ 29.90" so the price never splits across chunks.
   const words = clean
@@ -65,6 +60,23 @@ export function chunkCaption(
       chunks.push(current.join(' '));
     }
   }
+
+  return chunks.map((c) => c.replace(/\u00A0/g, ' '));
+}
+
+/**
+ * Splits a caption into short chunks and spreads them over the scene, weighted by character length,
+ * so longer phrases stay on screen longer. Used when no speech timing is available.
+ */
+export function chunkCaption(
+  text: string,
+  durationInFrames: number,
+  maxWordsPerChunk = 4,
+  leadInFrames = 4,
+): CaptionChunk[] {
+  if (durationInFrames <= leadInFrames) return [];
+  const chunks = splitCaptionChunks(text, maxWordsPerChunk);
+  if (!chunks.length) return [];
 
   const available = durationInFrames - leadInFrames;
   const weights = chunks.map((c) => Math.max(4, c.length));

@@ -138,8 +138,19 @@ describe('idempotency', () => {
 });
 
 describe('catalog', () => {
-  it('marks every default entry as a planning estimate', () => {
-    expect(DEFAULT_PRICE_CATALOG.every((e) => e.basis === 'PLANNING_ESTIMATE')).toBe(true);
+  it('only marks entries VERIFIED when they cite an official source and review date', () => {
+    for (const e of DEFAULT_PRICE_CATALOG) {
+      if (e.basis === 'VERIFIED') {
+        expect(e.sourceUrl).toMatch(/^https:\/\//);
+        expect(e.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+    }
+    // ElevenLabs bills in plan credits, so its USD figures must stay estimates.
+    expect(
+      DEFAULT_PRICE_CATALOG.filter((e) => e.provider === 'elevenlabs').every(
+        (e) => e.basis === 'PLANNING_ESTIMATE',
+      ),
+    ).toBe(true);
     const c = new PriceCatalog(DEFAULT_PRICE_CATALOG);
     expect(c.estimate(c.defaultFor('IMAGE_TO_VIDEO'), 5)).toBeCloseTo(0.6);
   });

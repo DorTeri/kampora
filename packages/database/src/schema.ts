@@ -19,6 +19,7 @@ import type {
   BrandColors,
   CampaignBrief,
   CreativeConcept,
+  NarrationState,
   PlannedGeneration,
   ProductionPlan,
   ScenePlan,
@@ -80,7 +81,13 @@ export const operationType = pgEnum('operation_type', [
   'RENDER',
   'STORAGE',
 ]);
-export const approvalSubject = pgEnum('approval_subject', ['STORYBOARD', 'PRODUCTION_PLAN', 'FINAL_VIDEO']);
+export const approvalSubject = pgEnum('approval_subject', [
+  'STORYBOARD',
+  'PRODUCTION_PLAN',
+  'FINAL_VIDEO',
+  'CREATIVE_GENERATION',
+  'NARRATION',
+]);
 export const approvalDecision = pgEnum('approval_decision', ['APPROVED', 'REJECTED']);
 
 // ── Identity & tenancy ────────────────────────────────────────────────
@@ -287,6 +294,10 @@ export const videoProjects = pgTable(
     plan: jsonb('plan').$type<ProductionPlan>(),
     budgetMicroUsd: bigint('budget_micro_usd', { mode: 'number' }).notNull(),
     currentTimelineVersionId: uuid('current_timeline_version_id'),
+    /** The customer approved the script (voiceover lines) of the current storyboard. */
+    scriptApprovedAt: timestamp('script_approved_at', { withTimezone: true }),
+    /** Active narration (voice, generated segments, timing). */
+    narration: jsonb('narration').$type<NarrationState>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -346,13 +357,17 @@ export const generatedAssets = pgTable(
     provider: text('provider').notNull(),
     model: text('model').notNull(),
     /** Same provider+model+operation+input ⇒ same key ⇒ reuse. */
-    idempotencyKey: text('idempotency_key').notNull().unique(),
+    idempotencyKey: text('idempotency_key').notNull(),
     provenance: jsonb('provenance').$type<AssetProvenance>().notNull(),
     accepted: boolean('accepted'),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     createdAt: createdAt(),
   },
-  (t) => [index('generated_assets_project_idx').on(t.videoProjectId)],
+  (t) => [
+    index('generated_assets_project_idx').on(t.videoProjectId),
+    // Cache keys are per tenant: identical requests in different orgs never share or collide.
+    uniqueIndex('generated_assets_org_idempotency_uq').on(t.orgId, t.idempotencyKey),
+  ],
 );
 
 export const generationJobs = pgTable(
@@ -368,7 +383,7 @@ export const generationJobs = pgTable(
     provider: text('provider').notNull(),
     model: text('model').notNull(),
     status: jobStatus('status').notNull().default('QUEUED'),
-    idempotencyKey: text('idempotency_key').notNull().unique(),
+    idempotencyKey: text('idempotency_key').notNull(),
     input: jsonb('input').$type<PlannedGeneration & Record<string, unknown>>().notNull(),
     attempt: integer('attempt').notNull().default(0),
     maxAttempts: integer('max_attempts').notNull(),
@@ -380,7 +395,10 @@ export const generationJobs = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index('generation_jobs_project_idx').on(t.videoProjectId)],
+  (t) => [
+    index('generation_jobs_project_idx').on(t.videoProjectId),
+    uniqueIndex('generation_jobs_org_idempotency_uq').on(t.orgId, t.idempotencyKey),
+  ],
 );
 
 export const renderJobs = pgTable(
@@ -421,9 +439,9 @@ export const renderJobs = pgTable(
 export const approvals = pgTable('approvals', {
   id: id(),
   orgId: orgId(),
-  videoProjectId: uuid('video_project_id')
-    .notNull()
-    .references(() => videoProjects.id, { onDelete: 'cascade' }),
+  /** Project-level approvals (plan, narration). Null for campaign-level ones (AI creative generation). */
+  videoProjectId: uuid('video_project_id').references(() => videoProjects.id, { onDelete: 'cascade' }),
+  campaignBriefId: uuid('campaign_brief_id').references(() => campaignBriefs.id, { onDelete: 'cascade' }),
   subject: approvalSubject('subject').notNull(),
   subjectRef: text('subject_ref').notNull(),
   decision: approvalDecision('decision').notNull(),

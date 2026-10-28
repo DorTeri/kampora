@@ -83,6 +83,13 @@ export const TransitionSchema = z.object({
 });
 export type Transition = z.infer<typeof TransitionSchema>;
 
+export const CaptionCueSchema = z.object({
+  text: z.string().min(1),
+  startFrame: z.number().int().min(0),
+  endFrame: z.number().int().positive(),
+});
+export type CaptionCue = z.infer<typeof CaptionCueSchema>;
+
 export const TimelineSceneSchema = z.object({
   id: z.string().min(1),
   /** Storyboard scene key this timeline scene was built from (revision tracking). */
@@ -90,9 +97,26 @@ export const TimelineSceneSchema = z.object({
   durationInFrames: z.number().int().positive(),
   visual: SceneVisualSchema,
   overlays: z.array(OverlaySchema).default([]),
-  /** Customer-facing subtitle text: readable Hebrew, no niqqud. */
-  caption: z.object({ text: z.string() }).optional(),
-  voiceover: z.object({ assetId: z.string(), volume: z.number().min(0).max(1).default(1) }).optional(),
+  /**
+   * Customer-facing subtitle text: readable Hebrew, no niqqud. When narration exists, `cues` carry the timing
+   * of each subtitle chunk (frames relative to the scene start), derived from the actual speech.
+   */
+  caption: z
+    .object({
+      text: z.string(),
+      cues: z.array(CaptionCueSchema).optional(),
+    })
+    .optional(),
+  voiceover: z
+    .object({
+      assetId: z.string(),
+      volume: z.number().min(0).max(1).default(1),
+      /** Narration starts this many frames after the scene starts (breathing room after the transition). */
+      startOffsetFrames: z.number().int().min(0).default(0),
+      /** Measured narration length (ffprobe), in frames. Used for music ducking. */
+      durationInFrames: z.number().int().positive().optional(),
+    })
+    .optional(),
   transition: TransitionSchema.default({ type: 'fade', durationInFrames: 8 }),
 });
 export type TimelineScene = z.infer<typeof TimelineSceneSchema>;
@@ -140,6 +164,8 @@ export const VideoProjectSchema = z
           volume: z.number().min(0).max(1).default(0.35),
           fadeInSec: z.number().min(0).default(0.5),
           fadeOutSec: z.number().min(0).default(1),
+          /** Music level while narration is speaking (ducking). */
+          duckedVolume: z.number().min(0).max(1).default(0.1),
         })
         .optional(),
     }),

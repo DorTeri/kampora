@@ -89,7 +89,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                   <dd className="mt-0.5">{concept.visualDirection}</dd>
                 </div>
                 <div>
-                  <dt className="font-semibold text-muted">{he.concepts.voiceover}</dt>
+                  <dt className="font-semibold text-muted">
+                    {he.concepts.script} · {he.concepts.duration(concept.estimatedDurationSec ?? 20)}
+                  </dt>
                   <dd className="mt-0.5 italic">{concept.voiceover}</dd>
                 </div>
                 <div>

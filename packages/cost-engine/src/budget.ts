@@ -78,3 +78,29 @@ export function evaluateGenerationRequest(
 
   return { allowed: reasons.length === 0, reasons, remainingUsd };
 }
+
+/** A paid call was refused by the budget guard. `fatal`: callers must not retry it. */
+export class BudgetDeniedError extends Error {
+  readonly fatal = true;
+  constructor(readonly reasons: BudgetDenialReason[]) {
+    super(`Paid generation denied: ${reasons.join(', ')}`);
+  }
+}
+
+/** In-process cap on simultaneous paid calls (per API/worker process). */
+export class ConcurrencyGate {
+  private active = 0;
+  get count(): number {
+    return this.active;
+  }
+  acquire(): () => void {
+    this.active++;
+    let released = false;
+    return () => {
+      if (!released) {
+        released = true;
+        this.active--;
+      }
+    };
+  }
+}

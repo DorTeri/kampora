@@ -3,9 +3,11 @@ import type {
   CampaignBrief,
   CampaignStatus,
   CreativeConcept,
+  NarrationState,
   ProductionPlan,
   ProjectStatus,
   Storyboard,
+  VoiceOption,
 } from '@kampora/shared';
 
 /**
@@ -94,6 +96,7 @@ export interface CampaignDetail {
 export interface RenderDto {
   id: string;
   projectId: string;
+  timelineVersionId: string;
   quality: 'preview' | 'final';
   status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   stage: 'QUEUED' | 'PREPARING_ASSETS' | 'BUNDLING' | 'RENDERING' | 'UPLOADING' | 'DONE' | 'FAILED';
@@ -121,7 +124,56 @@ export interface ProjectDetail {
   concept: CreativeConcept;
   storyboard: Storyboard;
   claimFlags: Array<{ phrase: string; source: string }>;
+  scriptApprovedAt: string | null;
+  narration: NarrationDto | null;
   currentTimelineVersionId: string | null;
   versions: Array<{ id: string; version: number; reason: string; createdAt: string }>;
   renders: RenderDto[];
 }
+
+export interface NarrationDto extends Omit<NarrationState, 'segments'> {
+  stale: boolean;
+  segments: Array<NarrationState['segments'][number] & { url: string | null }>;
+}
+
+export interface CreativeQuote {
+  provider: string;
+  model: string;
+  paid: boolean;
+  ready: boolean;
+  reason?: string;
+  expectedUsd: number;
+  maxUsd: number;
+}
+
+export interface VoicesResponse {
+  provider: 'elevenlabs' | 'mock' | 'supplied' | 'none';
+  ready: boolean;
+  reason?: string;
+  paid: boolean;
+  paidEnabled: boolean;
+  voices: VoiceOption[];
+}
+
+export interface NarrationQuote {
+  provider: string;
+  ready: boolean;
+  reason?: string;
+  paid: boolean;
+  paidEnabled: boolean;
+  voice: VoiceOption;
+  characters: number;
+  estimatedUsd: number;
+  estimatedSec: number;
+  scriptCheck: {
+    status: 'OK' | 'LONG' | 'TOO_LONG';
+    message?: string;
+    estimatedSec: number;
+    targetSec: number;
+  };
+  lines: Array<{ sceneKey: string; original: string; spoken: string; estimatedSec: number }>;
+  warnings: string[];
+}
+
+/** Display-only conversion for customer-facing ₪ amounts (internal costs stay in USD). */
+export const USD_TO_ILS = Number(process.env.DISPLAY_USD_TO_ILS ?? 3.7);

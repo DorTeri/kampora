@@ -21,10 +21,35 @@ export interface PriceEntry {
   reviewedAt: string;
   sourceUrl?: string;
   note: string;
+  /** LLM token prices (USD per 1M tokens); unitPriceUsd then holds the input price per 1k tokens. */
+  tokenPricing?: { inputPer1M: number; cachedInputPer1M: number; outputPer1M: number };
+}
+
+const OPENAI_PRICING_URL = 'https://developers.openai.com/api/docs/pricing';
+
+/** OpenAI Standard tier, short context, read from the official pricing page on 2026-10-28. */
+function openAiEntry(
+  model: string,
+  inputPer1M: number,
+  cachedInputPer1M: number,
+  outputPer1M: number,
+): PriceEntry {
+  return {
+    provider: 'openai',
+    model,
+    operation: 'LLM_COMPLETION',
+    unit: 'input_1k_tokens',
+    unitPriceUsd: inputPer1M / 1000,
+    basis: 'VERIFIED',
+    reviewedAt: '2026-10-28',
+    sourceUrl: OPENAI_PRICING_URL,
+    note: 'Standard tier, ≤272K input tokens. Re-verify before relying on it; prices change.',
+    tokenPricing: { inputPer1M, cachedInputPer1M, outputPer1M },
+  };
 }
 
 /**
- * Default catalog: PLANNING ESTIMATES ONLY. They let the planner rank strategies and enforce budgets before
+ * Default catalog. Entries are PLANNING ESTIMATES unless marked VERIFIED (with source URL and review date). They let the planner rank strategies and enforce budgets before
  * real providers exist. Override with verified prices via KAMPORA_PRICE_CATALOG_PATH; never treat these as facts.
  */
 export const DEFAULT_PRICE_CATALOG: readonly PriceEntry[] = [
@@ -73,11 +98,36 @@ export const DEFAULT_PRICE_CATALOG: readonly PriceEntry[] = [
     model: 'eleven_v3',
     operation: 'TTS',
     unit: 'character',
-    unitPriceUsd: 0.0002,
+    unitPriceUsd: 0.0003,
     basis: 'PLANNING_ESTIMATE',
     reviewedAt: '2026-10-28',
-    note: 'ElevenLabs bills in plan credits; this is a rough USD-per-character planning figure',
+    note: 'ElevenLabs bills in plan credits (USD per credit depends on the plan); conservative planning figure',
   },
+  {
+    provider: 'elevenlabs',
+    model: 'eleven_v4',
+    operation: 'TTS',
+    unit: 'character',
+    unitPriceUsd: 0.0003,
+    basis: 'PLANNING_ESTIMATE',
+    reviewedAt: '2026-10-28',
+    note: 'ElevenLabs bills in plan credits (USD per credit depends on the plan); conservative planning figure',
+  },
+  {
+    provider: 'mock',
+    model: 'mock-voice-v1',
+    operation: 'TTS',
+    unit: 'character',
+    unitPriceUsd: 0,
+    basis: 'PLANNING_ESTIMATE',
+    reviewedAt: '2026-10-28',
+    note: 'Simulated narration (development/test)',
+  },
+  openAiEntry('gpt-6.1-terra', 1.0, 0.05, 5.0),
+  openAiEntry('gpt-6-luna', 0.1, 0.01, 0.5),
+  openAiEntry('gpt-6.1-sol', 2.0, 0.1, 10.0),
+  openAiEntry('gpt-5-nano', 0.05, 0.005, 0.4),
+  openAiEntry('gpt-5-mini', 0.25, 0.025, 2.0),
   {
     provider: 'local',
     model: 'remotion',

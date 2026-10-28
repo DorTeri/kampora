@@ -20,11 +20,13 @@ export async function createCampaignAction(_: ActionState, form: FormData): Prom
   });
   if (!parsed.success) return { error: 'VALIDATION_FAILED' };
   const businessId = String(form.get('businessId'));
+  // Paid AI: the customer ticked the approval box for the quoted ceiling.
+  const approvedMax = form.get('aiApproved') === 'on' ? Number(form.get('aiMaxUsd')) : undefined;
   let campaign: CampaignDetail;
   try {
     campaign = await api<CampaignDetail>(`/v1/businesses/${businessId}/campaigns`, {
       method: 'POST',
-      body: parsed.data,
+      body: { ...parsed.data, aiApprovalUsd: approvedMax && approvedMax > 0 ? approvedMax : undefined },
     });
   } catch (e) {
     return { error: errorCode(e) };
@@ -71,6 +73,30 @@ export async function requestRenderAction(
     });
     revalidatePath('/studio/videos');
     return { render };
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+}
+
+export async function approveScriptAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const projectId = String(form.get('projectId'));
+  try {
+    await api(`/v1/projects/${projectId}/approve-script`, { method: 'POST' });
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+  revalidatePath(`/studio/projects/${projectId}`);
+  return {};
+}
+
+export async function requestNarrationAction(
+  projectId: string,
+  voiceId: string,
+  approvedUsd?: number,
+): Promise<{ error?: string }> {
+  try {
+    await api(`/v1/projects/${projectId}/narration`, { method: 'POST', body: { voiceId, approvedUsd } });
+    return {};
   } catch (e) {
     return { error: errorCode(e) };
   }

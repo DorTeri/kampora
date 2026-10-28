@@ -7,6 +7,7 @@ import {
   type TimelineScene,
 } from '@kampora/shared';
 import { FONT_FAMILY, RenderContext, useAsset } from './context';
+import { duckingGain, voiceSpans } from './audio';
 import { SceneVisualView } from './visuals';
 import { AnimatedCaption, OverlayView } from './overlays';
 
@@ -52,9 +53,18 @@ function SceneView({ scene, captionsEnabled }: { scene: TimelineScene; captionsE
         <OverlayView key={i} overlay={overlay} />
       ))}
       {captionsEnabled && scene.caption && (
-        <AnimatedCaption text={scene.caption.text} durationInFrames={scene.durationInFrames} />
+        <AnimatedCaption
+          text={scene.caption.text}
+          cues={scene.caption.cues}
+          durationInFrames={scene.durationInFrames}
+        />
       )}
-      {voice && <Audio src={voice.url} volume={scene.voiceover!.volume} />}
+      {voice && (
+        // Narration starts after a short lead-in so words never overlap the transition.
+        <Sequence from={scene.voiceover!.startOffsetFrames} layout="none" name="voiceover">
+          <Audio src={voice.url} volume={scene.voiceover!.volume} />
+        </Sequence>
+      )}
     </AbsoluteFill>
   );
 }
@@ -64,20 +74,26 @@ function MusicBed({
   volume,
   fadeInSec,
   fadeOutSec,
+  duckedVolume,
+  spans,
 }: {
   assetId: string;
   volume: number;
   fadeInSec: number;
   fadeOutSec: number;
+  duckedVolume: number;
+  spans: ReturnType<typeof voiceSpans>;
 }) {
   const { fps, durationInFrames } = useVideoConfig();
   const music = useAsset(assetId)!;
+  const duckRatio = volume > 0 ? Math.min(1, duckedVolume / volume) : 1;
   return (
     <Audio
       src={music.url}
       loop
       volume={(f) =>
         volume *
+        duckingGain(f, spans, duckRatio) *
         interpolate(
           f,
           [
@@ -120,7 +136,7 @@ export function KamporaAd({ project, assetUrls }: RenderInput) {
             </Sequence>
           );
         })}
-        {project.audio.music && <MusicBed {...project.audio.music} />}
+        {project.audio.music && <MusicBed {...project.audio.music} spans={voiceSpans(project)} />}
       </AbsoluteFill>
     </RenderContext.Provider>
   );

@@ -8,7 +8,15 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().min(1),
   WEB_ORIGIN: z.string().default('http://localhost:3000'),
   DEV_API_TOKEN: z.string().min(16).optional(),
-  CREATIVE_PROVIDER: z.enum(['mock']).default('mock'),
+  CREATIVE_PROVIDER: z.enum(['mock', 'openai']).default('mock'),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().default('gpt-6.1-terra'),
+  OPENAI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(500).max(32_000).default(6000),
+  OPENAI_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(300_000).default(90_000),
+  OPENAI_REASONING_EFFORT: z
+    .enum(['minimal', 'low', 'medium', 'high'])
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   MEDIA_SIGNING_SECRET: z.string().min(16).optional(),
 });

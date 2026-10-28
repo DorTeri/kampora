@@ -8,6 +8,20 @@
       "when": 1793190988905,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793194798594,
+      "tag": "0001_phase2_narration_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793196517074,
+      "tag": "0002_tenant_scoped_idempotency",
+      "breakpoints": true
     }
   ]
 }
