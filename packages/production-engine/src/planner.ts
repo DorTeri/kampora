@@ -20,6 +20,7 @@ export interface PlanProductionInput {
   /** sceneKey → approved AI image asset id (the asset must be in `assets`). */
   approvedImages?: Readonly<Record<string, string>>;
   imagePrice?: PriceEntry;
+  videoGenerationAvailable?: boolean;
 }
 
 /** Routes every scene in order, spending the budget as it goes, and estimates render compute. */
@@ -36,6 +37,7 @@ export function planProduction(input: PlanProductionInput): ProductionPlan {
         catalog: input.catalog,
         approvedImageId: input.approvedImages?.[scene.key],
         imagePrice: input.imagePrice,
+        videoGenerationAvailable: input.videoGenerationAvailable,
       });
       remaining -= plan.estimatedCostUsd;
       return plan;

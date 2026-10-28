@@ -226,7 +226,7 @@ export type RenderInput = z.infer<typeof RenderInputSchema>;
  * Version of the timeline-building and rendering rules (scene timing, pauses, text layout). Part of the production approval key, so
  * re-approving after a rules change rebuilds the timeline instead of reusing the old one.
  */
-export const TIMELINE_RULES_VERSION = 'r6';
+export const TIMELINE_RULES_VERSION = 'r7';
 
 /**
  * Approval key of a timeline built from these inputs (also used by the web app to detect stale versions).

@@ -17,7 +17,7 @@ import {
   videoProjects,
   type Database,
 } from '@kampora/database';
-import { buildVideoProject, planProduction, sceneContentHash } from '@kampora/production-engine';
+import { buildVideoProject, planProduction, sceneContentHash, timelineQa } from '@kampora/production-engine';
 import type { ImageSetup } from '@kampora/media-providers';
 import {
   assertProjectTransition,
@@ -386,6 +386,12 @@ export class StudioService {
       .orderBy(desc(timelineVersions.version));
     const renders = await this.listRenders(ctx, projectId);
     const approvedImages = await approvedSceneImages(this.db, ctx.orgId, projectId);
+    const [current] = project.currentTimelineVersionId
+      ? await this.db
+          .select({ project: timelineVersions.project })
+          .from(timelineVersions)
+          .where(eq(timelineVersions.id, project.currentTimelineVersionId))
+      : [];
     return {
       id: project.id,
       title: project.title,
@@ -402,6 +408,8 @@ export class StudioService {
       currentTimelineVersionId: project.currentTimelineVersionId,
       /** Part of the timeline approval key (see timelineApprovalReason). */
       imagesKey: sceneImagesKey(approvedImages),
+      /** Technical QA of the current timeline (internal review aid; not a quality verdict). */
+      timelineQa: current ? timelineQa(current.project) : [],
       versions,
       renders,
       costs: await this.projectCosts(ctx, projectId),
@@ -516,6 +524,12 @@ export class StudioService {
       musicAssetId: music?.id,
       logoAssetId: profile.logoAssetId,
     });
+    const qaErrors = timelineQa(timeline).filter((i) => i.severity === 'error');
+    if (qaErrors.length) {
+      throw new ApiError(HttpStatus.CONFLICT, 'TIMELINE_QA_FAILED', 'The timeline failed technical checks', {
+        issues: qaErrors,
+      });
+    }
 
     await this.db.transaction(async (tx) => {
       const [{ value: last } = { value: 0 }] = await tx

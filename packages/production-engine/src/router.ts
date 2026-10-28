@@ -20,6 +20,11 @@ export interface RouterContext {
   approvedImageId?: string;
   /** Price of the configured image provider (else the catalog's planning default). A free provider is not paid. */
   imagePrice?: PriceEntry;
+  /**
+   * A video provider that can actually generate is configured. Until then generated motion is never planned
+   * (a plan must not depend on output nobody can produce); scenes fall back to camera motion with a warning.
+   */
+  videoGenerationAvailable?: boolean;
 }
 
 export interface MatchedAssets {
@@ -122,7 +127,7 @@ export function routeScene(
       ...(matched.image ? [] : [generation(ctx, 'IMAGE_GENERATION', 1, 'Source frame for image-to-video')]),
       generation(ctx, 'IMAGE_TO_VIDEO', Math.ceil(scene.durationSec), 'Animate the subject'),
     ];
-    if (canGenerate && affordable(ctx, i2v)) {
+    if (canGenerate && ctx.videoGenerationAvailable && affordable(ctx, i2v)) {
       if (scene.quality.requiresProductAccuracy && !matched.image) {
         warnings.push('No product reference image: generated frames may not match the real product.');
       }
@@ -133,7 +138,7 @@ export function routeScene(
       return result('AI_IMAGE_TO_VIDEO', matched.image ? [matched.image.id] : [], i2v);
     }
     const t2v = [generation(ctx, 'TEXT_TO_VIDEO', Math.ceil(scene.durationSec), 'Premium generated footage')];
-    if (canGenerate && ctx.allowTextToVideo && affordable(ctx, t2v)) {
+    if (canGenerate && ctx.videoGenerationAvailable && ctx.allowTextToVideo && affordable(ctx, t2v)) {
       reasons.push('Text-to-video explicitly allowed and within budget.');
       return result('AI_TEXT_TO_VIDEO', [], t2v);
     }

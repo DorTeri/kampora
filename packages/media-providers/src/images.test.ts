@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { GenerationApprovalError, GenerationUnavailableError } from './contracts';
 import { MockImageProvider, OpenAiImageProvider, imageCallEstimateUsd, imageSetupFromEnv } from './images';
+import { QuoteOnlyImageToVideoProvider } from './video';
 
 describe('MockImageProvider', () => {
   it('returns a deterministic PNG of the requested aspect, free', async () => {
@@ -88,5 +90,25 @@ describe('imageSetupFromEnv', () => {
       ready: false,
       reason: 'OPENAI_API_KEY is not set',
     });
+  });
+});
+
+describe('QuoteOnlyImageToVideoProvider', () => {
+  const source = { data: Buffer.from('x'), mimeType: 'image/png', name: 's.png' };
+  it('quotes rounded-up billed seconds and is never available', () => {
+    const p = new QuoteOnlyImageToVideoProvider('image-to-video-standard', 0.12);
+    expect(p.quote({ durationSec: 3.2, aspectRatio: '9:16' })).toMatchObject({
+      durationSec: 5,
+      estimatedUsd: 0.6,
+      available: false,
+    });
+    expect(p.quote({ durationSec: 7, aspectRatio: '9:16' }).durationSec).toBe(10);
+  });
+
+  it('checks approval first, then refuses to generate', async () => {
+    const p = new QuoteOnlyImageToVideoProvider('m', 0.12);
+    const req = { sourceImage: source, prompt: 'p', durationSec: 5, aspectRatio: '9:16' as const };
+    await expect(p.submit(req, { approvedUsd: 0.1 })).rejects.toBeInstanceOf(GenerationApprovalError);
+    await expect(p.submit(req, { approvedUsd: 0.6 })).rejects.toBeInstanceOf(GenerationUnavailableError);
   });
 });

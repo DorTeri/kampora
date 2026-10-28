@@ -10,11 +10,12 @@ import {
   type SceneVisual,
   type Storyboard,
   type StoryboardScene,
+  type MotionPreset,
   type TimelineScene,
   type SpeechCue,
-  type Transition,
   type VideoProject,
 } from '@kampora/shared';
+import { chooseMotion, chooseTransition } from './motion-router';
 
 export interface BuildVideoProjectInput {
   projectId: string;
@@ -99,7 +100,11 @@ export function computeSceneTiming(
   };
 }
 
-function visualFor(scene: StoryboardScene, plan: ProductionPlan['scenes'][number]): SceneVisual {
+function visualFor(
+  scene: StoryboardScene,
+  plan: ProductionPlan['scenes'][number],
+  motionContext: { previous?: MotionPreset; durationSec: number },
+): SceneVisual {
   const assetId = plan.assetIds[0];
   switch (plan.strategy) {
     case 'EXISTING_VIDEO':
@@ -114,11 +119,8 @@ function visualFor(scene: StoryboardScene, plan: ProductionPlan['scenes'][number
       return {
         type: 'image-motion',
         assetId,
-        motion: {
-          preset: plan.strategy === 'LAYERED_PARALLAX' ? 'parallax' : scene.motion.preset,
-          intensity: 0.5,
-          focalPoint: { x: 0.5, y: 0.45 },
-        },
+        motion: chooseMotion(scene, { ...motionContext, parallax: plan.strategy === 'LAYERED_PARALLAX' })
+          .motion,
       };
     case 'MOTION_GRAPHICS':
       return {
@@ -153,13 +155,6 @@ function overlaysFor(scene: StoryboardScene, input: BuildVideoProjectInput): Ove
   return [{ type: 'headline', text, position: 'top' }];
 }
 
-function transitionFor(scene: StoryboardScene, index: number): Transition {
-  if (index === 0) return { type: 'fade', durationInFrames: 6 };
-  if (scene.role === 'OFFER') return { type: 'zoom', durationInFrames: 10 };
-  if (scene.role === 'CTA') return { type: 'slide-up', durationInFrames: 10 };
-  return { type: 'fade', durationInFrames: 8 };
-}
-
 /**
  * Deterministically turns an approved storyboard + production plan into a renderable VideoProject.
  * No AI involved: the same inputs always produce the same timeline.
@@ -169,6 +164,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
   const planByKey = new Map(input.plan.scenes.map((p) => [p.sceneKey, p]));
   const ordered = [...input.storyboard.scenes].sort((a, b) => a.order - b.order);
 
+  let previousPreset: MotionPreset | undefined;
   const scenes: TimelineScene[] = ordered.map((scene, index) => {
     const plan = planByKey.get(scene.key);
     if (!plan) throw new TimelineBuildError(`No production plan for scene "${scene.key}"`);
@@ -179,6 +175,11 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
       isLast: index === ordered.length - 1,
       slice: voice?.slice,
     });
+    const visual = visualFor(scene, plan, {
+      previous: previousPreset,
+      durationSec: timing.durationInFrames / fps,
+    });
+    previousPreset = visual.type === 'image-motion' ? visual.motion.preset : undefined;
     const caption = stripNiqqud(scene.voiceover).trim();
     // Subtitle cues follow the speech: shift by the narration offset, clamp to the scene.
     const cues = voice?.cues?.length
@@ -197,7 +198,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
       id: `scene-${scene.key}`,
       sourceSceneKey: scene.key,
       durationInFrames: timing.durationInFrames,
-      visual: visualFor(scene, plan),
+      visual,
       overlays: overlaysFor(scene, input),
       caption: caption ? { text: caption, cues } : undefined,
       voiceover: voice
@@ -208,7 +209,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
             durationInFrames: Math.max(1, Math.round(voice.durationSec * fps)),
           }
         : undefined,
-      transition: transitionFor(scene, index),
+      transition: chooseTransition(scene, index, timing.durationInFrames),
     };
   });
 

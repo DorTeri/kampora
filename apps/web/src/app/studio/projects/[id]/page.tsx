@@ -100,6 +100,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                         {he.planning.editorNote}: {scene.direction.editorNote}
                       </p>
                     )}
+                    {imageQuote?.motion && (
+                      <p className="rounded-xl bg-ink/[0.04] px-3 py-2 text-sm text-ink-soft">
+                        {he.images.motionQuote(usdToIls(imageQuote.motion.estimatedUsd))}
+                      </p>
+                    )}
                     {images && imageQuote && (
                       <SceneImagePanel
                         projectId={project.id}

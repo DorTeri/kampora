@@ -86,12 +86,22 @@ describe('routeScene', () => {
     );
   });
 
-  it('plans image-to-video for real human motion, reusing the image as reference', () => {
+  it('never plans generated motion while no video provider can generate', () => {
     const plan = routeScene(
       scene({ quality: { ...scene().quality, requiresHumanMotion: true } }),
       [image],
       ctx,
     );
+    expect(plan.strategy).toBe('EXISTING_IMAGE_MOTION');
+    expect(plan.generations).toEqual([]);
+    expect(plan.warnings.join(' ')).toMatch(/DOWNGRADED/);
+  });
+
+  it('plans image-to-video for real human motion, reusing the image as reference', () => {
+    const plan = routeScene(scene({ quality: { ...scene().quality, requiresHumanMotion: true } }), [image], {
+      ...ctx,
+      videoGenerationAvailable: true,
+    });
     expect(plan.strategy).toBe('AI_IMAGE_TO_VIDEO');
     expect(plan.generations.map((g) => g.operation)).toEqual(['IMAGE_TO_VIDEO']);
     expect(plan.estimatedCostUsd).toBeCloseTo(0.6);
@@ -128,10 +138,9 @@ describe('routeScene', () => {
       ),
     );
     const s = scene({ quality: { ...scene().quality, requiresComplexAction: true } });
-    expect(routeScene(s, [image], { ...ctx, catalog: skewed }).strategy).toBe('EXISTING_IMAGE_MOTION');
-    expect(routeScene(s, [image], { ...ctx, catalog: skewed, allowTextToVideo: true }).strategy).toBe(
-      'AI_TEXT_TO_VIDEO',
-    );
+    const video = { ...ctx, catalog: skewed, videoGenerationAvailable: true };
+    expect(routeScene(s, [image], video).strategy).toBe('EXISTING_IMAGE_MOTION');
+    expect(routeScene(s, [image], { ...video, allowTextToVideo: true }).strategy).toBe('AI_TEXT_TO_VIDEO');
   });
 
   it('never generates in draft tier', () => {

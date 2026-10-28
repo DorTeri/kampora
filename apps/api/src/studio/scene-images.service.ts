@@ -12,7 +12,14 @@ import {
   videoProjects,
   type Database,
 } from '@kampora/database';
-import { imageCallEstimateUsd, type ImageSetup } from '@kampora/media-providers';
+import {
+  QuoteOnlyImageToVideoProvider,
+  imageCallEstimateUsd,
+  videoSetupFromEnv,
+  type ImageSetup,
+  type ImageToVideoProvider,
+  type ImageToVideoQuote,
+} from '@kampora/media-providers';
 import { pickReferenceImages, planSceneVisual } from '@kampora/production-engine';
 import type { SceneImageJobPayload, StoryboardScene, VisualScenePlan } from '@kampora/shared';
 import type { StorageDriver } from '@kampora/storage';
@@ -40,6 +47,8 @@ export interface SceneImageQuote {
   paid: boolean;
   referenceCount: number;
   nextVersion: number;
+  /** Scenes that need real subject motion: what image-to-video would cost (quote only). */
+  motion: ImageToVideoQuote | null;
 }
 
 /**
@@ -58,7 +67,16 @@ export class SceneImagesService {
     @Inject(IMAGE_SETUP) private readonly setup: ImageSetup,
     private readonly businesses: BusinessService,
     private readonly studio: StudioService,
-  ) {}
+  ) {
+    const videoSetup = videoSetupFromEnv();
+    const price = this.catalog.find('planning', videoSetup.model, 'IMAGE_TO_VIDEO');
+    this.video =
+      videoSetup.provider === 'quote-only' && price
+        ? new QuoteOnlyImageToVideoProvider(videoSetup.model, price.unitPriceUsd)
+        : null;
+  }
+
+  private readonly video: ImageToVideoProvider | null;
 
   private async context(ctx: AuthContext, projectId: string) {
     const [project] = await this.db
@@ -132,6 +150,10 @@ export class SceneImagesService {
       paid: this.setup.paid,
       referenceCount: plan.referenceAssetIds.length,
       nextVersion: existing.length + 1,
+      motion:
+        this.video && (scene.quality.requiresHumanMotion || scene.quality.requiresComplexAction)
+          ? this.video.quote({ durationSec: scene.durationSec, aspectRatio: '9:16' })
+          : null,
       plan,
     };
   }

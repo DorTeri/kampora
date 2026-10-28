@@ -104,34 +104,52 @@ export interface ImageGenerationProvider {
   generate(request: ImageGenerationRequest): Promise<GeneratedMedia>;
 }
 
-// ── Video ─────────────────────────────────────────────────────────────
+// ── Image to video ────────────────────────────────────────────────
 
-export interface VideoGenerationCapabilities {
-  imageToVideo: boolean;
-  textToVideo: boolean;
-  maxDurationSec: number;
+export interface ImageToVideoCapabilities {
+  /** Clip lengths the vendor bills (requests are rounded up to the next one). */
+  durationsSec: number[];
   aspectRatios: string[];
 }
 
-export interface VideoGenerationRequest {
-  mode: 'image-to-video' | 'text-to-video';
+export interface ImageToVideoRequest {
+  /** The approved still to animate (real subject motion, not a camera move). */
+  sourceImage: ReferenceImage;
+  /** What should move, and how. */
   prompt: string;
-  sourceImageUrl?: string;
   durationSec: number;
-  aspectRatio: '9:16';
+  aspectRatio: '9:16' | '4:5' | '1:1';
 }
 
-/** Video generation is asynchronous at every major vendor: submit, then poll. */
-export interface VideoGenerationProvider {
+export interface ImageToVideoQuote {
+  provider: string;
+  model: string;
+  /** Billed clip length (rounded up to a supported duration). */
+  durationSec: number;
+  estimatedUsd: number;
+  /** False when the provider can only quote (no generation is possible yet). */
+  available: boolean;
+  reason?: string;
+}
+
+/**
+ * Image-to-video is asynchronous at every major vendor: quote, submit (with an approval at least as high as the
+ * quote), then poll. Submitting without a sufficient approval must throw before any network call.
+ */
+export interface ImageToVideoProvider {
   readonly id: string;
   readonly model: string;
   readonly paid: boolean;
-  readonly capabilities: VideoGenerationCapabilities;
-  submit(request: VideoGenerationRequest): Promise<{ externalJobId: string }>;
+  readonly capabilities: ImageToVideoCapabilities;
+  quote(request: Pick<ImageToVideoRequest, 'durationSec' | 'aspectRatio'>): ImageToVideoQuote;
+  submit(request: ImageToVideoRequest, approval: { approvedUsd: number }): Promise<{ externalJobId: string }>;
   poll(
     externalJobId: string,
   ): Promise<{ status: 'pending' | 'succeeded' | 'failed'; media?: GeneratedMedia; error?: string }>;
 }
+
+export class GenerationApprovalError extends Error {}
+export class GenerationUnavailableError extends Error {}
 
 export class ProviderNotConfiguredError extends Error {
   constructor(kind: string) {

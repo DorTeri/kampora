@@ -99,3 +99,16 @@ Nothing has been generated. No voice is called "best" until people have listened
 ### Real-provider image validation (waiting for approval)
 
 Generate 3 scenes (hook, product with one reference photo, CTA) at `medium` quality, then 1 regeneration. That is 4 calls, about $0.041 × 4 + $0.01 = **about $0.17** (cap of $0.25). People review the images for realism, product fidelity, text-free output and consistency between scenes; passing tests is not enough. This needs `IMAGE_PROVIDER=openai`, `KAMPORA_ALLOW_PAID_GENERATION=true` and your explicit approval.
+
+## Milestone D: hybrid video engine (offline)
+
+- **Fixed renderer, JSON-driven:** every ad is rendered by one tested Remotion composition from the validated VideoProject JSON. No per-ad React is ever generated.
+- **Motion router** (`chooseMotion`): deterministic camera moves per framing. It keeps the storyboard's move when it suits the shot, never repeats the previous scene's move, scales intensity with time on screen (gentle on short scenes) and aims the focal point by framing. Camera moves are labelled as camera moves; they never fake subject motion.
+- **Transitions** (`chooseTransition`): chosen by role (hook fade, offer zoom, CTA slide-up, crossfade otherwise) and capped at 20% of the scene.
+- **Image-to-video:** a new `ImageToVideoProvider` contract (quote → submit with approval → poll). The only implementation is quote-only: it prices real motion with the planning estimate ($0.12/s, billed in 5 s or 10 s clips) and refuses to generate, after first checking the approval. The router never plans generated motion while no provider can generate; those scenes fall back to camera motion with an explicit warning. The Studio shows the quote and says plainly that it is not available yet.
+- **Technical timeline QA** (`timelineQa`):
+  - **Errors, which block approval:** narration cut off, captions outside their scene.
+  - **Warnings:** slow hook, scene too short, transition too long, dead air, silent gaps between lines, same shot repeated, missing or short CTA, total length out of range, music not ducked.
+
+  It does not judge whether the ad is good. Run over the saved timelines, it flags 1.1–2.2 s gaps between lines in the two older line-by-line ElevenLabs projects. The continuous-narration projects are clean.
+- Timeline rules are now `r7`, so existing productions show "update production" and are rebuilt with the new motion rules.

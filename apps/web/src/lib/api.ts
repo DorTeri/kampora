@@ -227,6 +227,8 @@ export interface SceneImageQuoteDto {
   paid: boolean;
   referenceCount: number;
   nextVersion: number;
+  /** Quote for real subject motion (image-to-video); generation is not available yet. */
+  motion: { durationSec: number; estimatedUsd: number; available: boolean } | null;
 }
 
 export interface SceneImageDto {
