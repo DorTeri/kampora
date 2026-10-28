@@ -16,10 +16,12 @@ import {
   CampaignsController,
   ProjectsController,
   RendersController,
+  VoiceLabController,
 } from './studio/studio.controller';
 import { StudioService } from './studio/studio.service';
 import { NarrationService } from './studio/narration.service';
 import { PaidOperationsService } from './studio/paid.service';
+import { VoiceLabService } from './studio/voice-lab.service';
 
 @ApiTags('health')
 @Controller('health')
@@ -48,11 +50,13 @@ class HealthController {
     RendersController,
     AiController,
     MediaController,
+    VoiceLabController,
   ],
   providers: [
     BusinessService,
     PaidOperationsService,
     NarrationService,
+    VoiceLabService,
     StudioService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: DevAuthGuard },

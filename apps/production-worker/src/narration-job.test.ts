@@ -124,8 +124,9 @@ describe.skipIf(!dbAvailable)('narration job (integration: Postgres + ffprobe + 
     ...overrides,
   });
 
-  const requestNarration = async (voice: VoiceOption) => {
-    const state: NarrationState = {
+  const requestNarration = async (voice: VoiceOption, extra: Partial<NarrationState> = {}) => {
+    // Without extra fields this is a stored Phase 2 request (no mode/style): legacy per-scene behaviour.
+    const state = {
       status: 'QUEUED',
       provider: voice.provider,
       voiceId: voice.id,
@@ -137,7 +138,8 @@ describe.skipIf(!dbAvailable)('narration job (integration: Postgres + ffprobe + 
       estimate: { characters: 0, usd: 0 },
       warnings: [],
       updatedAt: new Date().toISOString(),
-    };
+      ...extra,
+    } as NarrationState;
     await handle.db.update(videoProjects).set({ narration: state }).where(eq(videoProjects.id, projectId));
   };
   const narration = async () =>
@@ -327,4 +329,89 @@ describe.skipIf(!dbAvailable)('narration job (integration: Postgres + ffprobe + 
       lines.filter((l) => l.success).every((l) => l.chargeType === 'ESTIMATED' && l.amountMicroUsd > 0),
     ).toBe(true);
   });
+
+  describe('continuous narration', () => {
+    it('records the whole script once and cuts it into frame-exact scene slices', async () => {
+      const provider = new CountingMockTts();
+      await requestNarration(mockVoice, { mode: 'continuous', style: 'natural' });
+      await processNarrationJob(deps({ voices: [mockVoice], provider }), { projectId, orgId });
+      const n = await narration();
+      expect(n.error).toBeUndefined();
+      expect(n.status).toBe('READY');
+      expect(provider.calls).toBe(1);
+      expect(n.master?.boundaries).toBe('provider');
+      expect(n.segments.map((s) => s.sceneKey)).toEqual(['hook', 'product', 'offer', 'cta']);
+      for (const s of n.segments) {
+        expect(s.source).toBe('slice');
+        expect(s.durationSec * 30).toBeCloseTo(Math.round(s.durationSec * 30), 6);
+        expect(s.cues.at(-1)!.endSec).toBeLessThanOrEqual(s.durationSec);
+      }
+      // The slices add up to the recording (padded to a whole frame at the very end).
+      const total = n.segments.reduce((a, s) => a + s.durationSec, 0);
+      expect(total).toBeGreaterThanOrEqual(n.master!.durationSec - 0.001);
+      expect(total - n.master!.durationSec).toBeLessThan(1 / 30 + 0.001);
+      // Conversational style reads the price colloquially.
+      expect(n.segments[2]!.spokenText).toContain('עשרים ותשע');
+      expect(n.segments[2]!.spokenText).not.toContain('אגורות');
+    });
+
+    it('reuses the cached recording and slices on a repeat request (no new generation)', async () => {
+      const before = await handle.db.select().from(generatedAssets).where(eq(generatedAssets.orgId, orgId));
+      const provider = new CountingMockTts();
+      await requestNarration(mockVoice, { mode: 'continuous', style: 'natural' });
+      await processNarrationJob(deps({ voices: [mockVoice], provider }), { projectId, orgId });
+      const n = await narration();
+      expect(provider.calls).toBe(0);
+      expect(n.segments.every((s) => s.cached && s.source === 'slice')).toBe(true);
+      const after = await handle.db.select().from(generatedAssets).where(eq(generatedAssets.orgId, orgId));
+      expect(after).toHaveLength(before.length);
+    });
+
+    it('re-records only the replaced line and keeps every other slice', async () => {
+      const previous = await narration();
+      const provider = new CountingMockTts();
+      // The API keeps the recorded narration and marks it QUEUED while one line is re-recorded.
+      await handle.db
+        .update(videoProjects)
+        .set({ narration: { ...previous, status: 'QUEUED' } })
+        .where(eq(videoProjects.id, projectId));
+      await processNarrationJob(deps({ voices: [mockVoice], provider }), {
+        projectId,
+        orgId,
+        replaceSceneKey: 'offer',
+      });
+      const n = await narration();
+      expect(n.status).toBe('READY');
+      expect(provider.calls).toBe(1);
+      expect(n.master).toEqual(previous.master);
+      for (const [i, s] of n.segments.entries()) {
+        if (s.sceneKey === 'offer') {
+          expect(s.source).toBe('separate');
+        } else {
+          expect(s.assetId).toBe(previous.segments[i]!.assetId);
+          expect(s.source).toBe('slice');
+        }
+      }
+    });
+
+    it('calls a paid voice once for the whole script, after the approval check', async () => {
+      const voice = paidVoice('paid-continuous');
+      const provider = new FakePaidTts();
+      await approve(voice, 1);
+      await requestNarration(voice, { mode: 'continuous', style: 'warm' });
+      await processNarrationJob(deps({ voices: [voice], provider }), { projectId, orgId });
+      const n = await narration();
+      expect(n.status).toBe('READY');
+      expect(provider.calls).toBe(1);
+      expect(n.segments.every((s) => s.source === 'slice')).toBe(true);
+    });
+  });
 });
+
+class CountingMockTts extends MockTtsProvider {
+  calls = 0;
+  override async synthesize(request: TtsRequest) {
+    this.calls++;
+    return super.synthesize(request);
+  }
+}

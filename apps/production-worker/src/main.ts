@@ -2,16 +2,18 @@ import { UnrecoverableError, Worker } from 'bullmq';
 import pino from 'pino';
 import { PriceCatalog, budgetPolicyFromEnv } from '@kampora/cost-engine';
 import { createDatabase } from '@kampora/database';
-import { createTtsProvider, ttsSetupFromEnv } from '@kampora/hebrew-voice';
+import { createTtsProvider, ttsSetupFromEnv, voiceLabExtraVoices } from '@kampora/hebrew-voice';
 import {
   NARRATION_QUEUE_NAME,
   NarrationJobPayloadSchema,
+  VoiceLabJobPayloadSchema,
   RENDER_QUEUE_NAME,
   RenderJobPayloadSchema,
 } from '@kampora/shared';
 import { storageFromEnv } from '@kampora/storage';
 import { getServeUrl } from '@kampora/video-renderer';
 import { processNarrationJob } from './narration-job';
+import { processVoiceLabJob } from './voice-lab-job';
 import { RenderJobNotFoundError, processRenderJob } from './render-job';
 import { redisConnection } from './redis';
 
@@ -73,9 +75,20 @@ async function main() {
     logger,
     createProvider: (voice: Parameters<typeof createTtsProvider>[0]) => createTtsProvider(voice),
   };
+  const voiceLabDeps = {
+    ...narrationDeps,
+    extraVoices: voiceLabExtraVoices(narrationDeps.setup),
+    labMaxUsd: Number(process.env.VOICE_LAB_MAX_USD ?? 1),
+  };
   const narrationWorker = new Worker(
     NARRATION_QUEUE_NAME,
     async (job) => {
+      if (job.name === 'voice-lab') {
+        const lab = VoiceLabJobPayloadSchema.safeParse(job.data);
+        if (!lab.success) throw new UnrecoverableError('Invalid voice lab job payload');
+        await processVoiceLabJob(voiceLabDeps, lab.data);
+        return;
+      }
       const parsed = NarrationJobPayloadSchema.safeParse(job.data);
       if (!parsed.success) throw new UnrecoverableError('Invalid narration job payload');
       await processNarrationJob(narrationDeps, parsed.data);

@@ -87,6 +87,7 @@ export const approvalSubject = pgEnum('approval_subject', [
   'FINAL_VIDEO',
   'CREATIVE_GENERATION',
   'NARRATION',
+  'VOICE_TEST',
 ]);
 export const approvalDecision = pgEnum('approval_decision', ['APPROVED', 'REJECTED']);
 
@@ -512,6 +513,41 @@ export const costLedger = pgTable(
     index('cost_ledger_project_idx').on(t.videoProjectId),
     index('cost_ledger_org_idx').on(t.orgId, t.createdAt),
   ],
+);
+
+/**
+ * Voice lab: one row per (candidate voice configuration × style) reading of the fixed lab script, with the
+ * listening ratings people gave it. Org-scoped; not tied to a project.
+ */
+export const voiceLabSamples = pgTable(
+  'voice_lab_samples',
+  {
+    id: id(),
+    orgId: orgId(),
+    candidateId: text('candidate_id').notNull(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    voiceId: text('voice_id').notNull(),
+    style: text('style').notNull(),
+    scriptHash: text('script_hash').notNull(),
+    spokenText: text('spoken_text').notNull(),
+    status: jobStatus('status').notNull().default('QUEUED'),
+    error: text('error'),
+    assetId: uuid('asset_id').references(() => generatedAssets.id, { onDelete: 'set null' }),
+    durationSec: real('duration_sec'),
+    characters: integer('characters').notNull(),
+    estimatedMicroUsd: bigint('estimated_micro_usd', { mode: 'number' }).notNull(),
+    chargeType: chargeType('charge_type'),
+    cached: boolean('cached').notNull().default(false),
+    /** criterion id → 1..5, filled by people after listening. */
+    ratings: jsonb('ratings').$type<Record<string, number>>().notNull().default({}),
+    notes: text('notes'),
+    ratedBy: uuid('rated_by').references(() => users.id),
+    ratedAt: timestamp('rated_at', { withTimezone: true }),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('voice_lab_samples_org_idx').on(t.orgId, t.createdAt)],
 );
 
 export const auditLog = pgTable(

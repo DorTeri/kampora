@@ -2,17 +2,28 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
-import { formatIls } from '@kampora/shared';
+import { formatIls, type VoiceStyle } from '@kampora/shared';
 import { Badge, Button, Card, CardTitle, ErrorNote, cn } from '@/components/ui';
 import { errorMessage, he } from '@/i18n/he';
 import type { NarrationDto, NarrationQuote, VoicesResponse } from '@/lib/api';
-import { requestNarrationAction } from '../../actions';
+import { requestNarrationAction, rerecordLineAction } from '../../actions';
 
 const seconds = (n: number) => he.planning.seconds(Math.round(n * 10) / 10);
 
+async function fetchQuote(
+  projectId: string,
+  params: { voiceId: string; style: VoiceStyle; sceneKey?: string },
+): Promise<NarrationQuote | null> {
+  const query = new URLSearchParams({ voiceId: params.voiceId, style: params.style, mode: 'continuous' });
+  if (params.sceneKey) query.set('sceneKey', params.sceneKey);
+  const res = await fetch(`/api/projects/${projectId}/narration/quote?${query}`, { cache: 'no-store' });
+  return res.ok ? ((await res.json()) as NarrationQuote) : null;
+}
+
 /**
- * Voice choice → quote → (paid: explicit approval) → record → listen. The quote comes from the API, computed
- * from exactly the normalized text that will be synthesized.
+ * Voice + delivery style → quote → (paid: explicit approval) → one continuous recording → listen. The quote
+ * comes from the API, computed from exactly the directed text that will be synthesized. A single line can be
+ * re-recorded on its own (with its own quote and approval) without touching the rest.
  */
 export function VoicePanel({
   projectId,
@@ -27,27 +38,27 @@ export function VoicePanel({
 }) {
   const router = useRouter();
   const [voiceId, setVoiceId] = useState(initialNarration?.voiceId ?? voices.voices[0]?.id ?? '');
+  const [style, setStyle] = useState<VoiceStyle>(initialNarration?.style ?? 'natural');
   const [quote, setQuote] = useState<NarrationQuote | null>(null);
+  const [lineQuote, setLineQuote] = useState<NarrationQuote | null>(null);
   const [narration, setNarration] = useState(initialNarration);
   const [approved, setApproved] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
   const busy = narration?.status === 'QUEUED' || narration?.status === 'RUNNING';
+  const styles = voices.styles ?? [];
 
   useEffect(() => {
     if (!voiceId) return;
     setApproved(false);
     let cancelled = false;
-    fetch(`/api/projects/${projectId}/narration/quote?voiceId=${encodeURIComponent(voiceId)}`, {
-      cache: 'no-store',
-    })
-      .then(async (res) => (res.ok ? ((await res.json()) as NarrationQuote) : null))
+    fetchQuote(projectId, { voiceId, style })
       .then((q) => !cancelled && setQuote(q))
       .catch(() => !cancelled && setQuote(null));
     return () => {
       cancelled = true;
     };
-  }, [projectId, voiceId]);
+  }, [projectId, voiceId, style]);
 
   useEffect(() => {
     if (!busy) return;
@@ -72,8 +83,18 @@ export function VoicePanel({
 
   const paidBlocked = voices.paid && !voices.paidEnabled;
   const tooLong = quote?.scriptCheck.status === 'TOO_LONG';
-  const sameVoiceReady = narration?.status === 'READY' && narration.voiceId === voiceId && !narration.stale;
+  const sameReady =
+    narration?.status === 'READY' &&
+    narration.voiceId === voiceId &&
+    (narration.style ?? 'natural') === style &&
+    !narration.stale;
   const canRecord = Boolean(quote) && !busy && !tooLong && !paidBlocked && (!quote?.paid || approved);
+  const canReplaceLines = narration?.status === 'READY' && narration.voiceId === voiceId && !narration.stale;
+
+  const refresh = async () => {
+    const res = await fetch(`/api/projects/${projectId}/narration`, { cache: 'no-store' });
+    if (res.ok) setNarration((await res.json()) as NarrationDto);
+  };
 
   const record = () =>
     startTransition(async () => {
@@ -82,12 +103,30 @@ export function VoicePanel({
         projectId,
         voiceId,
         quote?.paid ? quote.estimatedUsd : undefined,
+        style,
       );
       if (result.error) setError(result.error);
-      else {
-        const res = await fetch(`/api/projects/${projectId}/narration`, { cache: 'no-store' });
-        if (res.ok) setNarration((await res.json()) as NarrationDto);
-      }
+      else await refresh();
+    });
+
+  const askLine = (sceneKey: string) =>
+    startTransition(async () => {
+      setError(undefined);
+      setLineQuote(await fetchQuote(projectId, { voiceId, style, sceneKey }));
+    });
+
+  const recordLine = () =>
+    startTransition(async () => {
+      if (!lineQuote?.sceneKey) return;
+      const result = await rerecordLineAction(
+        projectId,
+        lineQuote.sceneKey,
+        voiceId,
+        lineQuote.paid ? lineQuote.estimatedUsd : undefined,
+      );
+      setLineQuote(null);
+      if (result.error) setError(result.error);
+      else await refresh();
     });
 
   return (
@@ -123,6 +162,34 @@ export function VoicePanel({
       </fieldset>
       {voices.provider === 'mock' && <p className="mt-2 text-xs text-muted">{he.voice.mockNote}</p>}
 
+      {styles.length > 0 && (
+        <fieldset className="mt-4" disabled={busy}>
+          <legend className="mb-2 text-sm font-semibold text-muted">{he.voice.style}</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {styles.map((s) => (
+              <label
+                key={s.id}
+                className={cn(
+                  'cursor-pointer rounded-2xl border border-line px-3 py-2 transition',
+                  'has-[:checked]:border-primary has-[:checked]:bg-primary-soft',
+                )}
+              >
+                <input
+                  type="radio"
+                  name="style"
+                  value={s.id}
+                  checked={style === s.id}
+                  onChange={() => setStyle(s.id)}
+                  className="sr-only"
+                />
+                <span className="block text-sm font-semibold">{s.label}</span>
+                <span className="block text-xs text-muted">{s.description}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       {quote && (
         <div className="mt-4 space-y-2 rounded-2xl bg-ink/[0.03] p-4 text-sm">
           <p>
@@ -137,7 +204,7 @@ export function VoicePanel({
               {quote.scriptCheck.message}
             </p>
           )}
-          {quote.paid && !paidBlocked && !sameVoiceReady && (
+          {quote.paid && !paidBlocked && !sameReady && (
             <label className="flex items-center gap-3 pt-1 font-semibold">
               <input
                 type="checkbox"
@@ -158,11 +225,14 @@ export function VoicePanel({
             aria-hidden
             className="size-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
           />
-          {he.voice.recording} {quote ? he.voice.progress(narration.segments.length, quote.lines.length) : ''}
+          {he.voice.recording}{' '}
+          {quote && narration.mode !== 'continuous'
+            ? he.voice.progress(narration.segments.length, quote.lines.length)
+            : ''}
         </p>
       )}
 
-      {!busy && !sameVoiceReady && (
+      {!busy && !sameReady && (
         <Button className="mt-4 w-full" disabled={!canRecord || pending} onClick={record}>
           {narration?.status === 'READY' ? he.voice.rerecord : he.voice.record}
         </Button>
@@ -172,6 +242,9 @@ export function VoicePanel({
         <div className="mt-3">
           <ErrorNote message={he.voice.failed} />
         </div>
+      )}
+      {narration?.status === 'READY' && narration.error && (
+        <p className="mt-3 text-sm text-warn">{he.voice.lineFailed}</p>
       )}
       {narration?.stale && <p className="mt-3 text-sm text-warn">{he.voice.stale}</p>}
       {error && (
@@ -190,14 +263,48 @@ export function VoicePanel({
           {narration.warnings.some((w) => w.startsWith('NARRATION_LONG')) && (
             <p className="text-sm text-warn">{he.voice.long}</p>
           )}
+          {narration.masterUrl && (
+            <div>
+              <p className="mb-1 text-sm font-semibold">{he.voice.listenAll}</p>
+              <audio controls preload="none" src={narration.masterUrl} className="h-9 w-full" />
+            </div>
+          )}
           <ol className="space-y-3">
             {narration.segments.map((s, i) => (
               <li key={s.sceneKey} className="rounded-2xl border border-line p-3">
                 <p className="mb-2 text-sm">
                   <span className="font-bold">{i + 1}.</span> {s.cues.map((c) => c.text).join(' ')}{' '}
                   <span className="text-xs text-muted">({seconds(s.durationSec)})</span>
+                  {narration.mode === 'continuous' && s.source === 'separate' && (
+                    <Badge tone="accent">{he.voice.lineRerecorded}</Badge>
+                  )}
                 </p>
                 {s.url && <audio controls preload="none" src={s.url} className="h-9 w-full" />}
+                {canReplaceLines && !busy && lineQuote?.sceneKey !== s.sceneKey && (
+                  <button
+                    type="button"
+                    className="mt-2 text-xs font-semibold text-primary underline-offset-2 hover:underline"
+                    disabled={pending}
+                    onClick={() => askLine(s.sceneKey)}
+                  >
+                    {he.voice.rerecordLine}
+                  </button>
+                )}
+                {lineQuote?.sceneKey === s.sceneKey && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-ink/[0.03] p-2 text-sm">
+                    <span>
+                      {he.voice.rerecordLineConfirm(
+                        lineQuote.paid ? formatIls(lineQuote.estimatedUsd * usdToIls) : he.voice.free,
+                      )}
+                    </span>
+                    <Button disabled={pending || (lineQuote.paid && paidBlocked)} onClick={recordLine}>
+                      {he.voice.rerecordLineGo}
+                    </Button>
+                    <button type="button" className="text-xs text-muted" onClick={() => setLineQuote(null)}>
+                      {he.voice.cancel}
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ol>

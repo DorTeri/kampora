@@ -8,6 +8,20 @@ export const SpeechCueSchema = z.object({
 });
 export type SpeechCue = z.infer<typeof SpeechCueSchema>;
 
+/**
+ * Delivery styles the Voice Director knows. A style sets provider settings, price phrasing and pacing; it never
+ * changes the words customers see on screen.
+ */
+export const VoiceStyleSchema = z.enum(['natural', 'energetic', 'warm', 'premium', 'calm', 'social']);
+export type VoiceStyle = z.infer<typeof VoiceStyleSchema>;
+
+/**
+ * continuous: the whole script is one TTS request (natural prosody across lines), sliced into per-scene clips at
+ * the pauses between lines. per-scene: one request per scene line (the Phase 2 behavior).
+ */
+export const NarrationModeSchema = z.enum(['continuous', 'per-scene']);
+export type NarrationMode = z.infer<typeof NarrationModeSchema>;
+
 export const NarrationSegmentSchema = z.object({
   sceneKey: z.string(),
   assetId: z.string().uuid(),
@@ -18,6 +32,11 @@ export const NarrationSegmentSchema = z.object({
   timing: z.enum(['provider', 'estimated']),
   cached: z.boolean(),
   spokenText: z.string(),
+  /**
+   * slice: cut from the continuous narration at a pause (it already contains its natural surrounding silence,
+   * so the timeline adds no lead-in/tail). separate: generated on its own (per-scene mode or a replaced line).
+   */
+  source: z.enum(['slice', 'separate']).default('separate'),
 });
 export type NarrationSegment = z.infer<typeof NarrationSegmentSchema>;
 
@@ -31,6 +50,17 @@ export const NarrationStateSchema = z.object({
   voiceId: z.string(),
   voiceLabel: z.string(),
   modelId: z.string(),
+  mode: NarrationModeSchema.default('per-scene'),
+  style: VoiceStyleSchema.default('natural'),
+  /** The full continuous recording the slices were cut from (continuous mode). */
+  master: z
+    .object({
+      assetId: z.string().uuid(),
+      durationSec: z.number().positive(),
+      /** provider: cut points from the TTS alignment; silence: from detected pauses in the audio. */
+      boundaries: z.enum(['provider', 'silence']),
+    })
+    .optional(),
   /** Hash of the storyboard voiceover lines the narration was generated from (stale detection). */
   scriptHash: z.string(),
   segments: z.array(NarrationSegmentSchema),
@@ -47,6 +77,8 @@ export const NARRATION_QUEUE_NAME = 'kampora-narration';
 export const NarrationJobPayloadSchema = z.object({
   projectId: z.string().uuid(),
   orgId: z.string().uuid(),
+  /** Re-record only this scene's line; every other segment is kept as is. */
+  replaceSceneKey: z.string().optional(),
 });
 export type NarrationJobPayload = z.infer<typeof NarrationJobPayloadSchema>;
 
@@ -60,3 +92,10 @@ export const VoiceOptionSchema = z.object({
   description: z.string().optional(),
 });
 export type VoiceOption = z.infer<typeof VoiceOptionSchema>;
+
+/** Queue payload for one voice-lab reading (same queue as narration: paid TTS stays serialized). */
+export const VoiceLabJobPayloadSchema = z.object({
+  orgId: z.string().uuid(),
+  sampleId: z.string().uuid(),
+});
+export type VoiceLabJobPayload = z.infer<typeof VoiceLabJobPayloadSchema>;

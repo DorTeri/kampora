@@ -8,3 +8,7 @@ export * from './ffprobe';
 export * from './ambiguity';
 export * from './narration-plan';
 export * from './tts-config';
+export * from './voice-director';
+export * from './continuous';
+export * from './audio-tools';
+export * from './voice-lab';

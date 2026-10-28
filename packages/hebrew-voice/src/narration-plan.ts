@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { PronunciationEntry, Storyboard } from '@kampora/shared';
+import type { PronunciationEntry, Storyboard, VoiceStyle } from '@kampora/shared';
 import { normalizeHebrewForSpeech } from './normalize';
 import { prepareForProvider, type PreparedSpeech, type TtsProviderId, type VoiceDelivery } from './providers';
 import { assessScriptLength, estimateSpeechSec, type ScriptLengthAssessment } from './speech-timing';
+import { directScript, type DirectedScript } from './voice-director';
 
 export interface NarrationPlanOptions {
   provider: TtsProviderId;
@@ -10,6 +11,8 @@ export interface NarrationPlanOptions {
   pronunciation: PronunciationEntry[];
   targetDurationSec: number;
   delivery?: VoiceDelivery;
+  /** Voice Director style. When set, every line is directed (price phrasing, pacing, settings) for this style. */
+  style?: VoiceStyle;
   audioTags?: boolean;
   selectiveNiqqud?: boolean;
 }
@@ -52,9 +55,32 @@ export function planNarration(
   options: NarrationPlanOptions,
 ): NarrationPlan {
   const ordered = [...storyboard.scenes].sort((a, b) => a.order - b.order);
+  const style = options.style;
   const segments: PlannedNarrationSegment[] = ordered
     .filter((s) => s.voiceover.trim())
     .map((scene, i, all) => {
+      if (style) {
+        const directed = directScript([{ sceneKey: scene.key, text: scene.voiceover }], {
+          ...options,
+          style,
+        });
+        const line = directed.lines[0]!;
+        return {
+          sceneKey: scene.key,
+          original: line.original,
+          spoken: line.spoken,
+          speech: {
+            provider: options.provider,
+            format: 'text' as const,
+            payload: directed.payload,
+            characters: directed.characters,
+            settings: directed.settings,
+            ambiguities: [],
+          },
+          estimatedSec: line.estimatedSec,
+          warnings: line.warnings,
+        };
+      }
       const normalized = normalizeHebrewForSpeech(scene.voiceover, { pronunciation: options.pronunciation });
       const speech = prepareForProvider(normalized.spoken, options.provider, {
         modelId: options.modelId,
@@ -86,5 +112,35 @@ export function planNarration(
     scriptCheck: assessScriptLength(estimatedSec, options.targetDurationSec),
     scriptHash: scriptHash(storyboard),
     warnings: segments.flatMap((s) => s.warnings.map((w) => `[${s.sceneKey}] ${w}`)),
+  };
+}
+
+export interface ContinuousNarrationPlan {
+  script: DirectedScript;
+  estimatedSec: number;
+  scriptCheck: ScriptLengthAssessment;
+  scriptHash: string;
+  warnings: string[];
+}
+
+/**
+ * The whole storyboard script as ONE directed recording (continuous mode). The same function produces the
+ * customer's quote and the worker's request, so the approved estimate covers exactly the text synthesized.
+ */
+export function planContinuousNarration(
+  storyboard: Pick<Storyboard, 'scenes'>,
+  options: NarrationPlanOptions & { style: VoiceStyle },
+): ContinuousNarrationPlan {
+  const ordered = [...storyboard.scenes].sort((a, b) => a.order - b.order);
+  const script = directScript(
+    ordered.map((s) => ({ sceneKey: s.key, text: s.voiceover })),
+    options,
+  );
+  return {
+    script,
+    estimatedSec: script.estimatedSec,
+    scriptCheck: assessScriptLength(script.estimatedSec, options.targetDurationSec),
+    scriptHash: scriptHash(storyboard),
+    warnings: script.warnings,
   };
 }

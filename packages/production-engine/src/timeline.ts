@@ -29,7 +29,7 @@ export interface BuildVideoProjectInput {
    * Narration per storyboard scene key: measured duration (ffprobe) and subtitle cues in seconds relative to
    * the clip. Scene durations are recomputed from the real speech.
    */
-  voiceovers?: Record<string, { assetId: string; durationSec: number; cues?: SpeechCue[] }>;
+  voiceovers?: Record<string, { assetId: string; durationSec: number; cues?: SpeechCue[]; slice?: boolean }>;
   musicAssetId?: string;
   logoAssetId?: string;
   fps?: number;
@@ -69,11 +69,24 @@ const MIN_LAST_SCENE_SEC = 4.0;
 export function computeSceneTiming(
   storyboardSec: number,
   voiceSec: number | undefined,
-  options: { fps: number; isFirst: boolean; isLast: boolean },
+  options: { fps: number; isFirst: boolean; isLast: boolean; slice?: boolean },
 ): SceneTiming {
   const { fps } = options;
   if (!voiceSec)
     return { durationInFrames: Math.round(storyboardSec * fps), voiceStartFrames: 0, extended: false };
+  if (options.slice) {
+    // A slice of one continuous recording already carries its natural pauses (it was cut mid-pause, on a frame).
+    // Scenes play the slices back-to-back with nothing added, so the read sounds exactly as recorded; only the
+    // opening breath and the CTA hold are added.
+    const leadIn = options.isFirst ? LEAD_IN_FIRST_SEC : 0;
+    const needed = leadIn + voiceSec + (options.isLast ? TAIL_LAST_SEC : 0);
+    const durationSec = Math.max(needed, options.isLast ? MIN_LAST_SCENE_SEC : 0);
+    return {
+      durationInFrames: Math.round(durationSec * fps),
+      voiceStartFrames: Math.round(leadIn * fps),
+      extended: needed > storyboardSec + 0.05,
+    };
+  }
   const leadIn = options.isFirst ? LEAD_IN_FIRST_SEC : LEAD_IN_SEC;
   const tail = options.isLast ? TAIL_LAST_SEC : TAIL_SEC;
   const needed = leadIn + voiceSec + tail;
@@ -164,6 +177,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
       fps,
       isFirst: index === 0,
       isLast: index === ordered.length - 1,
+      slice: voice?.slice,
     });
     const caption = stripNiqqud(scene.voiceover).trim();
     // Subtitle cues follow the speech: shift by the narration offset, clamp to the scene.

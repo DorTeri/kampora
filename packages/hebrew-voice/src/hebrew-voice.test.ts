@@ -77,6 +77,10 @@ describe('normalizeHebrewForSpeech', () => {
   it('speaks dates, times and phone numbers', () => {
     expect(n('עד 31/10')).toBe('עד שלושים ואחד באוקטובר');
     expect(n('ב-28.10.2026')).toBe('בעשרים ושמונה באוקטובר אלפיים עשרים ושש');
+    // "ה-15.11" is a date; a bare "4.25" stays a decimal.
+    expect(n('עד ה-15.11')).toBe('עד החמישה עשר בנובמבר');
+    expect(n('הנחה עד ה-15.11.')).toBe('הנחה עד החמישה עשר בנובמבר.');
+    expect(n('משקל 4.25 קילו')).toContain('נקודה');
     expect(n('פתוח מ-7:30 עד 19:00')).toBe('פתוח משבע וחצי עד תשע עשרה');
     expect(n('התקשרו 03-1234567')).toBe('התקשרו אפס שלוש, אחת שתיים שלוש, ארבע חמש שש שבע');
   });

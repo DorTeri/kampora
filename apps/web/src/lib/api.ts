@@ -8,6 +8,7 @@ import type {
   ProjectStatus,
   Storyboard,
   VoiceOption,
+  VoiceStyle,
 } from '@kampora/shared';
 
 /**
@@ -133,6 +134,8 @@ export interface ProjectDetail {
 
 export interface NarrationDto extends Omit<NarrationState, 'segments'> {
   stale: boolean;
+  /** The single continuous recording (continuous mode only). */
+  masterUrl?: string | null;
   segments: Array<NarrationState['segments'][number] & { url: string | null }>;
 }
 
@@ -153,9 +156,14 @@ export interface VoicesResponse {
   paid: boolean;
   paidEnabled: boolean;
   voices: VoiceOption[];
+  /** Delivery styles (Hebrew labels; no provider names). */
+  styles: Array<{ id: VoiceStyle; label: string; description: string }>;
 }
 
 export interface NarrationQuote {
+  mode: 'continuous' | 'per-scene';
+  style: VoiceStyle;
+  sceneKey?: string;
   provider: string;
   ready: boolean;
   reason?: string;
@@ -177,3 +185,58 @@ export interface NarrationQuote {
 
 /** Display-only conversion for customer-facing ₪ amounts (internal costs stay in USD). */
 export const USD_TO_ILS = Number(process.env.DISPLAY_USD_TO_ILS ?? 3.7);
+
+export interface VoiceLabQuote {
+  candidateId: string;
+  style: VoiceStyle;
+  spoken: string;
+  characters: number;
+  estimatedUsd: number;
+  estimatedSec: number;
+  paid: boolean;
+}
+
+export interface VoiceLabSample {
+  id: string;
+  candidateId: string;
+  provider: string;
+  model: string;
+  voiceId: string;
+  style: string;
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  error: string | null;
+  durationSec: number | null;
+  characters: number;
+  estimatedUsd: number;
+  chargeType: string | null;
+  cached: boolean;
+  current: boolean;
+  ratings: Record<string, number>;
+  notes: string | null;
+  ratedAt: string | null;
+  createdAt: string;
+  url: string | null;
+}
+
+/** Internal voice comparison page (shows providers and models on purpose). */
+export interface VoiceLabOverview {
+  provider: string;
+  ready: boolean;
+  paidEnabled: boolean;
+  labMaxUsd: number;
+  spentUsd: number;
+  script: string[];
+  criteria: ReadonlyArray<{ id: string; label: string }>;
+  styles: Array<{ id: VoiceStyle; label: string }>;
+  candidates: Array<{
+    id: string;
+    group: 'A' | 'B' | 'C';
+    title: string;
+    provider: string;
+    model: string;
+    voiceId: string;
+    gender: string | null;
+    quote: VoiceLabQuote;
+  }>;
+  samples: VoiceLabSample[];
+}

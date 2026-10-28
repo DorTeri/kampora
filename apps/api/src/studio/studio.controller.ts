@@ -1,13 +1,19 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CampaignRequestSchema, RenderQualitySchema } from '@kampora/shared';
+import {
+  CampaignRequestSchema,
+  NarrationModeSchema,
+  RenderQualitySchema,
+  VoiceStyleSchema,
+} from '@kampora/shared';
 import { Auth, type AuthContext } from '../common/auth';
 import { UuidPipe, ZodPipe, openApiSchema } from '../common/zod';
 import { BusinessService } from './business.service';
 import { NarrationService } from './narration.service';
 import { PaidOperationsService } from './paid.service';
 import { StudioService } from './studio.service';
+import { VoiceLabService } from './voice-lab.service';
 
 const RenderRequestSchema = z.object({ quality: RenderQualitySchema.default('final') });
 type RenderRequest = z.infer<typeof RenderRequestSchema>;
@@ -22,8 +28,16 @@ const NarrationRequestSchema = z.object({
   voiceId: z.string().min(1).max(64),
   /** Required for paid voices: the approved estimate (USD) from the narration quote. */
   approvedUsd: z.number().positive().max(100).optional(),
+  mode: NarrationModeSchema.default('continuous'),
+  style: VoiceStyleSchema.default('natural'),
 });
 type NarrationRequest = z.infer<typeof NarrationRequestSchema>;
+
+const NarrationLineRequestSchema = z.object({
+  voiceId: z.string().min(1).max(64),
+  approvedUsd: z.number().positive().max(100).optional(),
+});
+type NarrationLineRequest = z.infer<typeof NarrationLineRequestSchema>;
 
 @ApiTags('businesses')
 @ApiBearerAuth()
@@ -128,8 +142,15 @@ export class ProjectsController {
     @Auth() ctx: AuthContext,
     @Param('id', UuidPipe) id: string,
     @Query('voiceId') voiceId: string,
+    @Query('mode') mode?: string,
+    @Query('style') style?: string,
+    @Query('sceneKey') sceneKey?: string,
   ) {
-    return this.narration.quote(ctx, id, String(voiceId ?? ''));
+    return this.narration.quote(ctx, id, String(voiceId ?? ''), {
+      mode: NarrationModeSchema.catch('continuous').parse(mode),
+      style: VoiceStyleSchema.catch('natural').parse(style),
+      sceneKey: sceneKey ? String(sceneKey).slice(0, 64) : undefined,
+    });
   }
 
   @Post(':id/narration')
@@ -141,7 +162,29 @@ export class ProjectsController {
     @Param('id', UuidPipe) id: string,
     @Body(new ZodPipe(NarrationRequestSchema)) body: NarrationRequest,
   ) {
-    return this.narration.request(ctx, id, body.voiceId, body.approvedUsd);
+    return this.narration.request(ctx, id, body.voiceId, body.approvedUsd, {
+      mode: body.mode,
+      style: body.style,
+    });
+  }
+
+  @Post(':id/narration/segments/:sceneKey')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Re-record one narration line (keeps the other lines; paid voices require approvedUsd)',
+  })
+  @ApiBody({ schema: openApiSchema(NarrationLineRequestSchema) })
+  narrateLine(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Param('sceneKey') sceneKey: string,
+    @Body(new ZodPipe(NarrationLineRequestSchema)) body: NarrationLineRequest,
+  ) {
+    return this.narration.request(ctx, id, body.voiceId, body.approvedUsd, {
+      mode: 'per-scene',
+      style: 'natural',
+      sceneKey: String(sceneKey).slice(0, 64),
+    });
   }
 
   @Post(':id/approve')
@@ -200,5 +243,60 @@ export class RendersController {
   @ApiOperation({ summary: 'Finished videos with signed stream/download URLs' })
   videos(@Auth() ctx: AuthContext) {
     return this.studio.listVideos(ctx);
+  }
+}
+
+const VoiceLabRequestSchema = z.object({
+  candidateId: z.string().min(3).max(160),
+  style: VoiceStyleSchema.default('natural'),
+  /** Required for paid voices: the approved estimate (USD) from the quote. */
+  approvedUsd: z.number().positive().max(5).optional(),
+});
+type VoiceLabRequest = z.infer<typeof VoiceLabRequestSchema>;
+
+const VoiceLabRatingSchema = z.object({
+  ratings: z.record(z.string().max(32), z.number().int().min(1).max(5)),
+  notes: z.string().max(2000).optional(),
+});
+type VoiceLabRating = z.infer<typeof VoiceLabRatingSchema>;
+
+@ApiTags('voice-lab')
+@ApiBearerAuth()
+@Controller('v1/voice-lab')
+export class VoiceLabController {
+  constructor(private readonly lab: VoiceLabService) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'Voice comparison: candidates, fixed script, estimates, recorded samples and ratings',
+  })
+  overview(@Auth() ctx: AuthContext) {
+    return this.lab.overview(ctx);
+  }
+
+  @Get('quote')
+  @ApiOperation({ summary: 'Exact text and estimated cost for one candidate + style' })
+  quote(@Query('candidateId') candidateId: string, @Query('style') style?: string) {
+    return this.lab.quote(String(candidateId ?? ''), VoiceStyleSchema.catch('natural').parse(style));
+  }
+
+  @Post('samples')
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Record one reading (paid voices require approvedUsd ≥ quote; capped per org)' })
+  @ApiBody({ schema: openApiSchema(VoiceLabRequestSchema) })
+  record(@Auth() ctx: AuthContext, @Body(new ZodPipe(VoiceLabRequestSchema)) body: VoiceLabRequest) {
+    return this.lab.request(ctx, body.candidateId, body.style, body.approvedUsd);
+  }
+
+  @Post('samples/:id/rating')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Save listening ratings (1–5 per criterion) and notes' })
+  @ApiBody({ schema: openApiSchema(VoiceLabRatingSchema) })
+  rate(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Body(new ZodPipe(VoiceLabRatingSchema)) body: VoiceLabRating,
+  ) {
+    return this.lab.rate(ctx, id, body.ratings, body.notes);
   }
 }

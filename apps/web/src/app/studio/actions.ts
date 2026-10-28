@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { CampaignRequestSchema } from '@kampora/shared';
+import { CampaignRequestSchema, type VoiceStyle } from '@kampora/shared';
 import { ApiRequestError, api, type CampaignDetail, type RenderDto } from '@/lib/api';
 
 export interface ActionState {
@@ -92,10 +92,63 @@ export async function approveScriptAction(_: ActionState, form: FormData): Promi
 export async function requestNarrationAction(
   projectId: string,
   voiceId: string,
+  approvedUsd: number | undefined,
+  style: VoiceStyle,
+): Promise<{ error?: string }> {
+  try {
+    // New recordings are one continuous read (natural flow); the API cuts it into scenes.
+    await api(`/v1/projects/${projectId}/narration`, {
+      method: 'POST',
+      body: { voiceId, approvedUsd, mode: 'continuous', style },
+    });
+    return {};
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+}
+
+/** Re-records one line only; the rest of the narration is kept. */
+export async function rerecordLineAction(
+  projectId: string,
+  sceneKey: string,
+  voiceId: string,
   approvedUsd?: number,
 ): Promise<{ error?: string }> {
   try {
-    await api(`/v1/projects/${projectId}/narration`, { method: 'POST', body: { voiceId, approvedUsd } });
+    await api(`/v1/projects/${projectId}/narration/segments/${encodeURIComponent(sceneKey)}`, {
+      method: 'POST',
+      body: { voiceId, approvedUsd },
+    });
+    return {};
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+}
+
+/** Voice lab (internal): record one reading. Paid voices send the approved estimate. */
+export async function requestVoiceLabSampleAction(
+  candidateId: string,
+  style: VoiceStyle,
+  approvedUsd?: number,
+): Promise<{ error?: string }> {
+  try {
+    await api('/v1/voice-lab/samples', { method: 'POST', body: { candidateId, style, approvedUsd } });
+    return {};
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+}
+
+export async function rateVoiceLabSampleAction(
+  sampleId: string,
+  ratings: Record<string, number>,
+  notes: string,
+): Promise<{ error?: string }> {
+  try {
+    await api(`/v1/voice-lab/samples/${sampleId}/rating`, {
+      method: 'POST',
+      body: { ratings, notes: notes.trim() || undefined },
+    });
     return {};
   } catch (e) {
     return { error: errorCode(e) };

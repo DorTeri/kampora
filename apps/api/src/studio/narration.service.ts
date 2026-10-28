@@ -10,10 +10,18 @@ import {
   videoProjects,
   type Database,
 } from '@kampora/database';
-import { planNarration, scriptHash, type TtsSetup } from '@kampora/hebrew-voice';
+import {
+  planContinuousNarration,
+  planNarration,
+  scriptHash,
+  VOICE_STYLES,
+  type TtsSetup,
+} from '@kampora/hebrew-voice';
 import type {
   MediaAsset,
+  NarrationMode,
   NarrationJobPayload,
+  VoiceStyle,
   NarrationState,
   SpeechCue,
   Storyboard,
@@ -27,7 +35,17 @@ import { BusinessService } from './business.service';
 
 type ProjectRow = typeof videoProjects.$inferSelect;
 
+export interface NarrationOptions {
+  mode: NarrationMode;
+  style: VoiceStyle;
+  /** Quote/record only this scene's line (replacing it in an existing narration). */
+  sceneKey?: string;
+}
+
 export interface NarrationQuote {
+  mode: NarrationMode;
+  style: VoiceStyle;
+  sceneKey?: string;
   provider: TtsSetup['provider'];
   ready: boolean;
   reason?: string;
@@ -69,6 +87,11 @@ export class NarrationService {
       paid: this.setup.paid,
       paidEnabled: this.policy.paidGenerationEnabled,
       voices: this.setup.voices,
+      styles: Object.entries(VOICE_STYLES).map(([id, s]) => ({
+        id,
+        label: s.label,
+        description: s.description,
+      })),
     };
   }
 
@@ -89,20 +112,57 @@ export class NarrationService {
     return { project, storyboard: sb!.storyboard, profile };
   }
 
-  async quote(ctx: AuthContext, projectId: string, voiceId: string): Promise<NarrationQuote> {
+  async quote(
+    ctx: AuthContext,
+    projectId: string,
+    voiceId: string,
+    options: NarrationOptions = { mode: 'continuous', style: 'natural' },
+  ): Promise<NarrationQuote> {
     const voice = this.voice(voiceId);
     const { storyboard, profile } = await this.projectContext(ctx, projectId);
-    const plan = planNarration(storyboard, {
+    const base = {
       provider: voice.provider,
       modelId: voice.modelId,
       pronunciation: profile.pronunciation,
       targetDurationSec: Math.round(storyboard.scenes.reduce((s, x) => s + x.durationSec, 0)),
       audioTags: this.setup.audioTags,
       selectiveNiqqud: this.setup.selectiveNiqqud,
-    });
+      style: options.style,
+    };
+    const perScene = planNarration(storyboard, base);
+    let plan: Pick<typeof perScene, 'characters' | 'estimatedSec' | 'scriptCheck' | 'warnings'> = perScene;
+    let lines = perScene.segments.map((s) => ({
+      sceneKey: s.sceneKey,
+      original: s.original,
+      spoken: s.speech.payload,
+      estimatedSec: s.estimatedSec,
+    }));
+    if (options.sceneKey) {
+      const line = perScene.segments.find((s) => s.sceneKey === options.sceneKey);
+      if (!line) throw new ApiError(HttpStatus.BAD_REQUEST, 'UNKNOWN_SCENE', 'Scene has no narration line');
+      lines = lines.filter((l) => l.sceneKey === options.sceneKey);
+      plan = {
+        ...perScene,
+        characters: line.speech.characters,
+        estimatedSec: line.estimatedSec,
+        warnings: line.warnings,
+      };
+    } else if (options.mode === 'continuous') {
+      const continuous = planContinuousNarration(storyboard, base);
+      plan = { ...continuous, characters: continuous.script.characters };
+      lines = continuous.script.lines.map((l) => ({
+        sceneKey: l.sceneKey,
+        original: l.original,
+        spoken: l.spoken,
+        estimatedSec: l.estimatedSec,
+      }));
+    }
     const price = this.catalog.find(voice.provider, voice.modelId, 'TTS');
     const estimatedUsd = price ? this.catalog.estimate(price, plan.characters) : 0;
     return {
+      mode: options.mode,
+      style: options.style,
+      sceneKey: options.sceneKey,
       provider: this.setup.provider,
       ready: this.setup.ready,
       reason: this.setup.reason,
@@ -113,12 +173,7 @@ export class NarrationService {
       estimatedUsd: Math.ceil(estimatedUsd * 100) / 100,
       estimatedSec: plan.estimatedSec,
       scriptCheck: plan.scriptCheck,
-      lines: plan.segments.map((s) => ({
-        sceneKey: s.sceneKey,
-        original: s.original,
-        spoken: s.speech.payload,
-        estimatedSec: s.estimatedSec,
-      })),
+      lines,
       warnings: plan.warnings,
     };
   }
@@ -127,8 +182,25 @@ export class NarrationService {
    * Starts narration. Paid voices require: provider ready, global paid switch, script approved, script length
    * OK, an explicit approval ≥ the current estimate, and budget headroom. The worker re-checks before calling.
    */
-  async request(ctx: AuthContext, projectId: string, voiceId: string, approvedUsd?: number) {
+  async request(
+    ctx: AuthContext,
+    projectId: string,
+    voiceId: string,
+    approvedUsd?: number,
+    options: NarrationOptions = { mode: 'continuous', style: 'natural' },
+  ) {
     const { project } = await this.projectContext(ctx, projectId);
+    if (options.sceneKey) {
+      const n = project.narration;
+      if (!n || n.status !== 'READY' || n.voiceId !== voiceId) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'NARRATION_NOT_READY',
+          'Record the narration with this voice before replacing a line',
+        );
+      }
+      options = { ...options, mode: n.mode ?? 'per-scene', style: n.style ?? options.style };
+    }
     if (!project.scriptApprovedAt) {
       throw new ApiError(
         HttpStatus.CONFLICT,
@@ -142,7 +214,7 @@ export class NarrationService {
     if (project.narration && ['QUEUED', 'RUNNING'].includes(project.narration.status))
       return project.narration;
 
-    const quote = await this.quote(ctx, projectId, voiceId);
+    const quote = await this.quote(ctx, projectId, voiceId, options);
     if (!quote.ready) {
       throw new ApiError(
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -202,8 +274,29 @@ export class NarrationService {
       });
     }
 
+    const payload: NarrationJobPayload = { projectId, orgId: ctx.orgId, replaceSceneKey: options.sceneKey };
+    const queueOptions = {
+      jobId: `narration-${projectId}-${Date.now()}`,
+      attempts: 1, // retries happen per request inside the job, bounded by MAX_GENERATION_ATTEMPTS
+      removeOnComplete: 200,
+      removeOnFail: 500,
+    };
+    if (options.sceneKey) {
+      // Keep the recorded narration visible while one line is re-recorded.
+      const state: NarrationState = {
+        ...project.narration!,
+        status: 'QUEUED',
+        updatedAt: new Date().toISOString(),
+      };
+      await this.db.update(videoProjects).set({ narration: state }).where(eq(videoProjects.id, projectId));
+      await this.queue.add('narrate', payload, queueOptions);
+      return state;
+    }
+
     const state: NarrationState = {
       status: 'QUEUED',
+      mode: options.mode,
+      style: options.style,
       provider: quote.voice.provider,
       voiceId: quote.voice.id,
       voiceLabel: quote.voice.label,
@@ -216,13 +309,7 @@ export class NarrationService {
       updatedAt: new Date().toISOString(),
     };
     await this.db.update(videoProjects).set({ narration: state }).where(eq(videoProjects.id, projectId));
-    const payload: NarrationJobPayload = { projectId, orgId: ctx.orgId };
-    await this.queue.add('narrate', payload, {
-      jobId: `narration-${projectId}-${Date.now()}`,
-      attempts: 1, // retries happen per segment inside the job, bounded by MAX_GENERATION_ATTEMPTS
-      removeOnComplete: 200,
-      removeOnFail: 500,
-    });
+    await this.queue.add('narrate', payload, queueOptions);
     return state;
   }
 
@@ -230,7 +317,7 @@ export class NarrationService {
   async describe(ctx: AuthContext, project: ProjectRow, storyboard: Storyboard) {
     const n = project.narration;
     if (!n) return null;
-    const ids = n.segments.map((s) => s.assetId);
+    const ids = [...n.segments.map((s) => s.assetId), ...(n.master ? [n.master.assetId] : [])];
     const rows = ids.length
       ? await this.db
           .select({ id: generatedAssets.id, storageKey: generatedAssets.storageKey })
@@ -241,6 +328,10 @@ export class NarrationService {
     return {
       ...n,
       stale: n.status === 'READY' && n.scriptHash !== scriptHash(storyboard),
+      masterUrl:
+        n.master && keyById.has(n.master.assetId)
+          ? await this.storage.getReadUrl(keyById.get(n.master.assetId)!, { expiresInSec: 3600 })
+          : null,
       segments: await Promise.all(
         n.segments.map(async (s) => ({
           ...s,
@@ -261,7 +352,7 @@ export class NarrationService {
     project: ProjectRow,
     storyboard: Storyboard,
   ): Promise<{
-    voiceovers: Record<string, { assetId: string; durationSec: number; cues: SpeechCue[] }>;
+    voiceovers: Record<string, { assetId: string; durationSec: number; cues: SpeechCue[]; slice?: boolean }>;
     assets: MediaAsset[];
     key: string;
   } | null> {
@@ -298,7 +389,10 @@ export class NarrationService {
       provenance: r.provenance,
     }));
     const voiceovers = Object.fromEntries(
-      n.segments.map((s) => [s.sceneKey, { assetId: s.assetId, durationSec: s.durationSec, cues: s.cues }]),
+      n.segments.map((s) => [
+        s.sceneKey,
+        { assetId: s.assetId, durationSec: s.durationSec, cues: s.cues, slice: s.source === 'slice' },
+      ]),
     );
     return { voiceovers, assets, key: `${n.voiceId}:${n.segments.map((s) => s.assetId).join(',')}` };
   }

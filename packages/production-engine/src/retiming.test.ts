@@ -45,6 +45,24 @@ describe('computeSceneTiming', () => {
   it('keeps the closing CTA on screen at least 4 s even after a short line', () => {
     expect(computeSceneTiming(5, 1, { fps, isFirst: false, isLast: true }).durationInFrames).toBe(120);
   });
+
+  it('plays continuous-recording slices back-to-back: no added lead-in, tail or planned pause', () => {
+    // 2.4 s slice = 72 frames: the scene is exactly the slice, whatever the storyboard planned.
+    expect(computeSceneTiming(6, 2.4, { fps, isFirst: false, isLast: false, slice: true })).toEqual({
+      durationInFrames: 72,
+      voiceStartFrames: 0,
+      extended: false,
+    });
+    const first = computeSceneTiming(3, 2.4, { fps, isFirst: true, isLast: false, slice: true });
+    expect(first).toEqual({ durationInFrames: 81, voiceStartFrames: 9, extended: false });
+    // The CTA still holds after the last words.
+    expect(
+      computeSceneTiming(3, 2, { fps, isFirst: false, isLast: true, slice: true }).durationInFrames,
+    ).toBe(120);
+    expect(
+      computeSceneTiming(3, 3.5, { fps, isFirst: false, isLast: true, slice: true }).durationInFrames,
+    ).toBe(135);
+  });
 });
 
 describe('narration-synced VideoProject', () => {

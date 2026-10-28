@@ -165,7 +165,8 @@ function priceToHebrew(raw: string, style: 'formal' | 'colloquial'): string {
   const shekels = Math.floor(value);
   const agorot = Math.round((value - shekels) * 100);
   if (style === 'colloquial') {
-    if (!agorot) return countNoun(shekels, SHEKEL);
+    // Everyday speech keeps the singular above ten: "חמישים שקל", but "שלושה שקלים".
+    if (!agorot) return countNoun(shekels, { ...SHEKEL, singularAbove10: true });
     return `${numberToHebrew(shekels, 'f')} ${numberToHebrew(agorot, 'f')}`;
   }
   if (!shekels) return countNoun(agorot, AGORA);
@@ -234,6 +235,17 @@ export function normalizeHebrewForSpeech(original: string, options: NormalizeOpt
     const year = yearRaw ? (yearRaw.length === 2 ? 2000 + Number(yearRaw) : Number(yearRaw)) : undefined;
     const spokenDate = `${numberToHebrew(day, 'm')} ב${MONTHS[month - 1]}${year ? ` ${numberToHebrew(year, 'f')}` : ''}`;
     return `${prefix}${spokenDate}`;
+  });
+  // Short "ה-15.11" (with the definite prefix) is a date, not a decimal: "the 15.11" is never a number.
+  const shortDateRe = new RegExp(
+    `${START}([ובכלמש]{0,2}ה)[-־]?(\\d{1,2})\\.(\\d{1,2})(?!\\d|[.,]\\d|\\s?[₪%])`,
+    'gu',
+  );
+  text = apply(text, 'date', shortDateRe, (match, prefix, d, m) => {
+    const day = Number(d);
+    const month = Number(m);
+    if (!month || month > 12 || day < 1 || day > 31) return match;
+    return `${prefix}${numberToHebrew(day, 'm')} ב${MONTHS[month - 1]}`;
   });
 
   // 7. Times: 8:00, 08:30, ב-19:45.
