@@ -1,0 +1,534 @@
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { Queue } from 'bullmq';
+import { and, asc, desc, eq, isNull, max } from 'drizzle-orm';
+import { summarizeLedger, usdToMicro, type BudgetPolicy, type PriceCatalog } from '@kampora/cost-engine';
+import { generateCampaignBrief, generateConcepts, generateStoryboard } from '@kampora/creative-engine';
+import {
+  approvals,
+  auditLog,
+  businesses,
+  campaignBriefs,
+  creativeConcepts,
+  ledgerEntriesFor,
+  renderJobs,
+  scenes,
+  storyboards,
+  timelineVersions,
+  videoProjects,
+  type Database,
+} from '@kampora/database';
+import type { LlmProvider } from '@kampora/media-providers';
+import { buildVideoProject, planProduction, sceneContentHash } from '@kampora/production-engine';
+import {
+  assertProjectTransition,
+  type CampaignRequest,
+  type RenderJobPayload,
+  type RenderQuality,
+} from '@kampora/shared';
+import type { StorageDriver } from '@kampora/storage';
+import type { AuthContext } from '../common/auth';
+import { ApiError, notFound } from '../common/errors';
+import { BUDGET_POLICY, DATABASE, LLM_PROVIDER, PRICE_CATALOG, RENDER_QUEUE, STORAGE } from '../infra/tokens';
+import { BusinessService, toAvailableAssets, toMediaAssets } from './business.service';
+import { BufferedUsageRecorder } from './usage-recorder';
+
+const TARGET_DURATION_SEC = 20;
+
+/**
+ * Orchestrates the Creative Studio journey with a fixed, bounded sequence of steps:
+ * request → brief → concepts → (select) storyboard + production plan → (approve) timeline → render.
+ * Every query is scoped by ctx.orgId.
+ */
+@Injectable()
+export class StudioService {
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    @Inject(STORAGE) private readonly storage: StorageDriver,
+    @Inject(RENDER_QUEUE) private readonly queue: Queue,
+    @Inject(PRICE_CATALOG) private readonly catalog: PriceCatalog,
+    @Inject(BUDGET_POLICY) private readonly policy: BudgetPolicy,
+    @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
+    private readonly businesses: BusinessService,
+  ) {}
+
+  private audit(
+    ctx: AuthContext,
+    action: string,
+    subjectType: string,
+    subjectId: string,
+    metadata: Record<string, unknown> = {},
+  ) {
+    return this.db
+      .insert(auditLog)
+      .values({ orgId: ctx.orgId, actorUserId: ctx.userId, action, subjectType, subjectId, metadata });
+  }
+
+  // ── Campaigns ────────────────────────────────────────────────────────
+
+  async createCampaign(ctx: AuthContext, businessId: string, request: CampaignRequest) {
+    const profile = await this.businesses.loadProfile(ctx, businessId);
+    const recorder = new BufferedUsageRecorder();
+    const brief = await generateCampaignBrief(
+      {
+        business: profile,
+        request,
+        defaults: {
+          budgetUsd: this.policy.projectMaxUsd,
+          qualityTier: 'standard',
+          targetDurationSec: TARGET_DURATION_SEC,
+        },
+      },
+      { provider: this.llm, recorder },
+    );
+    const [row] = await this.db
+      .insert(campaignBriefs)
+      .values({ orgId: ctx.orgId, businessId, brief, createdBy: ctx.userId })
+      .returning();
+    await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: row!.id });
+    await this.audit(ctx, 'campaign.created', 'campaign_brief', row!.id, { goal: request.goal });
+    await this.generateConceptBatch(ctx, row!.id);
+    return this.getCampaign(ctx, row!.id);
+  }
+
+  private async briefRow(ctx: AuthContext, briefId: string) {
+    const [row] = await this.db
+      .select()
+      .from(campaignBriefs)
+      .where(and(eq(campaignBriefs.id, briefId), eq(campaignBriefs.orgId, ctx.orgId)));
+    if (!row) throw notFound('Campaign');
+    return row;
+  }
+
+  /** Generates three concepts as a new batch ("request alternatives" keeps history). */
+  async generateConceptBatch(ctx: AuthContext, briefId: string) {
+    const brief = await this.briefRow(ctx, briefId);
+    if (brief.status === 'CONCEPT_SELECTED') {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'CONCEPT_ALREADY_SELECTED',
+        'A concept was already selected for this campaign',
+      );
+    }
+    const profile = await this.businesses.loadProfile(ctx, brief.businessId);
+    const recorder = new BufferedUsageRecorder();
+    const { conceptSet, claimFlags } = await generateConcepts(
+      { business: profile, brief: brief.brief },
+      { provider: this.llm, recorder },
+    );
+    const [{ value: lastBatch } = { value: 0 }] = await this.db
+      .select({ value: max(creativeConcepts.batch) })
+      .from(creativeConcepts)
+      .where(and(eq(creativeConcepts.briefId, briefId), eq(creativeConcepts.orgId, ctx.orgId)));
+    const batch = (lastBatch ?? 0) + 1;
+    await this.db.insert(creativeConcepts).values(
+      conceptSet.concepts.map((concept) => ({
+        orgId: ctx.orgId,
+        briefId,
+        batch,
+        key: concept.key,
+        concept,
+        isRecommended: concept.key === conceptSet.recommendedKey,
+        recommendationReason:
+          concept.key === conceptSet.recommendedKey ? conceptSet.recommendationReason : null,
+        claimFlags: claimFlags.filter((f) =>
+          [concept.hook, concept.mainMessage, concept.voiceover, concept.cta].includes(f.source),
+        ),
+      })),
+    );
+    await this.db
+      .update(campaignBriefs)
+      .set({ status: 'CONCEPTS_READY' })
+      .where(eq(campaignBriefs.id, briefId));
+    await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: briefId });
+    return this.getCampaign(ctx, briefId);
+  }
+
+  async listCampaigns(ctx: AuthContext) {
+    return this.db
+      .select({
+        id: campaignBriefs.id,
+        status: campaignBriefs.status,
+        brief: campaignBriefs.brief,
+        createdAt: campaignBriefs.createdAt,
+        businessName: businesses.name,
+        projectId: videoProjects.id,
+        projectStatus: videoProjects.status,
+      })
+      .from(campaignBriefs)
+      .innerJoin(businesses, eq(businesses.id, campaignBriefs.businessId))
+      .leftJoin(videoProjects, eq(videoProjects.briefId, campaignBriefs.id))
+      .where(eq(campaignBriefs.orgId, ctx.orgId))
+      .orderBy(desc(campaignBriefs.createdAt));
+  }
+
+  async getCampaign(ctx: AuthContext, briefId: string) {
+    const brief = await this.briefRow(ctx, briefId);
+    const all = await this.db
+      .select()
+      .from(creativeConcepts)
+      .where(and(eq(creativeConcepts.briefId, briefId), eq(creativeConcepts.orgId, ctx.orgId)))
+      .orderBy(desc(creativeConcepts.batch), asc(creativeConcepts.createdAt));
+    const latestBatch = all[0]?.batch;
+    const [project] = await this.db
+      .select({ id: videoProjects.id, status: videoProjects.status })
+      .from(videoProjects)
+      .where(and(eq(videoProjects.briefId, briefId), eq(videoProjects.orgId, ctx.orgId)));
+    return {
+      id: brief.id,
+      businessId: brief.businessId,
+      status: brief.status,
+      brief: brief.brief,
+      createdAt: brief.createdAt,
+      concepts: all
+        .filter((c) => c.batch === latestBatch || c.selectedAt)
+        .map((c) => ({
+          id: c.id,
+          batch: c.batch,
+          concept: c.concept,
+          isRecommended: c.isRecommended,
+          recommendationReason: c.recommendationReason,
+          claimFlags: c.claimFlags,
+          selected: Boolean(c.selectedAt),
+        })),
+      project: project ?? null,
+    };
+  }
+
+  /** Selecting a concept produces the storyboard, the production plan and the project (idempotent). */
+  async selectConcept(ctx: AuthContext, briefId: string, conceptId: string) {
+    const brief = await this.briefRow(ctx, briefId);
+    const [concept] = await this.db
+      .select()
+      .from(creativeConcepts)
+      .where(
+        and(
+          eq(creativeConcepts.id, conceptId),
+          eq(creativeConcepts.briefId, briefId),
+          eq(creativeConcepts.orgId, ctx.orgId),
+        ),
+      );
+    if (!concept) throw notFound('Concept');
+
+    const [existing] = await this.db
+      .select({ id: videoProjects.id })
+      .from(videoProjects)
+      .where(and(eq(videoProjects.briefId, briefId), eq(videoProjects.orgId, ctx.orgId)));
+    if (existing) return { projectId: existing.id };
+
+    const profile = await this.businesses.loadProfile(ctx, brief.businessId);
+    const assetRows = await this.businesses.assets(ctx, brief.businessId);
+    const available = toAvailableAssets(assetRows);
+    const recorder = new BufferedUsageRecorder();
+    const { storyboard, claimFlags } = await generateStoryboard(
+      { business: profile, brief: brief.brief, concept: concept.concept, assets: available },
+      { provider: this.llm, recorder },
+    );
+    const plan = planProduction({
+      storyboard,
+      assets: available,
+      budgetUsd: brief.brief.productionBudgetUsd,
+      perGenerationMaxUsd: this.policy.perGenerationMaxUsd,
+      qualityTier: brief.brief.qualityTier,
+      catalog: this.catalog,
+    });
+
+    const projectId = await this.db.transaction(async (tx) => {
+      await tx
+        .update(creativeConcepts)
+        .set({ selectedAt: null })
+        .where(and(eq(creativeConcepts.briefId, briefId), eq(creativeConcepts.orgId, ctx.orgId)));
+      await tx
+        .update(creativeConcepts)
+        .set({ selectedAt: new Date() })
+        .where(eq(creativeConcepts.id, conceptId));
+      await tx
+        .update(campaignBriefs)
+        .set({ status: 'CONCEPT_SELECTED' })
+        .where(eq(campaignBriefs.id, briefId));
+      const [sb] = await tx
+        .insert(storyboards)
+        .values({ orgId: ctx.orgId, briefId, conceptId, version: 1, storyboard, claimFlags })
+        .returning();
+      const [project] = await tx
+        .insert(videoProjects)
+        .values({
+          orgId: ctx.orgId,
+          businessId: brief.businessId,
+          briefId,
+          storyboardId: sb!.id,
+          title: `${profile.name} · ${concept.concept.title}`,
+          status: 'PLAN_READY',
+          plan,
+          budgetMicroUsd: usdToMicro(brief.brief.productionBudgetUsd),
+        })
+        .returning();
+      await tx.insert(scenes).values(
+        storyboard.scenes.map((s) => ({
+          orgId: ctx.orgId,
+          videoProjectId: project!.id,
+          sceneKey: s.key,
+          order: s.order,
+          spec: s,
+          plan: plan.scenes.find((p) => p.sceneKey === s.key),
+          contentHash: sceneContentHash(s),
+        })),
+      );
+      return project!.id;
+    });
+    await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: briefId, videoProjectId: projectId });
+    await this.audit(ctx, 'concept.selected', 'video_project', projectId, { conceptKey: concept.key });
+    return { projectId };
+  }
+
+  // ── Projects ─────────────────────────────────────────────────────────
+
+  private async projectRow(ctx: AuthContext, projectId: string) {
+    const [row] = await this.db
+      .select()
+      .from(videoProjects)
+      .where(and(eq(videoProjects.id, projectId), eq(videoProjects.orgId, ctx.orgId)));
+    if (!row) throw notFound('Project');
+    return row;
+  }
+
+  async getProject(ctx: AuthContext, projectId: string) {
+    const project = await this.projectRow(ctx, projectId);
+    const [storyboard] = await this.db
+      .select()
+      .from(storyboards)
+      .where(eq(storyboards.id, project.storyboardId));
+    const brief = await this.briefRow(ctx, project.briefId);
+    const [concept] = await this.db
+      .select()
+      .from(creativeConcepts)
+      .where(eq(creativeConcepts.id, storyboard!.conceptId));
+    const versions = await this.db
+      .select({
+        id: timelineVersions.id,
+        version: timelineVersions.version,
+        reason: timelineVersions.reason,
+        createdAt: timelineVersions.createdAt,
+      })
+      .from(timelineVersions)
+      .where(and(eq(timelineVersions.videoProjectId, projectId), eq(timelineVersions.orgId, ctx.orgId)))
+      .orderBy(desc(timelineVersions.version));
+    const renders = await this.listRenders(ctx, projectId);
+    return {
+      id: project.id,
+      title: project.title,
+      status: project.status,
+      budgetUsd: project.budgetMicroUsd / 1_000_000,
+      plan: project.plan,
+      brief: brief.brief,
+      briefId: brief.id,
+      concept: concept!.concept,
+      storyboard: storyboard!.storyboard,
+      claimFlags: storyboard!.claimFlags,
+      currentTimelineVersionId: project.currentTimelineVersionId,
+      versions,
+      renders,
+      costs: await this.projectCosts(ctx, projectId),
+    };
+  }
+
+  async projectCosts(ctx: AuthContext, projectId: string) {
+    const project = await this.projectRow(ctx, projectId);
+    return summarizeLedger(
+      await ledgerEntriesFor(this.db, ctx.orgId, { projectIds: [projectId], briefIds: [project.briefId] }),
+    );
+  }
+
+  /**
+   * The customer approves the production plan and its estimate. Paid generation is not available in
+   * Increment 1, so plans that need it are refused rather than silently downgraded.
+   */
+  async approvePlan(ctx: AuthContext, projectId: string) {
+    const project = await this.projectRow(ctx, projectId);
+    if (project.currentTimelineVersionId && project.status !== 'PLAN_READY')
+      return this.getProject(ctx, projectId);
+    assertProjectTransition(project.status, 'APPROVED');
+    const plan = project.plan;
+    if (!plan) throw new ApiError(HttpStatus.CONFLICT, 'PLAN_MISSING', 'Project has no production plan');
+    if (!plan.withinBudget)
+      throw new ApiError(HttpStatus.CONFLICT, 'BUDGET_EXCEEDED', 'Plan exceeds the project budget');
+    if (plan.requiresPaidApproval && !this.policy.paidGenerationEnabled) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'GENERATION_NOT_AVAILABLE',
+        'This plan needs paid AI generation, which is not enabled. Add matching media or enable providers.',
+        { estimatedPaidCostUsd: plan.estimatedPaidCostUsd },
+      );
+    }
+
+    const [storyboard] = await this.db
+      .select()
+      .from(storyboards)
+      .where(eq(storyboards.id, project.storyboardId));
+    const brief = await this.briefRow(ctx, project.briefId);
+    const profile = await this.businesses.loadProfile(ctx, project.businessId);
+    const assetRows = await this.businesses.assets(ctx, project.businessId);
+    const music = assetRows.find((a) => a.kind === 'audio' && a.tags.includes('music'));
+    const timeline = buildVideoProject({
+      projectId,
+      title: project.title,
+      business: profile,
+      brief: brief.brief,
+      storyboard: storyboard!.storyboard,
+      plan,
+      assets: toMediaAssets(assetRows),
+      musicAssetId: music?.id,
+      logoAssetId: profile.logoAssetId,
+    });
+
+    await this.db.transaction(async (tx) => {
+      const [{ value: last } = { value: 0 }] = await tx
+        .select({ value: max(timelineVersions.version) })
+        .from(timelineVersions)
+        .where(eq(timelineVersions.videoProjectId, projectId));
+      const [version] = await tx
+        .insert(timelineVersions)
+        .values({
+          orgId: ctx.orgId,
+          videoProjectId: projectId,
+          version: (last ?? 0) + 1,
+          project: timeline,
+          reason: 'plan-approved',
+          createdBy: ctx.userId,
+        })
+        .returning();
+      await tx.insert(approvals).values({
+        orgId: ctx.orgId,
+        videoProjectId: projectId,
+        subject: 'PRODUCTION_PLAN',
+        subjectRef: version!.id,
+        decision: 'APPROVED',
+        approvedEstimateMicroUsd: usdToMicro(plan.totalEstimatedCostUsd),
+        decidedBy: ctx.userId,
+      });
+      await tx
+        .update(videoProjects)
+        .set({ status: 'APPROVED', currentTimelineVersionId: version!.id })
+        .where(and(eq(videoProjects.id, projectId), eq(videoProjects.orgId, ctx.orgId)));
+    });
+    await this.audit(ctx, 'plan.approved', 'video_project', projectId, {
+      estimateUsd: plan.totalEstimatedCostUsd,
+    });
+    return this.getProject(ctx, projectId);
+  }
+
+  // ── Renders ──────────────────────────────────────────────────────────
+
+  /** Idempotent per timeline version + quality. A failed render is re-queued; anything else is returned as-is. */
+  async requestRender(ctx: AuthContext, projectId: string, quality: RenderQuality) {
+    const project = await this.projectRow(ctx, projectId);
+    if (
+      !project.currentTimelineVersionId ||
+      !['APPROVED', 'RENDERING', 'RENDERED', 'FAILED'].includes(project.status)
+    ) {
+      throw new ApiError(HttpStatus.CONFLICT, 'NOT_APPROVED', 'Approve the production plan before rendering');
+    }
+    const idempotencyKey = `${project.currentTimelineVersionId}:${quality}`;
+    const [existing] = await this.db
+      .select()
+      .from(renderJobs)
+      .where(and(eq(renderJobs.idempotencyKey, idempotencyKey), eq(renderJobs.orgId, ctx.orgId)));
+    if (existing && existing.status !== 'FAILED') return this.toRenderDto(existing);
+
+    let job = existing;
+    if (job) {
+      [job] = await this.db
+        .update(renderJobs)
+        .set({ status: 'QUEUED', stage: 'QUEUED', progress: 0, error: null, finishedAt: null })
+        .where(eq(renderJobs.id, job.id))
+        .returning();
+    } else {
+      [job] = await this.db
+        .insert(renderJobs)
+        .values({
+          orgId: ctx.orgId,
+          videoProjectId: projectId,
+          timelineVersionId: project.currentTimelineVersionId,
+          quality,
+          idempotencyKey,
+          requestedBy: ctx.userId,
+        })
+        .returning();
+    }
+    const payload: RenderJobPayload = { renderJobId: job!.id, orgId: ctx.orgId };
+    await this.queue.add('render', payload, {
+      jobId: existing ? `${job!.id}-retry-${Date.now()}` : job!.id,
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 5_000 },
+      removeOnComplete: 200,
+      removeOnFail: 500,
+    });
+    await this.db.update(videoProjects).set({ status: 'RENDERING' }).where(eq(videoProjects.id, projectId));
+    await this.audit(ctx, 'render.requested', 'render_job', job!.id, { quality });
+    return this.toRenderDto(job!);
+  }
+
+  async listRenders(ctx: AuthContext, projectId?: string) {
+    const rows = await this.db
+      .select()
+      .from(renderJobs)
+      .where(
+        and(
+          eq(renderJobs.orgId, ctx.orgId),
+          projectId ? eq(renderJobs.videoProjectId, projectId) : undefined,
+        ),
+      )
+      .orderBy(desc(renderJobs.createdAt));
+    return Promise.all(rows.map((r) => this.toRenderDto(r)));
+  }
+
+  async getRender(ctx: AuthContext, renderId: string) {
+    const [row] = await this.db
+      .select()
+      .from(renderJobs)
+      .where(and(eq(renderJobs.id, renderId), eq(renderJobs.orgId, ctx.orgId)));
+    if (!row) throw notFound('Render');
+    return this.toRenderDto(row);
+  }
+
+  /** Finished videos for "הסרטונים שלי". */
+  async listVideos(ctx: AuthContext) {
+    const rows = await this.db
+      .select({ render: renderJobs, title: videoProjects.title })
+      .from(renderJobs)
+      .innerJoin(videoProjects, eq(videoProjects.id, renderJobs.videoProjectId))
+      .where(
+        and(eq(renderJobs.orgId, ctx.orgId), eq(renderJobs.status, 'SUCCEEDED'), isNull(renderJobs.error)),
+      )
+      .orderBy(desc(renderJobs.finishedAt));
+    return Promise.all(
+      rows.map(async (r) => ({ ...(await this.toRenderDto(r.render, r.title)), title: r.title })),
+    );
+  }
+
+  private async toRenderDto(row: typeof renderJobs.$inferSelect, title?: string) {
+    const ready = row.status === 'SUCCEEDED' && row.outputKey;
+    return {
+      id: row.id,
+      projectId: row.videoProjectId,
+      timelineVersionId: row.timelineVersionId,
+      quality: row.quality,
+      status: row.status,
+      stage: row.stage,
+      progress: row.progress,
+      error: row.error,
+      width: row.width,
+      height: row.height,
+      durationSec: row.durationSec,
+      outputBytes: row.outputBytes,
+      createdAt: row.createdAt,
+      finishedAt: row.finishedAt,
+      streamUrl: ready ? await this.storage.getReadUrl(row.outputKey!, { expiresInSec: 3600 }) : null,
+      downloadUrl: ready
+        ? await this.storage.getReadUrl(row.outputKey!, {
+            expiresInSec: 3600,
+            downloadName: `kampora-${(title ?? 'video').replace(/[^\p{L}\p{N}]+/gu, '-')}-${row.quality}.mp4`,
+          })
+        : null,
+    };
+  }
+}

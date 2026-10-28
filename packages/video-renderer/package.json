@@ -1,0 +1,24 @@
+{
+  "name": "@kampora/video-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "studio": "remotion studio src/remotion/index.ts"
+  },
+  "dependencies": {
+    "@kampora/shared": "0.1.0",
+    "@remotion/bundler": "4.0.539",
+    "@remotion/google-fonts": "4.0.539",
+    "@remotion/renderer": "4.0.539",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.539",
+    "@types/react": "^19.2.0"
+  }
+}

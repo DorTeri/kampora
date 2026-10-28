@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/hebrew-voice" },
+    { "path": "packages/cost-engine" },
+    { "path": "packages/storage" },
+    { "path": "packages/media-providers" },
+    { "path": "packages/production-engine" },
+    { "path": "packages/creative-engine" },
+    { "path": "packages/video-renderer" },
+    { "path": "packages/database" }
+  ]
+}

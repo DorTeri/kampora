@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBF5EC"/>
+      <stop offset="1" stop-color="#E8D3B4"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9A6438"/>
+      <stop offset="1" stop-color="#5C3A1F"/>
+    </linearGradient>
+    <linearGradient id="crust" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F2B65E"/>
+      <stop offset="0.6" stop-color="#C7772E"/>
+      <stop offset="1" stop-color="#8A4A18"/>
+    </linearGradient>
+    <radialGradient id="bun" cx="45%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#F7C878"/>
+      <stop offset="1" stop-color="#A3591E"/>
+    </radialGradient>
+    <filter id="shadow"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#wall)"/>
+  <g opacity="0.18" fill="#C8743A">
+    <circle cx="160" cy="260" r="90"/><circle cx="930" cy="420" r="140"/><circle cx="540" cy="140" r="60"/>
+  </g>
+  <rect y="980" width="1080" height="940" fill="url(#wood)"/>
+  <g stroke="#4A2D17" stroke-width="4" opacity="0.35">
+    <path d="M0 1120 C300 1100 700 1150 1080 1110"/><path d="M0 1320 C350 1300 650 1350 1080 1300"/><path d="M0 1560 C320 1540 760 1600 1080 1550"/>
+  </g>
+  <ellipse cx="540" cy="1260" rx="470" ry="150" fill="#000" opacity="0.35" filter="url(#shadow)"/>
+  <ellipse cx="540" cy="1220" rx="460" ry="140" fill="#F4EEE4"/>
+  <ellipse cx="540" cy="1210" rx="400" ry="110" fill="#E6DCCB"/>
+  <!-- croissants -->
+  <g>
+    <path d="M220 1180 C260 1040 480 1020 540 1150 C470 1110 330 1120 260 1210 Z" fill="url(#crust)"/>
+    <path d="M300 1080 C330 1120 340 1160 330 1190 M380 1060 C400 1100 405 1150 395 1180 M455 1065 C470 1100 470 1140 460 1165" stroke="#8A4A18" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <path d="M520 1200 C580 1060 800 1060 850 1190 C780 1150 640 1150 560 1240 Z" fill="url(#crust)"/>
+    <path d="M610 1110 C635 1150 640 1190 630 1215 M690 1095 C705 1140 708 1180 700 1205 M770 1110 C780 1140 780 1170 772 1190" stroke="#8A4A18" stroke-width="10" fill="none" stroke-linecap="round"/>
+  </g>
+  <!-- buns -->
+  <circle cx="380" cy="1250" r="92" fill="url(#bun)"/>
+  <circle cx="690" cy="1262" r="86" fill="url(#bun)"/>
+  <g fill="#FFF8EC" opacity="0.85">
+    <circle cx="360" cy="1225" r="8"/><circle cx="395" cy="1240" r="7"/><circle cx="375" cy="1270" r="6"/><circle cx="410" cy="1215" r="6"/>
+    <circle cx="675" cy="1240" r="8"/><circle cx="705" cy="1255" r="7"/><circle cx="690" cy="1285" r="6"/>
+  </g>
+  <!-- small cup -->
+  <path d="M820 1460 H990 L975 1600 C972 1620 955 1630 935 1630 H875 C855 1630 838 1620 835 1600 Z" fill="#FFFFFF"/>
+  <ellipse cx="905" cy="1460" rx="85" ry="22" fill="#6B3D1E"/>
+  <path d="M990 1490 C1040 1490 1040 1570 985 1575" stroke="#FFFFFF" stroke-width="16" fill="none"/>
+  <g fill="#3B2314">
+    <ellipse cx="160" cy="1560" rx="30" ry="20" transform="rotate(20 160 1560)"/>
+    <ellipse cx="240" cy="1650" rx="30" ry="20" transform="rotate(-30 240 1650)"/>
+  </g>
+</svg>

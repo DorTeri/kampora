@@ -1,0 +1,25 @@
+{
+  "name": "@kampora/database",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "generate": "drizzle-kit generate",
+    "migrate": "node --env-file-if-exists=../../.env dist/cli/migrate.js",
+    "seed": "node --env-file-if-exists=../../.env dist/cli/seed.js"
+  },
+  "dependencies": {
+    "@kampora/cost-engine": "0.1.0",
+    "@kampora/creative-engine": "0.1.0",
+    "@kampora/shared": "0.1.0",
+    "@kampora/storage": "0.1.0",
+    "drizzle-orm": "0.45.4",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0",
+    "drizzle-kit": "0.31.11"
+  }
+}

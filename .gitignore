@@ -1,0 +1,33 @@
+# Dependencies & builds
+node_modules
+dist
+.next
+*.tsbuildinfo
+coverage
+.turbo
+
+# Secrets: never commit real environment files or keys (.env.example is the documented template)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local data, generated media and caches
+.data
+out
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.m4a
+.remotion
+
+# Logs & OS noise
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Local tool settings
+.claude/settings.local.json

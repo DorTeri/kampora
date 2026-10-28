@@ -1,0 +1,6 @@
+dist
+.next
+.data
+node_modules
+packages/database/drizzle
+package-lock.json

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kampora-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "-w", "@kampora/web"],
+      "port": 3000
+    }
+  ]
+}

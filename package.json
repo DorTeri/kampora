@@ -1,0 +1,50 @@
+{
+  "name": "kampora",
+  "private": true,
+  "description": "Kampora — autonomous AI advertising platform (Creative Studio MVP)",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/shared",
+    "packages/hebrew-voice",
+    "packages/cost-engine",
+    "packages/storage",
+    "packages/media-providers",
+    "packages/production-engine",
+    "packages/creative-engine",
+    "packages/video-renderer",
+    "packages/database",
+    "apps/production-worker",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "build:packages": "tsc -b tsconfig.packages.json",
+    "build": "npm run build:packages && npm run build -w @kampora/api -w @kampora/production-worker -w @kampora/web",
+    "typecheck": "tsc -b tsconfig.packages.json && npm run typecheck -w @kampora/api -w @kampora/production-worker -w @kampora/web",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "db:generate": "npm run generate -w @kampora/database",
+    "db:migrate": "npm run migrate -w @kampora/database",
+    "db:seed": "npm run seed -w @kampora/database",
+    "render:demo": "npm run render:demo -w @kampora/production-worker",
+    "dev:api": "npm run dev -w @kampora/api",
+    "dev:worker": "npm run dev -w @kampora/production-worker",
+    "dev:web": "npm run dev -w @kampora/web",
+    "e2e:journey": "node scripts/e2e-journey.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^22.19.0",
+    "drizzle-orm": "^0.45.4",
+    "eslint": "^9.39.0",
+    "prettier": "^3.6.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "3.2.7"
+  }
+}

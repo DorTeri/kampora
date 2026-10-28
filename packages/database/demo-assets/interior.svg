@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A271B"/>
+      <stop offset="1" stop-color="#1E140D"/>
+    </linearGradient>
+    <linearGradient id="window" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE9BE"/>
+      <stop offset="1" stop-color="#F2B866"/>
+    </linearGradient>
+    <radialGradient id="lamp" cx="50%" cy="0%" r="100%">
+      <stop offset="0" stop-color="#FFE3A3" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#FFE3A3" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="counter" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C8743A"/>
+      <stop offset="1" stop-color="#7A4220"/>
+    </linearGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="30"/></filter>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#wall)"/>
+  <rect x="140" y="300" width="800" height="760" rx="24" fill="url(#window)"/>
+  <g stroke="#3A271B" stroke-width="18"><path d="M540 300 V1060"/><path d="M140 680 H940"/></g>
+  <g fill="#E39A4A" opacity="0.5">
+    <rect x="200" y="760" width="120" height="260" rx="12"/><rect x="360" y="820" width="90" height="200" rx="12"/>
+    <rect x="640" y="740" width="150" height="280" rx="12"/><rect x="820" y="860" width="80" height="160" rx="12"/>
+  </g>
+  <rect x="140" y="300" width="800" height="760" rx="24" fill="#FFF4DA" opacity="0.25" filter="url(#blur)"/>
+  <g>
+    <path d="M300 0 V220" stroke="#120B06" stroke-width="6"/><path d="M240 220 H360 L330 290 H270 Z" fill="#1C120B"/>
+    <ellipse cx="300" cy="300" rx="190" ry="380" fill="url(#lamp)"/>
+    <path d="M780 0 V180" stroke="#120B06" stroke-width="6"/><path d="M720 180 H840 L810 250 H750 Z" fill="#1C120B"/>
+    <ellipse cx="780" cy="260" rx="190" ry="380" fill="url(#lamp)"/>
+  </g>
+  <rect x="0" y="1240" width="1080" height="680" fill="url(#counter)"/>
+  <rect x="0" y="1220" width="1080" height="40" fill="#E6A267"/>
+  <g fill="#2B1B12" opacity="0.35"><rect x="80" y="1320" width="260" height="520" rx="14"/><rect x="410" y="1320" width="260" height="520" rx="14"/><rect x="740" y="1320" width="260" height="520" rx="14"/></g>
+  <!-- plants -->
+  <g>
+    <rect x="70" y="1080" width="110" height="140" rx="14" fill="#F4EEE4"/>
+    <path d="M125 1090 C60 1000 40 930 90 900 C110 960 120 1010 125 1090 M125 1090 C160 990 200 950 230 960 C200 1010 160 1050 125 1090 M125 1090 C120 1000 130 930 150 880" stroke="#3E7A4A" stroke-width="14" fill="none" stroke-linecap="round"/>
+    <rect x="900" y="1100" width="100" height="120" rx="14" fill="#F4EEE4"/>
+    <path d="M950 1110 C900 1040 890 990 930 960 M950 1110 C990 1030 1020 1010 1040 1020" stroke="#3E7A4A" stroke-width="14" fill="none" stroke-linecap="round"/>
+  </g>
+  <!-- espresso machine -->
+  <rect x="420" y="1040" width="240" height="180" rx="20" fill="#B9B3AB"/>
+  <rect x="440" y="1060" width="200" height="60" rx="10" fill="#8E877E"/>
+  <circle cx="490" cy="1170" r="16" fill="#2B1B12"/><circle cx="590" cy="1170" r="16" fill="#2B1B12"/>
+</svg>
