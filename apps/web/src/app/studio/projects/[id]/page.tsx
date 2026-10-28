@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { formatIls, storyboardDurationSec } from '@kampora/shared';
+import { formatIls, storyboardDurationSec, timelineApprovalReason } from '@kampora/shared';
 import { Badge, Card, CardTitle, PageHeader } from '@/components/ui';
 import { he } from '@/i18n/he';
 import { ApiRequestError, USD_TO_ILS, api, type ProjectDetail, type VoicesResponse } from '@/lib/api';
@@ -24,11 +24,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const scriptApproved = Boolean(project.scriptApprovedAt);
   const narration = project.narration;
   const narrationReady = narration?.status === 'READY' && !narration.stale;
-  // The current production version already includes this narration?
-  const narrationKey = narration
-    ? `plan-approved:${narration.voiceId}:${narration.segments.map((s) => s.assetId).join(',')}`
-    : '';
-  const needsUpdate = approved && narrationReady && project.versions[0]?.reason !== narrationKey;
+  // Is the current production version built from this narration (and the current timing rules)?
+  const expectedReason = timelineApprovalReason(
+    narration ? `${narration.voiceId}:${narration.segments.map((s) => s.assetId).join(',')}` : null,
+  );
+  const needsUpdate = approved && narrationReady && project.versions[0]?.reason !== expectedReason;
   const narrationBusy = narration?.status === 'QUEUED' || narration?.status === 'RUNNING';
   const currentRenders = project.renders.filter(
     (r) => r.timelineVersionId === project.currentTimelineVersionId,

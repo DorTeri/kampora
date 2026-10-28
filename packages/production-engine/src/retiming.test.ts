@@ -29,15 +29,21 @@ describe('computeSceneTiming', () => {
     expect(t.extended).toBe(true);
   });
 
-  it('keeps longer planned visuals as a natural pause instead of stretching footage', () => {
+  it('keeps at most 0.8 s of extra planned pause after a line (no dead air), without stretching footage', () => {
     const t = computeSceneTiming(6, 2, { fps, isFirst: false, isLast: false });
-    expect(t.durationInFrames).toBe(180);
+    expect(t.durationInFrames).toBe(Math.ceil((0.2 + 2 + 0.4 + 0.8) * fps));
     expect(t.extended).toBe(false);
+    // A short planned pause is kept as is.
+    expect(computeSceneTiming(3, 2, { fps, isFirst: false, isLast: false }).durationInFrames).toBe(90);
   });
 
   it('holds the last scene longer after the final words (CTA breathing room)', () => {
     const last = computeSceneTiming(3, 3, { fps, isFirst: false, isLast: true });
     expect(last.durationInFrames).toBe(Math.ceil((0.2 + 3 + 1.0) * fps));
+  });
+
+  it('keeps the closing CTA on screen at least 4 s even after a short line', () => {
+    expect(computeSceneTiming(5, 1, { fps, isFirst: false, isLast: true }).durationInFrames).toBe(120);
   });
 });
 
@@ -134,5 +140,67 @@ describe('narration-synced VideoProject', () => {
     expect(product!.caption!.cues![0]!.endFrame).toBeLessThanOrEqual(product!.durationInFrames);
     expect(project.audio.music).toMatchObject({ volume: 0.35, duckedVolume: 0.1 });
     expect(project.assets.map((a) => a.id)).toEqual(expect.arrayContaining(['vo-hook', 'vo-cta', 'music']));
+  });
+});
+
+describe('CTA overlay', () => {
+  it('uses the call to action on the button when the scene text is just the address', async () => {
+    const { buildVideoProject } = await import('./timeline');
+    const { DEMO_BUSINESS } = await import('@kampora/creative-engine');
+    const cta = {
+      key: 'cta',
+      order: 0,
+      role: 'CTA' as const,
+      durationSec: 4,
+      visual: 'x',
+      visualKind: 'GRAPHIC' as const,
+      voiceover: 'בואו',
+      onScreenText: 'פלורנטין 12, תל אביב',
+      requiredAssets: [],
+      motion: { preset: 'static' as const },
+      quality: {
+        requiresHumanMotion: false,
+        requiresComplexAction: false,
+        requiresProductAccuracy: false,
+        brandCritical: true,
+      },
+    };
+    const project = buildVideoProject({
+      projectId: 'p',
+      title: 't',
+      business: DEMO_BUSINESS,
+      brief: { cta: 'בואו לנצל את המבצע' } as never,
+      storyboard: {
+        conceptKey: 'c',
+        aspectRatio: '9:16',
+        scenes: [
+          cta,
+          { ...cta, key: 'cta-2', order: 1, onScreenText: 'פתוח כל יום' },
+          { ...cta, key: 'cta-3', order: 2 },
+        ],
+      },
+      plan: {
+        scenes: ['cta', 'cta-2', 'cta-3'].map((k) => ({
+          sceneKey: k,
+          strategy: 'MOTION_GRAPHICS',
+          assetIds: [],
+          generations: [],
+          estimatedCostUsd: 0,
+          reasons: [],
+          warnings: [],
+        })),
+      } as never,
+      assets: [],
+    });
+    expect(project.scenes[0]!.overlays).toContainEqual({
+      type: 'cta',
+      text: 'בואו לנצל את המבצע',
+      subtext: 'פלורנטין 12, תל אביב',
+    });
+    expect(project.scenes[1]!.overlays).toContainEqual({
+      type: 'cta',
+      text: 'פתוח כל יום',
+      subtext: 'פלורנטין 12, תל אביב',
+    });
   });
 });

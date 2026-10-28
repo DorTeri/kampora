@@ -20,6 +20,7 @@ import {
 import { buildVideoProject, planProduction, sceneContentHash } from '@kampora/production-engine';
 import {
   assertProjectTransition,
+  timelineApprovalReason,
   type CampaignRequest,
   type RenderJobPayload,
   type RenderQuality,
@@ -422,7 +423,7 @@ export class StudioService {
     const assetRows = await this.businesses.assets(ctx, project.businessId);
     const music = assetRows.find((a) => a.kind === 'audio' && a.tags.includes('music'));
     const narration = await this.narration.timelineVoiceovers(ctx, project, storyboard!.storyboard);
-    const reason = `plan-approved:${narration?.key ?? 'no-narration'}`;
+    const reason = timelineApprovalReason(narration?.key);
     const [latest] = await this.db
       .select({ reason: timelineVersions.reason })
       .from(timelineVersions)

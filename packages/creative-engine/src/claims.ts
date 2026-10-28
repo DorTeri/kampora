@@ -48,6 +48,20 @@ const OFFER_WORDS: Array<{ re: RegExp; label: string }> = [
   { re: /1\s*\+\s*1|אחד\s+פלוס\s+אחד/, label: '1+1' },
 ];
 
+/**
+ * Numbers spelled out in Hebrew dodge the digit check ("בעשרים ותשעה שקלים") and would also appear as words in
+ * the subtitles. Flag number words next to currency/percent/time words, in compounds ("עשרים ותשעה") and in
+ * teens ("שתים עשרה"). Copy must use digits; the voice engine converts them to speech.
+ */
+const NUMBER_WORD =
+  '(?:אחת|אחד|שתיים|שניים|שתים|שנים|שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה|עשרים|שלושים|ארבעים|חמישים|שישים|שבעים|שמונים|תשעים|מאה|מאתיים|אלף)';
+const SPELLED_NUMBER_RE = new RegExp(
+  `(?<![\\u0590-\\u05FF])[ובלמה]?${NUMBER_WORD}(?=\\s+(?:שקל|שקלים|אגורה|אגורות|אחוז|אחוזים|בבוקר|בערב|בצהריים|עשרה|עשר)(?![\\u0590-\\u05FF])|\\s+ו${NUMBER_WORD}(?![\\u0590-\\u05FF]))`,
+);
+
+/** Labels or stage directions leaking into copy, e.g. "דיבור ומסך: …" or "קריינות: …". */
+const LABEL_PREFIX_RE = /^\s*(?:דיבור|מסך|קריינות|טקסט|כתובית|וויס|VO|Voiceover|Hook)[^:\n]{0,15}:/i;
+
 export interface FactSources {
   /** Free text the business supplied or approved: offer, product names/prices, address, approved claims. */
   allowedText: string[];
@@ -80,6 +94,15 @@ export function checkFacts(texts: readonly string[], sources: FactSources): stri
           `"${label}" is not part of the business's offer. Do not invent discounts or free items.`,
         );
       }
+    }
+    const spelled = text.match(SPELLED_NUMBER_RE);
+    if (spelled) {
+      problems.add(
+        `Write numbers and prices as digits exactly as in the business data, not in words ("${spelled[0]}").`,
+      );
+    }
+    if (LABEL_PREFIX_RE.test(text)) {
+      problems.add(`Remove the label prefix "${text.split(':')[0]}:" and output only the words themselves.`);
     }
     for (const pattern of TESTIMONIAL_PATTERNS) {
       const match = text.match(pattern);

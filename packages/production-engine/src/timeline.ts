@@ -55,11 +55,16 @@ const LEAD_IN_FIRST_SEC = 0.3;
 const LEAD_IN_SEC = 0.2;
 const TAIL_SEC = 0.4;
 const TAIL_LAST_SEC = 1.0;
+/** At most this much planned silence is kept after a line (social-ad pacing, no dead air). */
+const MAX_EXTRA_PAUSE_SEC = 0.8;
+/** The closing CTA (logo, button, address) stays on screen at least this long, even after a short line. */
+const MIN_LAST_SCENE_SEC = 4.0;
 
 /**
- * Scene timing driven by real narration. Speech is never sped up or cut: the scene grows to fit
- * lead-in + speech + tail. When the storyboard scene is longer than the speech, the visuals keep their
- * planned length (a natural pause) — footage is never stretched or time-scaled to force a match.
+ * Scene timing driven by real narration. Speech is never sped up or cut: the scene always fits
+ * lead-in + speech + tail. A planned scene that is longer than its line keeps at most MAX_EXTRA_PAUSE_SEC of
+ * extra pause (beyond that it is dead air on a social ad); the last scene keeps the CTA readable. Footage is
+ * never stretched or time-scaled — scenes only get shorter or longer cuts of the same motion.
  */
 export function computeSceneTiming(
   storyboardSec: number,
@@ -72,7 +77,8 @@ export function computeSceneTiming(
   const leadIn = options.isFirst ? LEAD_IN_FIRST_SEC : LEAD_IN_SEC;
   const tail = options.isLast ? TAIL_LAST_SEC : TAIL_SEC;
   const needed = leadIn + voiceSec + tail;
-  const durationSec = Math.max(storyboardSec, needed);
+  const planned = Math.min(storyboardSec, needed + MAX_EXTRA_PAUSE_SEC);
+  const durationSec = Math.max(planned, needed, options.isLast ? MIN_LAST_SCENE_SEC : 0);
   return {
     durationInFrames: Math.ceil(durationSec * fps),
     voiceStartFrames: Math.round(leadIn * fps),
@@ -113,9 +119,13 @@ function visualFor(scene: StoryboardScene, plan: ProductionPlan['scenes'][number
 function overlaysFor(scene: StoryboardScene, input: BuildVideoProjectInput): Overlay[] {
   const text = scene.onScreenText?.trim();
   if (scene.role === 'CTA') {
+    // The button carries the call to action; the address goes underneath — never the same text twice.
+    const address = input.business.address?.trim();
+    const textIsAddress = Boolean(text && address && (address.includes(text) || text.includes(address)));
+    const buttonText = text && !textIsAddress ? text : input.brief.cta;
     return [
       { type: 'logo', assetId: input.logoAssetId },
-      { type: 'cta', text: text || input.brief.cta, subtext: input.business.address },
+      { type: 'cta', text: buttonText, subtext: address && address !== buttonText ? address : undefined },
     ];
   }
   if (!text) return [];

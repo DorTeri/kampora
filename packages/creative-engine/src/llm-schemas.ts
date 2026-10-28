@@ -11,8 +11,10 @@ export const ConceptLlmSchema = z.object({
   title: z.string().describe('Short Hebrew concept title'),
   angle: ConceptAngleSchema,
   audience: z.string().describe('Who exactly this concept speaks to'),
-  hook: z.string().describe('First 2 seconds: spoken + on-screen hook, Hebrew'),
-  script: z.string().describe('Complete Hebrew voiceover script, spoken style'),
+  hook: z.string().describe('The opening spoken line (max ~8 words), plain Hebrew, no labels or prefixes'),
+  script: z
+    .string()
+    .describe('Complete Hebrew voiceover exactly as it appears in subtitles; numbers and prices as digits'),
   mainMessage: z.string(),
   visualDirection: z.string(),
   cta: z.string(),
@@ -34,7 +36,9 @@ export const SceneLlmSchema = z.object({
   durationSec: z.number().min(2).max(10),
   visual: z.string().describe('What the viewer sees (Hebrew)'),
   visualKind: z.enum(['PHOTO', 'FOOTAGE', 'GRAPHIC']),
-  voiceover: z.string().describe('The part of the script spoken in this scene (Hebrew)'),
+  voiceover: z
+    .string()
+    .describe('The line spoken in this scene, exactly as subtitled; numbers/prices as digits (e.g. 29.90 ₪)'),
   onScreenText: z.string().nullable().describe('Max ~6 words, or null'),
   assetTags: z.array(z.string()).describe('Tags chosen ONLY from availableTags'),
   motionPreset: MotionPresetSchema,

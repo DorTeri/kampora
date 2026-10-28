@@ -294,8 +294,15 @@ export function AnimatedCaption({
           boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
         }}
       >
-        {active.text}
+        {keepPricesTogether(active.text)}
       </p>
     </AbsoluteFill>
   );
+}
+
+const NBSP = String.fromCharCode(0xa0);
+
+/** Line wrapping must never separate an amount from its currency sign ("29.90" | "₪"). */
+export function keepPricesTogether(text: string): string {
+  return text.replace(/(\d)\s+₪/g, `$1${NBSP}₪`).replace(/₪\s+(\d)/g, `₪${NBSP}$1`);
 }

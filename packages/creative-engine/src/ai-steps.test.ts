@@ -178,6 +178,22 @@ describe('fact grounding', () => {
     expect(problems.join(' ')).toMatch(/הנחה/);
     expect(problems.join(' ')).toMatch(/חינם/);
   });
+  it('requires digits: spelled-out prices, times and address numbers are rejected (they also dodge the check)', () => {
+    for (const text of [
+      'קפה ומאפה בעשרים ותשעה שקלים ותשעים אגורות',
+      'בעשרה שקלים בלבד',
+      'פתוחים משבע בבוקר',
+      'פלורנטין שתים עשרה',
+    ]) {
+      expect(checkFacts([text], sources).join(' '), text).toMatch(/digits/);
+    }
+    // Ordinary words that are also number words are fine.
+    expect(checkFacts(['אף אחד לא מתחיל את הבוקר בלי קפה'], sources)).toEqual([]);
+  });
+  it('rejects label prefixes leaking into copy', () => {
+    expect(checkFacts(['דיבור ומסך: קפה ומאפה בדרך לעבודה?'], sources).join(' ')).toMatch(/label prefix/);
+    expect(checkFacts(['קפה ומאפה בדרך לעבודה?'], sources)).toEqual([]);
+  });
 });
 
 describe('budget guard around paid LLM calls', () => {

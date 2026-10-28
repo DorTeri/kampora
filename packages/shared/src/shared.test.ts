@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunkCaption, stripNiqqud } from './text';
+import { chunkCaption, splitCaptionChunks, stripNiqqud } from './text';
 import { assertProjectTransition, canTransitionProject } from './workflow';
 import { ConceptSetSchema } from './campaign';
 
@@ -17,6 +17,14 @@ describe('chunkCaption', () => {
     const chunks = chunkCaption('עכשיו קפה ומאפה ב-29.90 ₪ – עד סוף החודש', 150);
     expect(chunks.some((c) => c.text.includes('29.90 ₪'))).toBe(true);
     expect(chunks.every((c) => !/^[-–—]/.test(c.text))).toBe(true);
+  });
+
+  it('keeps a "X + Y" bundle (and its price) in one chunk', () => {
+    const chunks = splitCaptionChunks('ב-Luz יש קפה + מאפה ב-29.90 ₪ עד סוף החודש.');
+    expect(chunks.join(' ')).toBe('ב-Luz יש קפה + מאפה ב-29.90 ₪ עד סוף החודש.');
+    expect(chunks.some((c) => c.includes('קפה + מאפה'))).toBe(true);
+    expect(chunks.some((c) => c.includes('29.90 ₪'))).toBe(true);
+    expect(chunks.every((c) => !c.endsWith('+') && !c.startsWith('+'))).toBe(true);
   });
 
   it('strips niqqud from subtitles and returns nothing for empty text', () => {

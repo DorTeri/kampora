@@ -30,6 +30,8 @@ export function splitCaptionChunks(text: string, maxWordsPerChunk = 4): string[]
   const words = clean
     .replace(/(\d)\s+₪/g, '$1\u00A0₪')
     .replace(/₪\s+(\d)/g, '₪\u00A0$1')
+    // Keep a bundle like "קפה + מאפה" together as well.
+    .replace(/(\S)\s+\+\s+(\S)/g, '$1\u00A0+\u00A0$2')
     .split(' ');
 
   const chunks: string[] = [];
