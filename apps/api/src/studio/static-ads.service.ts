@@ -10,11 +10,18 @@ import {
   videoProjects,
   type Database,
 } from '@kampora/database';
-import { StaticAdEditError, applyStaticAdEdit, buildStaticAd, staticAdQa } from '@kampora/production-engine';
+import {
+  StaticAdEditError,
+  applyStaticAdEdit,
+  buildStaticAd,
+  staticAdQa,
+  type BackgroundCandidate,
+} from '@kampora/production-engine';
 import {
   STATIC_AD_FORMATS,
   STATIC_AD_JOB_NAME,
   StaticAdSchema,
+  mediaAuthenticity,
   type MediaAsset,
   type StaticAd,
   type StaticAdEdit,
@@ -75,6 +82,30 @@ export class StaticAdsService {
       ...brand.filter((a) => brandRows.find((r) => r.id === a.id)?.kind === 'image'),
       ...approved.map((i) => i.media),
     ].filter((a) => a.kind === 'image' && a.provenance.commercialUse);
+    // What each picture shows and how authentic it is: the ranking's input. Uploads are described by their owner
+    // (description and tags); AI images by what they were planned to show. No image recognition is involved.
+    const candidates: BackgroundCandidate[] = pictures.map((asset) => {
+      const ai = approved.find((i) => i.assetId === asset.id);
+      if (ai)
+        return {
+          asset,
+          content: ai.plannedContent,
+          authenticity: ai.authenticity,
+          composition: ai.composition,
+          campaignImage: true,
+        };
+      const row = brandRows.find((r) => r.id === asset.id)!;
+      return {
+        asset,
+        content: [row.description, ...row.tags].join(' '),
+        authenticity: mediaAuthenticity({
+          source: row.provenance.source,
+          mimeType: row.mimeType,
+          tags: row.tags,
+          description: row.description,
+        }),
+      };
+    });
     return {
       project,
       storyboard: storyboard!.storyboard,
@@ -83,6 +114,7 @@ export class StaticAdsService {
       brand,
       approved,
       pictures,
+      candidates,
     };
   }
 
@@ -112,6 +144,7 @@ export class StaticAdsService {
       height: ad.height,
       text: ad.text,
       backgroundAssetId: ad.background.assetId ?? null,
+      backgroundSelection: ad.background.selection ?? null,
       qa: staticAdQa(ad),
       pngUrl: await this.url(row.pngKey),
       jpegUrl: await this.url(row.jpegKey),
@@ -142,6 +175,7 @@ export class StaticAdsService {
         c.pictures.map(async (p) => ({
           assetId: p.id,
           source: c.approved.some((i) => i.assetId === p.id) ? ('AI' as const) : ('BUSINESS' as const),
+          authenticity: c.candidates.find((x) => x.asset.id === p.id)!.authenticity,
           url: await this.storage.getReadUrl(p.storageKey, { expiresInSec: 3600 }),
         })),
       ),
@@ -155,7 +189,11 @@ export class StaticAdsService {
       throw new ApiError(HttpStatus.CONFLICT, 'SCRIPT_NOT_APPROVED', 'Approve the script first');
     if (!c.project.plan) throw new ApiError(HttpStatus.CONFLICT, 'PLAN_NOT_READY', 'The plan is not ready');
     const approvedImages = Object.fromEntries(c.approved.map((i) => [i.sceneKey, i.assetId]));
+    const rows = await this.rows(ctx, projectId);
     for (const format of [...new Set(formats)]) {
+      // A background the owner picked survives the rebuild (the builder drops it if the picture is gone).
+      const latest = rows.filter((r) => r.format === format).at(-1);
+      const previous = latest ? StaticAdSchema.parse(latest.ad).background : undefined;
       const ad = buildStaticAd({
         id: `${projectId}:${format}`,
         format,
@@ -165,6 +203,9 @@ export class StaticAdsService {
         plan: c.project.plan,
         assets: [...c.brand, ...c.approved.map((i) => i.media)],
         approvedImages,
+        candidates: c.candidates,
+        ownerBackground:
+          previous?.selection?.chosenBy === 'OWNER' ? { assetId: previous.assetId } : undefined,
       });
       await this.saveVersion(ctx, projectId, ad);
     }
@@ -187,7 +228,7 @@ export class StaticAdsService {
     const c = await this.context(ctx, projectId);
     let next: StaticAd;
     try {
-      next = applyStaticAdEdit(StaticAdSchema.parse(row.ad), edit, c.pictures);
+      next = applyStaticAdEdit(StaticAdSchema.parse(row.ad), edit, c.pictures, c.candidates);
     } catch (error) {
       if (error instanceof StaticAdEditError)
         throw new ApiError(HttpStatus.BAD_REQUEST, 'INVALID_EDIT', error.message);

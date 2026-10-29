@@ -11,6 +11,18 @@ const t = he.staticAds;
 const busyStatus = (ad: StaticAdDto) => ad.status === 'QUEUED' || ad.status === 'RUNNING';
 const kb = (bytes: number | null) => (bytes ? `${Math.round(bytes / 1024).toLocaleString('he-IL')} KB` : '');
 
+/** The few reasons that decided the background: the strongest points for it, and anything against it. */
+function backgroundReasons(selection: NonNullable<StaticAdDto['backgroundSelection']>): string[] {
+  const label = (r: (typeof selection.reasons)[number]) =>
+    t.reasons[r.code]?.((r.subjects ?? []).join(', ')) ?? r.detail;
+  const forIt = selection.reasons
+    .filter((r) => r.points > 0 && r.code !== 'CROP_FIT')
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 3);
+  const against = selection.reasons.filter((r) => r.points < 0 || r.code === 'OFFER_SUBJECTS_MISSING');
+  return [...forIt, ...against].map(label);
+}
+
 /** Every response signs fresh URLs; a version that was already shown keeps its URLs, so its image does not reload. */
 function keepUrls(prev: StaticAdsResponse, next: StaticAdsResponse): StaticAdsResponse {
   return {
@@ -149,6 +161,24 @@ function StaticAdCard({
           </div>
         )}
       </div>
+
+      {ad.backgroundSelection && ad.backgroundAssetId && (
+        <div className="space-y-0.5 text-xs text-muted">
+          <p>
+            <span className="font-semibold text-ink">
+              {ad.backgroundSelection.chosenBy === 'OWNER' ? t.background.owner : t.background.auto}
+            </span>
+            {ad.backgroundSelection.authenticity && (
+              <> · {he.authenticity[ad.backgroundSelection.authenticity]}</>
+            )}
+          </p>
+          {ad.backgroundSelection.chosenBy === 'AUTO' && (
+            <p>
+              {t.background.because} {backgroundReasons(ad.backgroundSelection).join(' · ')}
+            </p>
+          )}
+        </div>
+      )}
 
       {ad.qa.length > 0 && (
         <ul className="space-y-1">
@@ -305,7 +335,7 @@ function StaticAdEditForm({
               key={p.assetId}
               type="button"
               aria-pressed={background === p.assetId}
-              title={t.pictureSource[p.source]}
+              title={he.authenticity[p.authenticity] ?? t.pictureSource[p.source]}
               onClick={() => setBackground(p.assetId)}
               className={cn(
                 'relative size-16 overflow-hidden rounded-xl border',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MediaAuthenticitySchema } from './authenticity';
 import { BrandColorsSchema, LocaleSchema } from './common';
 import { MediaAssetSchema, SafeAreaSchema, type SafeArea } from './video-project';
 
@@ -153,6 +154,54 @@ export const StaticAdTextSchema = z.object({
 });
 export type StaticAdText = z.infer<typeof StaticAdTextSchema>;
 
+/** One explainable factor in choosing an ad's background picture. Points are summed; the highest total wins. */
+export const BackgroundReasonSchema = z.object({
+  code: z.enum([
+    /** Shows the products the ad offers (all or some of them). */
+    'OFFER_SUBJECTS',
+    /** Shows none of the products the ad offers. */
+    'OFFER_SUBJECTS_MISSING',
+    /** Its kind of picture (product, place, people) fits the campaign goal. */
+    'OBJECTIVE_FIT',
+    /** Planned with calm areas where the text goes. */
+    'TEXT_ROOM',
+    /** Many items: busy behind text. */
+    'BUSY_PICTURE',
+    /** How much of the picture survives the crop to this format. */
+    'CROP_FIT',
+    'LOW_RESOLUTION',
+    /** Made with this campaign's shared look. */
+    'CAMPAIGN_LOOK',
+    /** The business's own photo. */
+    'OWN_PHOTO',
+    /** The business's own photo of the real product. */
+    'REAL_PRODUCT',
+    /** AI image guided by the business's own product photos. */
+    'REFERENCE_GUIDED',
+    /** A generated picture of a place: not the business's real venue. */
+    'SYNTHETIC_PLACE',
+    /** A drawing, not a photograph. */
+    'ILLUSTRATION',
+    /** Chosen by the owner; kept when the ad is rebuilt. */
+    'OWNER_CHOICE',
+  ]),
+  points: z.number(),
+  detail: z.string(),
+  /** OFFER_SUBJECTS / OFFER_SUBJECTS_MISSING: which offered products are (not) shown. */
+  subjects: z.array(z.string()).optional(),
+});
+export type BackgroundReason = z.infer<typeof BackgroundReasonSchema>;
+
+/** Why the background is what it is. Absent on ads built before backgrounds were ranked. */
+export const BackgroundSelectionSchema = z.object({
+  /** OWNER: picked in the editor; a rebuild keeps it. AUTO: ranked by Kampora. */
+  chosenBy: z.enum(['AUTO', 'OWNER']),
+  authenticity: MediaAuthenticitySchema.optional(),
+  score: z.number().optional(),
+  reasons: z.array(BackgroundReasonSchema).max(16).default([]),
+});
+export type BackgroundSelection = z.infer<typeof BackgroundSelectionSchema>;
+
 /**
  * Editable representation of one static ad. Layout comes from fixed per-format templates and the safe area, so an
  * edit can change words, the background photo and its focal point, but never push text out of the safe area.
@@ -177,6 +226,7 @@ export const StaticAdSchema = z
       /** No image: a brand-colored background. */
       assetId: z.string().optional(),
       focalPoint: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+      selection: BackgroundSelectionSchema.optional(),
     }),
     text: StaticAdTextSchema,
     assets: z.array(MediaAssetSchema),

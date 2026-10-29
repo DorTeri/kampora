@@ -184,6 +184,23 @@ export const he = {
     failed: 'ההפקה לא הצליחה. אפשר לנסות שוב – לא תחויבו על ניסיון חוזר.',
     audioNote: 'הסרטון כולל את הקריינות שהקלטתם, כתוביות מסונכרנות לדיבור ומוזיקת רקע שמתעמעמת בזמן הדיבור.',
   },
+  /** How far a picture shows the real business (never present AI as the real product or place). */
+  authenticity: {
+    VERIFIED_PRODUCT_PHOTO: 'צילום המוצר שלכם',
+    VERIFIED_BUSINESS_PHOTO: 'צילום שלכם',
+    REFERENCE_GUIDED_AI: 'AI לפי צילומי המוצר שלכם – לא צילום אמיתי',
+    SYNTHETIC_AI: 'AI – המחשה כללית, לא המוצר או המקום האמיתיים',
+    GENERIC_STOCK: 'תמונה כללית, לא של העסק',
+    ILLUSTRATION: 'איור, לא צילום',
+  } as Record<string, string>,
+  composition: {
+    SINGLE_HERO: 'מוצר במרכז',
+    ASSORTMENT: 'מגוון מוצרים',
+    LIFESTYLE: 'אנשים עם המוצר',
+    DETAIL: 'פרט מקרוב',
+    ENVIRONMENT: 'המקום עצמו',
+    DEMONSTRATION: 'הכנה או שימוש',
+  } as Record<string, string>,
   images: {
     title: 'תמונה לסצנה',
     hint: 'תמונה שנוצרת במיוחד לסצנה – בלי טקסט. הכיתובים מתווספים בנפרד.',
@@ -205,6 +222,15 @@ export const he = {
     reused: 'שימוש חוזר בתמונה קיימת – ללא עלות נוספת',
     usesPhotos: (n: number) => `מבוססת על ${n === 1 ? 'תמונת מוצר אחת' : `${n} תמונות מוצר`} שלכם`,
     needed: 'הסצנה הזו צריכה תמונה – צרו ואשרו אחת.',
+    mustShow: (kind: string, subjects: string) => `בתמונה: ${kind}${subjects ? ` – ${subjects}` : ''}`,
+    conflicts: {
+      SHOT_TOO_TIGHT: 'הצילום שהתבקש צמוד מדי למה שהסצנה צריכה להראות – נצלם רחב יותר.',
+      SHOT_TOO_WIDE: 'הצילום שהתבקש רחב מדי לפרט – נצלם קרוב יותר.',
+      LENS_CONTRADICTS_FRAMING: 'עדשת המאקרו של הקמפיין לא מתאימה לסצנה – נשמור על התאורה ונחליף עדשה.',
+      TEXT_IN_PICTURE: 'לוגו, שלט או כתובת יתווספו ככיתוב נפרד – לא בתוך התמונה.',
+      PRODUCT_ACCURACY_WITHOUT_REFERENCE:
+        'אין צילום של המוצר האמיתי – התמונה תהיה המחשה כללית. העלו צילום מוצר לתוצאה נאמנה.',
+    } as Record<string, string>,
     motionQuote: (price: string) =>
       `תנועה אמיתית בסצנה הזו (אנשים או פעולה שזזים) דורשת וידאו AI – בערך ${price}. האפשרות עוד לא זמינה, ולכן נשתמש בתנועת מצלמה עדינה על התמונה.`,
   },
@@ -243,6 +269,27 @@ export const he = {
     optional: 'אפשר להשאיר ריק',
     brandColor: 'צבע המותג',
     pictureSource: { AI: 'תמונת AI', BUSINESS: 'התמונה שלכם' } as Record<string, string>,
+    background: {
+      auto: 'הרקע נבחר אוטומטית',
+      owner: 'הרקע שבחרתם – יישמר גם בבנייה מחדש',
+      because: 'כי:',
+    },
+    reasons: {
+      OFFER_SUBJECTS: (s: string) => `מציג ${s}`,
+      OFFER_SUBJECTS_MISSING: (s: string) => `לא מציג ${s}`,
+      OBJECTIVE_FIT: () => 'מתאים למטרת הקמפיין',
+      TEXT_ROOM: () => 'יש מקום שקט לטקסט',
+      BUSY_PICTURE: () => 'תמונה עמוסה מאחורי הטקסט',
+      CROP_FIT: () => 'נשמר היטב בחיתוך לפורמט',
+      LOW_RESOLUTION: () => 'רזולוציה נמוכה לפורמט',
+      CAMPAIGN_LOOK: () => 'תואם למראה הקמפיין',
+      OWN_PHOTO: () => 'צילום שלכם',
+      REAL_PRODUCT: () => 'צילום המוצר האמיתי שלכם',
+      REFERENCE_GUIDED: () => 'AI לפי צילומי המוצר שלכם',
+      SYNTHETIC_PLACE: () => 'מקום שנוצר ב-AI, לא העסק האמיתי',
+      ILLUSTRATION: () => 'איור ולא צילום',
+      OWNER_CHOICE: () => 'בחירה שלכם',
+    } as Record<string, (subjects: string) => string>,
     qa: {
       LONG_HEADLINE: 'הכותרת ארוכה – כותרת קצרה נקראת טוב יותר בגלילה.',
       LONG_SUBHEADLINE: 'כותרת המשנה ארוכה לפורמט הזה.',
@@ -250,6 +297,10 @@ export const he = {
       NO_PHOTO: 'אין תמונה ברקע – רק צבע המותג.',
       LOW_RESOLUTION_PHOTO: 'התמונה ברקע קטנה לפורמט ועלולה להיראות מטושטשת.',
       REPEATED_TEXT: 'אותו טקסט מופיע פעמיים.',
+      SYNTHETIC_PICTURE:
+        'תמונת AI – המחשה כללית, לא המוצר או המקום האמיתיים שלכם. לפרסום נאמן החליפו בצילום שלכם.',
+      REFERENCE_GUIDED_PICTURE: 'תמונת AI שנוצרה לפי צילומי המוצר שלכם – קרובה למוצר, אבל לא צילום שלו.',
+      ILLUSTRATED_PICTURE: 'ברקע איור, לא צילום.',
     } as Record<string, string>,
   },
   voice: {

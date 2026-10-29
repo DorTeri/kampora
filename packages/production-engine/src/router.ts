@@ -1,3 +1,4 @@
+import { mediaAuthenticity, representsRealBusiness } from '@kampora/shared';
 import type {
   AvailableAsset,
   PlannedGeneration,
@@ -93,11 +94,22 @@ export function routeScene(
   assets: readonly AvailableAsset[],
   ctx: RouterContext,
 ): ScenePlan {
-  const approved = ctx.approvedImageId
-    ? assets.find((a) => a.id === ctx.approvedImageId && a.kind === 'image')
-    : undefined;
-  const matched = { ...matchAssets(scene, assets), ...(approved ? { image: approved } : {}) };
   const reasons: string[] = [];
+  const own = matchAssets(scene, assets);
+  // When the real product must appear, the business's own photo of it beats any generated stand-in.
+  const ownPhotoFirst =
+    scene.quality.requiresProductAccuracy &&
+    own.image &&
+    representsRealBusiness(mediaAuthenticity(own.image));
+  const approved =
+    ctx.approvedImageId && !ownPhotoFirst
+      ? assets.find((a) => a.id === ctx.approvedImageId && a.kind === 'image')
+      : undefined;
+  if (ownPhotoFirst && ctx.approvedImageId)
+    reasons.push(
+      `The business's own photo "${own.image!.id}" shows the real product, so it is used instead of the approved AI image.`,
+    );
+  const matched = { ...own, ...(approved ? { image: approved } : {}) };
   const warnings: string[] = [];
   const needsRealMotion = scene.quality.requiresHumanMotion || scene.quality.requiresComplexAction;
   const canGenerate = ctx.qualityTier !== 'draft';

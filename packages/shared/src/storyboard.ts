@@ -72,6 +72,41 @@ export const ShotTypeSchema = z.enum([
 ]);
 export type ShotType = z.infer<typeof ShotTypeSchema>;
 
+/**
+ * What the picture must contain, as opposed to how the camera frames it. When the two disagree (an assortment
+ * asked for as a macro detail shot), the composition wins: it is what the scene is for.
+ */
+export const CompositionTypeSchema = z.enum([
+  /** One product (or one pairing, e.g. coffee and pastry) as the hero. */
+  'SINGLE_HERO',
+  /** Several products together: a spread, a selection, a tray. */
+  'ASSORTMENT',
+  /** People using or enjoying the product in a real moment. */
+  'LIFESTYLE',
+  /** One meaningful detail of the product: texture, a cut, a pour. */
+  'DETAIL',
+  /** The place itself: storefront, interior, atmosphere. */
+  'ENVIRONMENT',
+  /** The product being made, prepared or used, step visible. */
+  'DEMONSTRATION',
+]);
+export type CompositionType = z.infer<typeof CompositionTypeSchema>;
+
+/** Something that must be visible in the picture, with an approximate count. */
+export const SceneSubjectSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  /** Approximate number visible (1 = exactly one); absent = any. */
+  quantity: z.number().int().min(1).max(24).optional(),
+});
+export type SceneSubject = z.infer<typeof SceneSubjectSchema>;
+
+export const SceneCompositionSchema = z.object({
+  type: CompositionTypeSchema,
+  /** Required subjects, most important first. */
+  subjects: z.array(SceneSubjectSchema).max(6).default([]),
+});
+export type SceneComposition = z.infer<typeof SceneCompositionSchema>;
+
 /** Editor guidance for one scene (Phase 3 storyboards; older ones have none). */
 export const SceneDirectionSchema = z.object({
   /** What this scene must achieve for the viewer, in one sentence. */
@@ -79,6 +114,8 @@ export const SceneDirectionSchema = z.object({
   shot: ShotTypeSchema,
   /** Practical note for the editor (pacing, cut, what to emphasize), or empty. */
   editorNote: z.string().optional(),
+  /** What the picture must contain. Older storyboards have none; it is then inferred from the visual. */
+  composition: SceneCompositionSchema.optional(),
 });
 export type SceneDirection = z.infer<typeof SceneDirectionSchema>;
 

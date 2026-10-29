@@ -12,6 +12,7 @@ The customer describes a **business goal**; Kampora handles the strategy, creati
 3. **Cost per accepted asset.** We reuse existing media and prefer programmatic motion. Paid generation is the last resort.
 4. **The VideoProject is the source of truth.** An MP4 is just a rendered output of it.
 5. **Explicit approval.** Nothing paid runs without an approved estimate (enforced in the MVP).
+6. **Honest media.** Only the business's own photos represent its real products and premises. AI images are labelled as AI (guided by the owner's product photos, or a generic stand-in) and are never presented as the real thing. When the real product must appear, the owner's own photo wins over a generated one.
 
 ## MVP — Creative Studio
 
@@ -40,6 +41,10 @@ The customer describes a **business goal**; Kampora handles the strategy, creati
 6. **הסרטונים שלי** — watch, download and, later, revise.
 
 Customers never see FFmpeg, queues, models or routing. Those belong in internal admin and observability.
+
+## Future: the Campaign Director
+
+The long-term interface is a persistent, Hebrew-speaking Campaign Director: the owner talks to it instead of filling forms, and it remembers the business, plans and produces campaigns, explains its choices and later runs recurring work in the business's timezone. It orchestrates the same typed services the studio uses and cannot bypass budget, approval or publishing controls. It is **not built yet**; see [CAMPAIGN_DIRECTOR_ROADMAP.md](CAMPAIGN_DIRECTOR_ROADMAP.md).
 
 ## Out of scope for the MVP
 

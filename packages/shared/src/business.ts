@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BrandColorsSchema, FieldSourceSchema, MoneySchema, PronunciationEntrySchema } from './common';
+import { AssetSourceSchema } from './video-project';
 
 export const ToneOfVoiceSchema = z.enum([
   'friendly',
@@ -50,6 +51,8 @@ export const AvailableAssetSchema = z.object({
   durationSec: z.number().positive().optional(),
   /** File type, when known; decides whether an image can be sent to an image provider as a reference. */
   mimeType: z.string().optional(),
+  /** Where the file came from; decides whether it may stand for the real product (see mediaAuthenticity). */
+  source: AssetSourceSchema.optional(),
   commercialUse: z.boolean(),
 });
 export type AvailableAsset = z.infer<typeof AvailableAssetSchema>;

@@ -186,6 +186,32 @@ describe('routeScene with an approved AI image', () => {
     expect(plan.generations[0]!.paid).toBe(false);
   });
 
+  it('when the real product must appear, the business own product photo wins over an approved AI image', () => {
+    const photo: AvailableAsset = {
+      id: 'photo-1',
+      kind: 'image',
+      description: 'coffee',
+      tags: ['coffee'],
+      mimeType: 'image/jpeg',
+      source: 'CUSTOMER_UPLOAD',
+      commercialUse: true,
+    };
+    const accurate = scene({ quality: { ...scene().quality, requiresProductAccuracy: true } });
+    const plan = routeScene(accurate, [photo, approved], { ...ctx, approvedImageId: 'ai-1' });
+    expect(plan.strategy).toBe('EXISTING_IMAGE_MOTION');
+    expect(plan.assetIds).toEqual(['photo-1']);
+    expect(plan.reasons.join(' ')).toMatch(/real product/);
+    // Where fidelity does not matter the owner's choice of the AI image stands.
+    expect(routeScene(scene(), [photo, approved], { ...ctx, approvedImageId: 'ai-1' }).assetIds).toEqual([
+      'ai-1',
+    ]);
+    // An illustration is not a product photo, so it never displaces the approved image.
+    const svg = { ...photo, id: 'svg', mimeType: 'image/svg+xml' };
+    expect(routeScene(accurate, [svg, approved], { ...ctx, approvedImageId: 'ai-1' }).assetIds).toEqual([
+      'ai-1',
+    ]);
+  });
+
   it('parallax scenes keep layered parallax with the approved image', () => {
     const plan = routeScene(scene({ motion: { preset: 'parallax' } }), [approved], {
       ...ctx,

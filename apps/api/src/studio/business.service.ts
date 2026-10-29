@@ -125,6 +125,7 @@ export function toAvailableAssets(rows: BrandAssetRow[]): AvailableAsset[] {
     height: a.height ?? undefined,
     durationSec: a.durationSec ?? undefined,
     mimeType: a.mimeType,
+    source: a.provenance.source,
     commercialUse: a.provenance.commercialUse,
   }));
 }

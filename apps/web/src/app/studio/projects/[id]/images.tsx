@@ -148,6 +148,9 @@ export function SceneImagePanel({
                   )}
                 </div>
               )}
+              {v.status === 'SUCCEEDED' && (
+                <p className="text-[11px] leading-tight text-muted">{he.authenticity[v.authenticity]}</p>
+              )}
               {v.cached && <p className="text-[11px] leading-tight text-muted">{he.images.reused}</p>}
             </li>
           ))}
@@ -166,6 +169,25 @@ export function SceneImagePanel({
 
       {!busy && (
         <div className="space-y-2 text-sm">
+          {quote.composition && (
+            <p className="text-muted">
+              {he.images.mustShow(
+                he.composition[quote.composition.type] ?? quote.composition.type,
+                quote.composition.subjects
+                  .map((s) => (s.quantity ? `${s.name} (${s.quantity})` : s.name))
+                  .join(', '),
+              )}
+            </p>
+          )}
+          {quote.conflicts.length > 0 && (
+            <ul className="space-y-1">
+              {quote.conflicts.map((c) => (
+                <li key={c.code} className="rounded-lg bg-ink/[0.04] px-2.5 py-1.5 text-xs text-muted">
+                  {he.images.conflicts[c.code] ?? c.resolution}
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="text-muted">
             {he.images.cost(quote.paid ? formatIls(quote.estimatedUsd * usdToIls) : he.images.free)}
             {quote.referenceCount > 0 && <> · {he.images.usesPhotos(quote.referenceCount)}</>}

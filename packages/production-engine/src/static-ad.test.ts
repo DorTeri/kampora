@@ -19,6 +19,7 @@ import {
 } from '@kampora/creative-engine';
 import { planProduction } from './planner';
 import { StaticAdEditError, applyStaticAdEdit, buildStaticAd, staticAdQa } from './static-ad';
+import { offerSubjects, rankBackgrounds } from './static-ad-background';
 
 const catalog = new PriceCatalog(DEFAULT_PRICE_CATALOG);
 const demoAssets: AvailableAsset[] = [
@@ -105,11 +106,15 @@ describe('buildStaticAd', () => {
     expect(ad.assets.map((a) => a.id)).toEqual([ad.background.assetId]);
   });
 
-  it('prefers an approved AI image, then the photo the plan uses', () => {
-    const product = storyboard.scenes.find((s) => s.role === 'PRODUCT')!;
-    expect(build({ approvedImages: { [product.key]: 'ai-1' } }).background.assetId).toBe('ai-1');
-    const planned = plan.scenes.find((s) => s.sceneKey === product.key)!.assetIds[0];
-    expect(build().background.assetId).toBe(planned);
+  it('ranks the approved AI images and the planned photos, and records why the winner won', () => {
+    const ad = build();
+    const used = plan.scenes.flatMap((s) => s.assetIds);
+    expect(used).toContain(ad.background.assetId);
+    expect(ad.background.selection?.chosenBy).toBe('AUTO');
+    expect(ad.background.selection?.reasons.length).toBeGreaterThan(0);
+    expect(ad.background.selection?.score).toBe(
+      ad.background.selection?.reasons.reduce((s, r) => s + r.points, 0),
+    );
   });
 
   it('never uses a picture without commercial rights; falls back to brand color', () => {
@@ -136,6 +141,165 @@ describe('buildStaticAd', () => {
   });
 });
 
+describe('background ranking', () => {
+  const photo = (
+    id: string,
+    width = 1024,
+    height = 1536,
+    source: MediaAsset['provenance']['source'] = 'AI_GENERATED',
+  ) => media(id, { width, height, provenance: { source, license: 'x', commercialUse: true } });
+  // The V1 situation: a coffee + pastry offer; one image shows both, one shows a pastry only, one the storefront.
+  const v1 = [
+    {
+      asset: photo('hook'),
+      content: 'קלוז-אפ קולנועי על קפה ומאפה, אור בוקר חם',
+      authenticity: 'SYNTHETIC_AI' as const,
+      campaignImage: true,
+    },
+    {
+      asset: photo('babka'),
+      content: 'פריסת מוצרים טריים על הדלפק · באבקה',
+      authenticity: 'SYNTHETIC_AI' as const,
+      campaignImage: true,
+    },
+    {
+      asset: photo('store'),
+      content: 'חזית/פנים העסק עם לוגו וכתובת',
+      authenticity: 'SYNTHETIC_AI' as const,
+      campaignImage: true,
+    },
+  ];
+  const offer = {
+    goal: 'OFFER' as const,
+    offer: 'קפה + מאפה ב-29.90 ₪ עד סוף החודש',
+    productName: 'קפה ומאפה',
+  };
+  const products = [{ name: 'קפה' }, { name: 'מאפים' }];
+
+  it('the products on offer come from the brief, matched to the business products', () => {
+    expect(offerSubjects(offer, products)).toEqual(['קפה', 'מאפים']);
+    expect(offerSubjects({ productName: 'זר ורדים + אגרטל' }, [])).toEqual(['זר ורדים', 'אגרטל']);
+  });
+
+  it('a coffee + pastry offer prefers the picture that shows both, in every format (regression: V1)', () => {
+    for (const format of ['1:1', '4:5', '9:16'] as const) {
+      const ranked = rankBackgrounds({ format, brief: offer, business: { products }, candidates: v1 });
+      expect(ranked.map((r) => r.assetId)).toEqual(['hook', 'babka', 'store']);
+      const reasons = ranked[0]!.reasons.map((r) => r.code);
+      expect(reasons).toContain('OFFER_SUBJECTS');
+      expect(ranked[0]!.reasons.find((r) => r.code === 'OFFER_SUBJECTS')!.subjects).toEqual(['קפה', 'מאפים']);
+      expect(ranked[2]!.reasons.map((r) => r.code)).toContain('SYNTHETIC_PLACE');
+    }
+    const ad = build({
+      candidates: v1,
+      assets: v1.map((c) => c.asset),
+      business: { ...DEMO_BUSINESS, products },
+    });
+    expect(ad.background.assetId).toBe('hook');
+  });
+
+  it('the same rules hold for any business (a florist)', () => {
+    const ranked = rankBackgrounds({
+      format: '4:5',
+      brief: { goal: 'OFFER', offer: 'זר ורדים ואגרטל ב-99 ₪', productName: 'זר ורדים ואגרטל' },
+      business: { products: [{ name: 'זר ורדים' }, { name: 'אגרטל' }, { name: 'עציצים' }] },
+      candidates: [
+        {
+          asset: photo('pots'),
+          content: 'מבחר עציצים בחלון',
+          authenticity: 'SYNTHETIC_AI',
+          campaignImage: true,
+        },
+        {
+          asset: photo('both'),
+          content: 'זר ורדים באגרטל זכוכית',
+          authenticity: 'SYNTHETIC_AI',
+          campaignImage: true,
+        },
+      ],
+    });
+    expect(ranked[0]!.assetId).toBe('both');
+  });
+
+  it('the business own product photo beats a generated picture of the same products', () => {
+    const own = {
+      asset: photo('own', 1080, 1350, 'CUSTOMER_UPLOAD'),
+      content: 'קפה ומאפה על הדלפק',
+      authenticity: 'VERIFIED_PRODUCT_PHOTO' as const,
+    };
+    const ranked = rankBackgrounds({
+      format: '4:5',
+      brief: offer,
+      business: { products },
+      candidates: [v1[0]!, own],
+    });
+    expect(ranked[0]!.assetId).toBe('own');
+    expect(ranked[0]!.reasons.map((r) => r.code)).toContain('REAL_PRODUCT');
+  });
+
+  it('a landscape picture loses points in a vertical format', () => {
+    const wide = { ...v1[0]!, asset: photo('wide', 1536, 1024) };
+    const tall = rankBackgrounds({
+      format: '9:16',
+      brief: offer,
+      business: { products },
+      candidates: [wide],
+    })[0]!;
+    const square = rankBackgrounds({
+      format: '1:1',
+      brief: offer,
+      business: { products },
+      candidates: [wide],
+    })[0]!;
+    expect(tall.score).toBeLessThan(square.score);
+  });
+
+  it('an awareness campaign prefers the place over a product close-up', () => {
+    const own = [
+      {
+        asset: photo('place', 1080, 1350, 'CUSTOMER_UPLOAD'),
+        content: 'interior',
+        authenticity: 'VERIFIED_BUSINESS_PHOTO' as const,
+      },
+      {
+        asset: photo('hero', 1080, 1350, 'CUSTOMER_UPLOAD'),
+        content: 'cup',
+        authenticity: 'VERIFIED_PRODUCT_PHOTO' as const,
+      },
+    ];
+    const ranked = rankBackgrounds({
+      format: '4:5',
+      brief: { goal: 'AWARENESS', productName: 'בית קפה' },
+      business: { products },
+      candidates: own,
+    });
+    expect(ranked[0]!.assetId).toBe('place');
+  });
+
+  it('keeps the owner choice on rebuild, including brand color, while the picture is usable', () => {
+    const base = { candidates: v1, assets: v1.map((c) => c.asset), business: { ...DEMO_BUSINESS, products } };
+    const owner = build({ ...base, ownerBackground: { assetId: 'store' } });
+    expect(owner.background.assetId).toBe('store');
+    expect(owner.background.selection?.chosenBy).toBe('OWNER');
+    expect(owner.background.selection?.authenticity).toBe('SYNTHETIC_AI');
+    expect(build({ ...base, ownerBackground: {} }).background.assetId).toBeUndefined();
+    // A picture that is no longer usable (e.g. the approval was withdrawn) falls back to the ranking.
+    const gone = build({ ...base, ownerBackground: { assetId: 'deleted' } });
+    expect(gone.background.assetId).toBe('hook');
+    expect(gone.background.selection?.chosenBy).toBe('AUTO');
+  });
+
+  it('an AI background is flagged so it is never mistaken for the real business', () => {
+    const base = { candidates: v1, assets: v1.map((c) => c.asset), business: { ...DEMO_BUSINESS, products } };
+    expect(staticAdQa(build(base)).map((i) => i.code)).toContain('SYNTHETIC_PICTURE');
+    const guided = build({
+      ...base,
+      candidates: v1.map((c) => ({ ...c, authenticity: 'REFERENCE_GUIDED_AI' as const })),
+    });
+    expect(staticAdQa(guided).map((i) => i.code)).toContain('REFERENCE_GUIDED_PICTURE');
+  });
+});
+
 describe('applyStaticAdEdit', () => {
   it('edits words, removes optional layers with empty strings and keeps the result valid', () => {
     const ad = build();
@@ -155,6 +319,13 @@ describe('applyStaticAdEdit', () => {
     const swapped = applyStaticAdEdit(ad, { backgroundAssetId: 'a-store' }, mediaAssets);
     expect(swapped.background.assetId).toBe('a-store');
     expect(swapped.assets.map((a) => a.id)).toEqual(['a-store']);
+    // The owner's pick is recorded as theirs, so rebuilding the ad keeps it.
+    expect(swapped.background.selection).toMatchObject({ chosenBy: 'OWNER', authenticity: 'GENERIC_STOCK' });
+    expect(swapped.background.selection?.reasons.map((r) => r.code)).toEqual(['OWNER_CHOICE']);
+    // A text-only edit keeps how the background was chosen.
+    expect(applyStaticAdEdit(ad, { headline: 'חדש' }, mediaAssets).background.selection).toEqual(
+      ad.background.selection,
+    );
     expect(() => applyStaticAdEdit(ad, { backgroundAssetId: 'someone-else' }, mediaAssets)).toThrow(
       StaticAdEditError,
     );

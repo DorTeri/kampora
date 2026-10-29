@@ -4,6 +4,7 @@ import type {
   BusinessProfile,
   ConceptStrategy,
   ImageAspect,
+  Product,
   SceneRole,
   ShotType,
   StoryboardScene,
@@ -12,6 +13,13 @@ import type {
   VisualStyle,
 } from '@kampora/shared';
 import { REFERENCE_IMAGE_MIME_TYPES } from '@kampora/shared';
+import {
+  adaptLook,
+  compositionRequirement,
+  resolveFraming,
+  sceneComposition,
+  textInPictureConflict,
+} from './composition';
 
 /** Never in a generated image: on-screen text is rendered by Kampora (RTL-correct, editable), not baked in. */
 export const IMAGE_ALWAYS_AVOID = [
@@ -45,16 +53,6 @@ const STYLE_AVOID: Partial<Record<VisualStyle, string[]>> = {
   'lifestyle-photo': ['illustration or cartoon look', 'stock-photo posing', 'distorted hands or faces'],
   cinematic: ['illustration or cartoon look', 'oversaturated HDR look'],
   'ugc-handheld': ['illustration or cartoon look', 'studio backdrop look'],
-};
-
-const SHOT_DIRECTION: Record<ShotType, string> = {
-  'extreme-close-up': 'extreme close-up, texture and detail fill the frame',
-  'close-up': 'close-up, subject fills most of the frame',
-  medium: 'medium shot, subject and some surroundings',
-  wide: 'wide shot establishing the place and atmosphere',
-  overhead: 'top-down overhead shot',
-  detail: 'macro detail shot of one meaningful element',
-  graphic: 'clean, uncluttered background composition with generous empty space',
 };
 
 const ROLE_SHOT: Record<SceneRole, ShotType> = {
@@ -109,7 +107,10 @@ const SAFE_ZONES: Record<ImageAspect, string> = {
 
 export interface PlanSceneVisualInput {
   scene: StoryboardScene;
-  business: Pick<BusinessProfile, 'name' | 'category' | 'tone' | 'brandColors'>;
+  business: Pick<BusinessProfile, 'name' | 'category' | 'tone' | 'brandColors'> & {
+    /** The business's product list: names the subjects of scenes whose storyboard does not list them. */
+    products?: readonly Pick<Product, 'name'>[];
+  };
   strategy?: Pick<ConceptStrategy, 'visualStyle' | 'emotionalDirection'>;
   /** Customer photos to send as references (product accuracy). */
   references: readonly Pick<AvailableAsset, 'id' | 'description'>[];
@@ -131,7 +132,13 @@ export function defaultVisualStyle(role: SceneRole): VisualStyle {
     : 'lifestyle-photo';
 }
 
-/** Deterministic: same input ⇒ same plan, prompt and fingerprint. No LLM involved. */
+/**
+ * Deterministic: same input ⇒ same plan, prompt and fingerprint. No LLM involved.
+ *
+ * The prompt is ordered by priority (see composition.ts): the business's own product photos first, then what the
+ * storyboard requires in frame, the scene's purpose, the campaign look, and the generic framing last, adapted
+ * where it contradicts the requirements. Every contradiction found is recorded in `conflicts`.
+ */
 export function planSceneVisual(input: PlanSceneVisualInput): VisualScenePlan {
   const { scene, business } = input;
   const style = input.strategy?.visualStyle ?? defaultVisualStyle(scene.role);
@@ -140,23 +147,60 @@ export function planSceneVisual(input: PlanSceneVisualInput): VisualScenePlan {
   const palette = [business.brandColors.primary, business.brandColors.secondary, business.brandColors.accent];
   const mood = [TONE_MOOD[business.tone], input.strategy?.emotionalDirection].filter(Boolean).join('; ');
   const lighting = look.split(',')[0]!;
-  const avoid = [...IMAGE_ALWAYS_AVOID, ...(STYLE_AVOID[style] ?? [])];
   const references = [...input.references].sort((a, b) => a.id.localeCompare(b.id));
+  const composition = sceneComposition(scene, business.products);
+  const place = composition.type === 'ENVIRONMENT';
+  const productLed = !place && composition.type !== 'LIFESTYLE';
+
+  const framing = resolveFraming(shot, composition);
+  const lens = adaptLook(look, shot, composition);
+  const textConflict = textInPictureConflict(scene);
+  const conflicts = [...framing.conflicts, ...(lens.conflict ? [lens.conflict] : [])];
+  if (textConflict) conflicts.push(textConflict);
+  const standIn = references.length === 0;
+  if (standIn && productLed && scene.quality.requiresProductAccuracy)
+    conflicts.push({
+      code: 'PRODUCT_ACCURACY_WITHOUT_REFERENCE',
+      detail:
+        'The scene must show the real product, but the business has no product photo to guide the image.',
+      resolution:
+        'Planned as a generic, unbranded stand-in and labelled as AI; a real product photo is preferred.',
+    });
+  const avoid = [
+    ...IMAGE_ALWAYS_AVOID,
+    ...(STYLE_AVOID[style] ?? []),
+    ...(standIn && place ? ['storefront names, shop signs, recognisable real landmarks'] : []),
+  ];
+
+  // 1. The business's own photos (verified), or an honest statement that the picture is a generic stand-in.
+  const authenticityLine = references.length
+    ? `The attached photo${references.length > 1 ? 's show' : ' shows'} the real ${place ? 'place' : 'product'}: keep ${place ? 'its layout, materials and colors' : 'its shape, colors and proportions'} exactly; do not invent a different ${place ? 'place' : 'product'}.`
+    : place
+      ? 'No photo of the real place is available: this is a generic stand-in, not the real venue. No storefront names, signage or recognisable landmarks.'
+      : productLed && scene.quality.requiresProductAccuracy
+        ? 'No photo of the real product is available: show a generic, unbranded version; do not imitate any specific real product or packaging.'
+        : '';
 
   const lines = [
     `${STYLE_DIRECTION[style]}.`,
     `Advertising image for "${business.name}" (${business.category}).`,
+    authenticityLine,
+    // 2. What the storyboard requires in frame; it overrides everything after it.
     `Scene (described in Hebrew): ${scene.visual}`,
+    `${compositionRequirement(composition)} These requirements override any framing, lens or look guidance below.`,
+    // 3. Purpose.
     scene.direction?.purpose ? `What the viewer should feel or understand: ${scene.direction.purpose}` : '',
-    `Framing: ${SHOT_DIRECTION[shot]}.`,
-    input.variant > 0
-      ? `Alternative take: earlier versions were not right, so use a clearly different camera angle and composition (${ALTERNATIVE_TAKES[(input.variant - 1) % ALTERNATIVE_TAKES.length]}). Keep the same product, look and mood.`
-      : '',
-    `Campaign look, identical across all scenes of this ad: ${look}.`,
+    // 4. Campaign identity.
+    `Campaign look, identical across all scenes of this ad: ${lens.look}.`,
     `Mood: ${mood}.`,
     `Brand colors appear naturally as accents in props, surfaces or light: ${palette.join(', ')}. Never as text.`,
-    references.length
-      ? `The attached photo${references.length > 1 ? 's show' : ' shows'} the real product: keep its shape, colors and proportions exactly; do not invent a different product.`
+    // 5. Generic framing, already adapted to the requirements.
+    `Framing: ${framing.direction}.`,
+    input.variant > 0
+      ? `Alternative take: earlier versions were not right, so use a clearly different camera angle and composition (${ALTERNATIVE_TAKES[(input.variant - 1) % ALTERNATIVE_TAKES.length]}). Keep the same required subjects, look and mood.`
+      : '',
+    textConflict
+      ? 'Any logo, sign, address or price the scene mentions is added later as an overlay: show none in the picture.'
       : '',
     SAFE_ZONES[input.aspect],
     `Strictly no text of any kind in the image (Hebrew or otherwise): no letters, words, numbers, prices, signs, labels, logos or watermarks.`,
@@ -180,6 +224,9 @@ export function planSceneVisual(input: PlanSceneVisualInput): VisualScenePlan {
     style,
     subject: scene.visual,
     shot,
+    composition,
+    authenticity: references.length ? 'REFERENCE_GUIDED_AI' : 'SYNTHETIC_AI',
+    conflicts,
     lighting,
     mood,
     palette,

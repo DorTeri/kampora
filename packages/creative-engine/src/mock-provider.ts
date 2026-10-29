@@ -170,6 +170,12 @@ export class MockCreativeLlmProvider implements LlmProvider {
     const claimA = business.approvedClaims[0] ?? brief.keyMessage;
     const claimB = business.approvedClaims[1];
     const flags = { requiresHumanMotion: false, requiresComplexAction: false };
+    // "קפה ומאפה" / "coffee + pastry" → one of each, all in frame.
+    const heroSubjects = brief.productName
+      .split(/\s*[+,&]\s*|\s+ו(?=\S{2,})/)
+      .filter(Boolean)
+      .map((name) => ({ name, quantity: 1 }));
+    const products = business.products.slice(0, 4).map((p) => ({ name: p.name, quantity: null }));
     return {
       scenes: [
         {
@@ -184,7 +190,9 @@ export class MockCreativeLlmProvider implements LlmProvider {
           ...flags,
           requiresProductAccuracy: true,
           purpose: 'לעצור את הגלילה ולהציג את ההבטחה המרכזית',
-          shot: 'extreme-close-up',
+          shot: heroSubjects.length > 1 ? 'close-up' : 'extreme-close-up',
+          composition: 'SINGLE_HERO',
+          subjects: heroSubjects,
           editorNote: 'הטקסט נכנס כבר בשנייה הראשונה; חיתוך מהיר לסצנה הבאה',
         },
         {
@@ -199,7 +207,9 @@ export class MockCreativeLlmProvider implements LlmProvider {
           ...flags,
           requiresProductAccuracy: true,
           purpose: 'להראות מה מקבלים בפועל',
-          shot: 'detail',
+          shot: 'overhead',
+          composition: 'ASSORTMENT',
+          subjects: products,
           editorNote: null,
         },
         brief.offer
@@ -216,6 +226,8 @@ export class MockCreativeLlmProvider implements LlmProvider {
               requiresProductAccuracy: false,
               purpose: 'להבהיר את המחיר והתנאים בדיוק כפי שאושרו',
               shot: 'graphic',
+              composition: 'SINGLE_HERO',
+              subjects: [],
               editorNote: 'המחיר הוא הדבר הגדול ביותר על המסך',
             }
           : {
@@ -231,6 +243,8 @@ export class MockCreativeLlmProvider implements LlmProvider {
               requiresProductAccuracy: false,
               purpose: 'לבסס אמון דרך המקום עצמו',
               shot: 'wide',
+              composition: 'ENVIRONMENT',
+              subjects: [],
               editorNote: null,
             },
         {
@@ -246,6 +260,8 @@ export class MockCreativeLlmProvider implements LlmProvider {
           requiresProductAccuracy: false,
           purpose: 'להגיד בדיוק מה לעשות ואיפה',
           shot: 'wide',
+          composition: 'ENVIRONMENT',
+          subjects: [],
           editorNote: 'הלוגו והכתובת נשארים על המסך עד הסוף',
         },
       ],

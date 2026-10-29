@@ -231,6 +231,9 @@ export interface SceneImageQuoteDto {
   nextVersion: number;
   /** Quote for real subject motion (image-to-video); generation is not available yet. */
   motion: { durationSec: number; estimatedUsd: number; available: boolean } | null;
+  /** What the next version must contain, and contradictions the planner resolved. */
+  composition: { type: string; subjects: Array<{ name: string; quantity?: number }> } | null;
+  conflicts: Array<{ code: string; detail: string; resolution: string }>;
 }
 
 export interface SceneImageDto {
@@ -241,6 +244,8 @@ export interface SceneImageDto {
   error: string | null;
   decision: 'PENDING' | 'APPROVED' | 'REJECTED';
   style: string;
+  /** REFERENCE_GUIDED_AI or SYNTHETIC_AI: an AI image is never a photo of the real business. */
+  authenticity: string;
   estimatedUsd: number;
   chargeType: 'SIMULATED' | 'ESTIMATED' | 'CONFIRMED' | null;
   cached: boolean;
@@ -292,6 +297,13 @@ export interface StaticAdDto {
   height: number;
   text: StaticAdText;
   backgroundAssetId: string | null;
+  /** Why the background is what it is (absent on ads built before backgrounds were ranked). */
+  backgroundSelection: {
+    chosenBy: 'AUTO' | 'OWNER';
+    authenticity?: string;
+    score?: number;
+    reasons: Array<{ code: string; points: number; detail: string; subjects?: string[] }>;
+  } | null;
   qa: Array<{ code: string; severity: 'error' | 'warning'; detail: string }>;
   pngUrl: string | null;
   jpegUrl: string | null;
@@ -307,5 +319,5 @@ export interface StaticAdsResponse {
   maxVersions: number;
   ads: StaticAdDto[];
   /** Pictures the owner may put behind the text: their own photos and approved AI images. */
-  pictures: Array<{ assetId: string; source: 'AI' | 'BUSINESS'; url: string }>;
+  pictures: Array<{ assetId: string; source: 'AI' | 'BUSINESS'; authenticity: string; url: string }>;
 }

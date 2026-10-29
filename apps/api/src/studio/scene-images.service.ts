@@ -34,7 +34,7 @@ import {
   STORAGE,
 } from '../infra/tokens';
 import { BusinessService, toAvailableAssets } from './business.service';
-import { imagePriceEntry } from './scene-image-assets';
+import { imagePriceEntry, planAuthenticity } from './scene-image-assets';
 import { StudioService } from './studio.service';
 
 /** Versions per scene: bounds regeneration loops (and their cost). */
@@ -175,8 +175,9 @@ export class SceneImagesService {
       paidEnabled: this.policy.paidGenerationEnabled,
       maxVersions: MAX_IMAGE_VERSIONS_PER_SCENE,
       scenes: c.storyboard.scenes.map((scene) => {
-        const { plan: _plan, ...quote } = this.quoteFor(c, scene);
-        return quote;
+        const { plan, ...quote } = this.quoteFor(c, scene);
+        // What the next version must contain and the contradictions the planner resolved, for the owner to see.
+        return { ...quote, composition: plan.composition ?? null, conflicts: plan.conflicts ?? [] };
       }),
       images: await Promise.all(
         c.versions.map(async (v) => ({
@@ -187,6 +188,7 @@ export class SceneImagesService {
           error: v.error,
           decision: v.decision,
           style: v.plan.style,
+          authenticity: planAuthenticity(v.plan),
           estimatedUsd: v.estimatedMicroUsd / 1e6,
           chargeType: v.chargeType,
           cached: v.cached,

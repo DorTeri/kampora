@@ -146,6 +146,29 @@ describe('structured output: storyboard', () => {
     expect(storyboard.scenes[2]!.visualKind).toBe('GRAPHIC');
   });
 
+  it('carries what each picture must contain, with subjects and quantities', async () => {
+    const mock = new MockCreativeLlmProvider();
+    const concept = (await generateConcepts({ business: DEMO_BUSINESS, brief }, { provider: mock }))
+      .conceptSet.concepts[0]!;
+    const { storyboard } = await generateStoryboard(
+      { business: DEMO_BUSINESS, brief, concept, assets },
+      { provider: mock },
+    );
+    const [hook, product, , cta] = storyboard.scenes;
+    expect(hook!.direction?.composition).toEqual({
+      type: 'SINGLE_HERO',
+      subjects: [
+        { name: 'קפה', quantity: 1 },
+        { name: 'מאפה', quantity: 1 },
+      ],
+    });
+    // Several products need a shot that can hold them (regression: an assortment asked for as a macro detail).
+    expect(product!.direction?.composition?.type).toBe('ASSORTMENT');
+    expect(product!.direction?.composition?.subjects.map((s) => s.name)).toEqual(['קפה', 'מאפים']);
+    expect(['detail', 'extreme-close-up']).not.toContain(product!.direction?.shot);
+    expect(cta!.direction?.composition?.type).toBe('ENVIRONMENT');
+  });
+
   it('requires HOOK first and CTA last', async () => {
     const mock = new MockCreativeLlmProvider();
     const concept = (await generateConcepts({ business: DEMO_BUSINESS, brief }, { provider: mock }))

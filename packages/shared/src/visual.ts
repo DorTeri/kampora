@@ -1,10 +1,30 @@
 import { z } from 'zod';
+import { MediaAuthenticitySchema } from './authenticity';
 import { VisualStyleSchema } from './campaign';
-import { ShotTypeSchema } from './storyboard';
+import { SceneCompositionSchema, ShotTypeSchema } from './storyboard';
 
 /** Image formats Kampora produces: Reels/Stories, feed portrait, feed square. */
 export const ImageAspectSchema = z.enum(['9:16', '4:5', '1:1']);
 export type ImageAspect = z.infer<typeof ImageAspectSchema>;
+
+/** A contradiction between what the storyboard requires and how it asked for it, and how the plan resolved it. */
+export const VisualConflictSchema = z.object({
+  code: z.enum([
+    /** The shot is too tight for the required subjects (e.g. a macro shot of an assortment). */
+    'SHOT_TOO_TIGHT',
+    /** The shot is too wide for the required detail. */
+    'SHOT_TOO_WIDE',
+    /** The campaign lens (e.g. macro) cannot show this scene. */
+    'LENS_CONTRADICTS_FRAMING',
+    /** The scene describes writing inside the picture; text is always an overlay. */
+    'TEXT_IN_PICTURE',
+    /** The real product must appear but no product photo exists: the image is a generic stand-in. */
+    'PRODUCT_ACCURACY_WITHOUT_REFERENCE',
+  ]),
+  detail: z.string(),
+  resolution: z.string(),
+});
+export type VisualConflict = z.infer<typeof VisualConflictSchema>;
 
 /**
  * Everything needed to generate (or regenerate) one scene image, decided deterministically before any provider
@@ -17,7 +37,14 @@ export const VisualScenePlanSchema = z.object({
   style: VisualStyleSchema,
   /** What is in the picture (the scene's visual description). */
   subject: z.string().min(1),
+  /** The framing the storyboard asked for (the prompt may adapt it; see `conflicts`). */
   shot: ShotTypeSchema,
+  /** What must be in the picture. Takes priority over shot, lens and look. Absent on plans made before it. */
+  composition: SceneCompositionSchema.extend({ source: z.enum(['STORYBOARD', 'INFERRED']) }).optional(),
+  /** What the resulting image will be: guided by the business's own photos, or a generic stand-in. */
+  authenticity: MediaAuthenticitySchema.optional(),
+  /** Contradictions found while planning, each with how it was resolved. */
+  conflicts: z.array(VisualConflictSchema).optional(),
   lighting: z.string(),
   mood: z.string(),
   /** Brand colors (#hex) used as accents, never as text. */

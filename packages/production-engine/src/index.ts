@@ -3,6 +3,8 @@ export * from './planner';
 export * from './timeline';
 export * from './invalidation';
 export * from './visual-planner';
+export * from './composition';
 export * from './motion-router';
 export * from './timeline-qa';
 export * from './static-ad';
+export * from './static-ad-background';

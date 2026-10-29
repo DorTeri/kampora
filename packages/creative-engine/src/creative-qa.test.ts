@@ -143,6 +143,55 @@ describe('creative QA', () => {
     expect(codes).toContain('CTA_WITHOUT_TEXT');
   });
 
+  it('warns when the framing cannot show what the picture must contain', () => {
+    const scene = (
+      key: string,
+      order: number,
+      role: 'HOOK' | 'PRODUCT' | 'CTA',
+      shot: 'detail' | 'wide',
+    ) => ({
+      key,
+      order,
+      role,
+      durationSec: 4,
+      visual: 'v',
+      visualKind: 'PHOTO' as const,
+      voiceover: 'v',
+      onScreenText: 'בואו',
+      requiredAssets: [],
+      motion: {
+        preset: order % 2 ? ('pan-left' as const) : ('static' as const),
+        intensity: 0.5,
+        focalPoint: { x: 0.5, y: 0.5 },
+      },
+      quality: {
+        requiresHumanMotion: false,
+        requiresComplexAction: false,
+        requiresProductAccuracy: false,
+        brandCritical: false,
+      },
+      direction: {
+        purpose: 'p',
+        shot,
+        composition: {
+          type: role === 'CTA' ? ('ENVIRONMENT' as const) : ('ASSORTMENT' as const),
+          subjects: [],
+        },
+      },
+    });
+    const sb = {
+      conceptKey: 'x',
+      aspectRatio: '9:16',
+      scenes: [
+        scene('hook', 0, 'HOOK', 'wide'),
+        scene('product', 1, 'PRODUCT', 'detail'),
+        scene('cta', 2, 'CTA', 'wide'),
+      ],
+    } as Storyboard;
+    const issues = storyboardQa(sb).filter((i) => i.code === 'SHOT_CONTRADICTS_COMPOSITION');
+    expect(issues.map((i) => [i.sceneKey, i.severity])).toEqual([['product', 'warning']]);
+  });
+
   it('makes the model try again when a hook is too slow (and accepts the fixed answer)', async () => {
     const good = (
       await provider.generateStructured({

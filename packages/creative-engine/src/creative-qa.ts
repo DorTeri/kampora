@@ -76,6 +76,20 @@ export function storyboardQa(storyboard: Storyboard): CreativeIssue[] {
         message: `On-screen text of scene "${s.key}" has ${words(s.onScreenText)} words (max 7).`,
       });
     }
+    const composition = s.direction?.composition?.type;
+    if (
+      s.direction &&
+      (s.direction.shot === 'detail' || s.direction.shot === 'extreme-close-up') &&
+      (composition === 'ASSORTMENT' || composition === 'ENVIRONMENT' || composition === 'LIFESTYLE')
+    ) {
+      // Not an error: the visual planner resolves it (the composition wins), but the owner should see why.
+      issues.push({
+        severity: 'warning',
+        code: 'SHOT_CONTRADICTS_COMPOSITION',
+        sceneKey: s.key,
+        message: `Scene "${s.key}" must show ${composition.toLowerCase()} but asks for a ${s.direction.shot} shot; the picture will be framed wider.`,
+      });
+    }
     const prev = scenes[i - 1];
     if (prev && s.direction && prev.direction) {
       if (

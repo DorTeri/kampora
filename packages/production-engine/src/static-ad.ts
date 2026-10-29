@@ -2,9 +2,11 @@ import {
   STATIC_AD_FORMATS,
   StaticAdSchema,
   stripNiqqud,
+  type BackgroundSelection,
   type BusinessProfile,
   type CampaignBrief,
   type MediaAsset,
+  type MediaAuthenticity,
   type ProductionPlan,
   type SceneRole,
   type StaticAd,
@@ -12,19 +14,30 @@ import {
   type StaticAdFormat,
   type Storyboard,
 } from '@kampora/shared';
+import { sceneComposition } from './composition';
+import { assetAuthenticity, rankBackgrounds, type BackgroundCandidate } from './static-ad-background';
 import { ctaCard, splitPrice } from './timeline';
 
 export interface BuildStaticAdInput {
   id: string;
   format: StaticAdFormat;
-  business: Pick<BusinessProfile, 'name' | 'address' | 'brandColors' | 'logoAssetId'>;
-  brief: Pick<CampaignBrief, 'cta' | 'keyMessage' | 'offer'>;
+  business: Pick<BusinessProfile, 'name' | 'address' | 'brandColors' | 'logoAssetId'> & {
+    products?: readonly { name: string }[];
+  };
+  brief: Pick<CampaignBrief, 'cta' | 'keyMessage' | 'offer' | 'goal' | 'productName'>;
   storyboard: Storyboard;
   plan: ProductionPlan;
   /** Every image the ad may use (brand assets + approved AI images), with storage keys and rights. */
   assets: readonly MediaAsset[];
   /** Approved AI image per storyboard scene key. */
   approvedImages?: Record<string, string>;
+  /**
+   * Pictures to rank for the background, with what each shows and how authentic it is. Defaults to the approved
+   * AI images and the photos the video plan uses, described by their scenes.
+   */
+  candidates?: readonly BackgroundCandidate[];
+  /** The owner picked the background (assetId absent: brand color). Kept as long as the picture is usable. */
+  ownerBackground?: { assetId?: string };
 }
 
 export class StaticAdEditError extends Error {}
@@ -53,25 +66,79 @@ function usableImage(assets: readonly MediaAsset[], id: string | undefined): Med
   return asset && asset.kind === 'image' && asset.provenance.commercialUse ? asset : undefined;
 }
 
-/** Background: an approved AI image first, then the photo the video plan uses for that scene. */
-function pickBackground(input: BuildStaticAdInput): MediaAsset | undefined {
-  const scenes = [...input.storyboard.scenes].sort(
-    (a, b) => BACKGROUND_ROLES.indexOf(a.role) - BACKGROUND_ROLES.indexOf(b.role),
-  );
-  const ranked = scenes.filter((s) => BACKGROUND_ROLES.includes(s.role));
-  for (const scene of ranked) {
-    const approved = usableImage(input.assets, input.approvedImages?.[scene.key]);
-    if (approved) return approved;
+/** The approved AI images and the photos the video plan uses, described by the scene each one is for. */
+function defaultCandidates(input: BuildStaticAdInput): BackgroundCandidate[] {
+  const scenes = input.storyboard.scenes.filter((s) => BACKGROUND_ROLES.includes(s.role));
+  const out = new Map<string, BackgroundCandidate>();
+  const describe = (scene: (typeof scenes)[number]) => {
+    const composition = sceneComposition(scene, input.business.products);
+    return {
+      content: [scene.visual, ...composition.subjects.map((s) => s.name)].join(' · '),
+      composition: composition.type,
+    };
+  };
+  for (const scene of scenes) {
+    const asset = usableImage(input.assets, input.approvedImages?.[scene.key]);
+    if (asset && !out.has(asset.id))
+      out.set(asset.id, { asset, ...describe(scene), authenticity: 'SYNTHETIC_AI', campaignImage: true });
   }
-  for (const scene of ranked) {
-    const plan = input.plan.scenes.find((p) => p.sceneKey === scene.key);
-    for (const id of plan?.assetIds ?? []) {
+  for (const scene of scenes) {
+    for (const id of input.plan.scenes.find((p) => p.sceneKey === scene.key)?.assetIds ?? []) {
       const asset = usableImage(input.assets, id);
-      if (asset) return asset;
+      if (asset && !out.has(asset.id))
+        out.set(asset.id, { asset, ...describe(scene), authenticity: assetAuthenticity(asset) });
     }
   }
-  return undefined;
+  return [...out.values()];
 }
+
+/**
+ * Background: the owner's choice when there is one (and the picture is still usable), otherwise the best-ranked
+ * candidate, with the reasons it won. Brand color when there is no usable picture.
+ */
+function chooseBackground(
+  input: BuildStaticAdInput,
+  pool: readonly MediaAsset[],
+  candidates: readonly BackgroundCandidate[],
+): { asset?: MediaAsset; selection: BackgroundSelection } {
+  const owner = input.ownerBackground;
+  if (owner) {
+    const asset = usableImage(pool, owner.assetId);
+    if (asset || owner.assetId === undefined) return { asset, selection: ownerSelection(asset, candidates) };
+  }
+  const best = rankBackgrounds({
+    format: input.format,
+    brief: input.brief,
+    business: input.business,
+    candidates,
+  })[0];
+  const asset = usableImage(pool, best?.assetId);
+  return {
+    asset,
+    selection:
+      best && asset
+        ? { chosenBy: 'AUTO', authenticity: best.authenticity, score: best.score, reasons: best.reasons }
+        : { chosenBy: 'AUTO', reasons: [] },
+  };
+}
+
+function ownerSelection(
+  asset: MediaAsset | undefined,
+  candidates: readonly { asset: MediaAsset; authenticity: MediaAuthenticity }[],
+): BackgroundSelection {
+  return {
+    chosenBy: 'OWNER',
+    authenticity: asset
+      ? (candidates.find((c) => c.asset.id === asset.id)?.authenticity ?? assetAuthenticity(asset))
+      : undefined,
+    reasons: [
+      { code: 'OWNER_CHOICE', points: 0, detail: 'Chosen by the owner; kept when the ad is rebuilt' },
+    ],
+  };
+}
+
+const unique = (assets: readonly MediaAsset[]) =>
+  assets.filter((a, i) => assets.findIndex((b) => b.id === a.id) === i);
 
 /** Only the assets the ad references travel with it (the renderer downloads exactly these). */
 function referencedAssets(assets: readonly MediaAsset[], ...ids: (string | undefined)[]): MediaAsset[] {
@@ -102,7 +169,9 @@ export function buildStaticAd(input: BuildStaticAdInput): StaticAd {
   const subCandidate = price ? input.brief.keyMessage : (input.brief.offer ?? input.brief.keyMessage);
   const subheadline = fit(subCandidate, LIMITS.subheadline);
   const card = ctaCard(cta?.onScreenText, input.business.address, input.brief.cta);
-  const background = pickBackground(input);
+  const candidates = input.candidates ?? defaultCandidates(input);
+  const pool = unique([...input.assets, ...candidates.map((c) => c.asset)]);
+  const { asset: background, selection } = chooseBackground(input, pool, candidates);
   const logo = usableImage(input.assets, input.business.logoAssetId);
 
   return StaticAdSchema.parse({
@@ -120,7 +189,7 @@ export function buildStaticAd(input: BuildStaticAdInput): StaticAd {
       fontFamily: 'Heebo',
       logoAssetId: logo?.id,
     },
-    background: { assetId: background?.id, focalPoint: { x: 0.5, y: 0.45 } },
+    background: { assetId: background?.id, focalPoint: { x: 0.5, y: 0.45 }, selection },
     text: {
       headline,
       subheadline: same(subheadline, headline) ? undefined : subheadline,
@@ -129,7 +198,7 @@ export function buildStaticAd(input: BuildStaticAdInput): StaticAd {
       ctaSubtext: fit(card.subtext, LIMITS.ctaSubtext),
       showLogo: true,
     },
-    assets: referencedAssets(input.assets, background?.id, logo?.id),
+    assets: referencedAssets(pool, background?.id, logo?.id),
   });
 }
 
@@ -141,6 +210,8 @@ export function applyStaticAdEdit(
   ad: StaticAd,
   edit: StaticAdEdit,
   allowedAssets: readonly MediaAsset[],
+  /** What is known about the allowed pictures (authenticity of AI images); provenance is used otherwise. */
+  candidates: readonly BackgroundCandidate[] = [],
 ): StaticAd {
   const opt = (value: string | undefined, current: string | undefined) =>
     value === undefined ? current : value.trim() || undefined;
@@ -155,15 +226,23 @@ export function applyStaticAdEdit(
   text.price = price ? { price, label: priceLabel } : undefined;
 
   let backgroundId = ad.background.assetId;
+  let selection = ad.background.selection;
   if (edit.backgroundAssetId !== undefined) {
-    if (edit.backgroundAssetId !== null && !usableImage(allowedAssets, edit.backgroundAssetId))
+    const picked =
+      edit.backgroundAssetId === null ? undefined : usableImage(allowedAssets, edit.backgroundAssetId);
+    if (edit.backgroundAssetId !== null && !picked)
       throw new StaticAdEditError('The background must be a commercially usable image of this business');
-    backgroundId = edit.backgroundAssetId ?? undefined;
+    backgroundId = picked?.id;
+    selection = ownerSelection(picked, candidates);
   }
   const pool = [...ad.assets, ...allowedAssets];
   const result = StaticAdSchema.safeParse({
     ...ad,
-    background: { assetId: backgroundId, focalPoint: edit.focalPoint ?? ad.background.focalPoint },
+    background: {
+      assetId: backgroundId,
+      focalPoint: edit.focalPoint ?? ad.background.focalPoint,
+      ...(selection ? { selection } : {}),
+    },
     text,
     assets: referencedAssets(
       pool.filter((a, i) => pool.findIndex((b) => b.id === a.id) === i),
@@ -177,7 +256,15 @@ export function applyStaticAdEdit(
 
 export interface StaticAdIssue {
   code:
-    'LONG_HEADLINE' | 'LONG_SUBHEADLINE' | 'CROWDED' | 'NO_PHOTO' | 'LOW_RESOLUTION_PHOTO' | 'REPEATED_TEXT';
+    | 'LONG_HEADLINE'
+    | 'LONG_SUBHEADLINE'
+    | 'CROWDED'
+    | 'NO_PHOTO'
+    | 'LOW_RESOLUTION_PHOTO'
+    | 'REPEATED_TEXT'
+    | 'SYNTHETIC_PICTURE'
+    | 'REFERENCE_GUIDED_PICTURE'
+    | 'ILLUSTRATED_PICTURE';
   severity: 'error' | 'warning';
   detail: string;
 }
@@ -217,6 +304,28 @@ export function staticAdQa(ad: StaticAd): StaticAdIssue[] {
         code: 'LOW_RESOLUTION_PHOTO',
         severity: 'warning',
         detail: `${photo.width}x${photo.height} is enlarged ${scale.toFixed(1)}x for ${ad.width}x${ad.height}`,
+      });
+  }
+  if (photo) {
+    // An AI picture is never presented as the real business: the owner is told, and can swap in a real photo.
+    const authenticity = ad.background.selection?.authenticity ?? assetAuthenticity(photo);
+    if (authenticity === 'SYNTHETIC_AI')
+      issues.push({
+        code: 'SYNTHETIC_PICTURE',
+        severity: 'warning',
+        detail: 'AI-generated picture: a generic stand-in, not your real product or place',
+      });
+    else if (authenticity === 'REFERENCE_GUIDED_AI')
+      issues.push({
+        code: 'REFERENCE_GUIDED_PICTURE',
+        severity: 'warning',
+        detail: 'AI-generated from your product photos: close to the real product, but not a photo of it',
+      });
+    else if (authenticity === 'ILLUSTRATION')
+      issues.push({
+        code: 'ILLUSTRATED_PICTURE',
+        severity: 'warning',
+        detail: 'a drawing, not a photograph',
       });
   }
   if (same(t.subheadline, t.headline) || same(t.ctaSubtext, t.headline))

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   ComplexitySchema,
+  CompositionTypeSchema,
   ConceptAngleSchema,
   MotionPresetSchema,
   ProductionFormatSchema,
@@ -66,6 +67,27 @@ export const SceneLlmSchema = z.object({
   requiresProductAccuracy: z.boolean(),
   purpose: z.string().describe('What this scene must achieve for the viewer, one Hebrew sentence'),
   shot: ShotTypeSchema,
+  composition: CompositionTypeSchema.describe(
+    'What the picture must contain: SINGLE_HERO one product (or one pairing), ASSORTMENT several products together, LIFESTYLE people with the product, DETAIL one detail, ENVIRONMENT the place, DEMONSTRATION the product being made or used',
+  ),
+  subjects: z
+    .array(
+      z.object({
+        name: z
+          .string()
+          .describe('Hebrew name of something that must be visible, e.g. a product from the business list'),
+        quantity: z
+          .number()
+          .int()
+          .min(1)
+          .max(24)
+          .nullable()
+          .describe('Approximate number visible, or null for any'),
+      }),
+    )
+    .min(0)
+    .max(6)
+    .describe('Required subjects, most important first; empty for a pure place or graphic'),
   editorNote: z
     .string()
     .nullable()

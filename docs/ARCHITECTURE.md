@@ -55,6 +55,18 @@ web (server actions) ──Bearer──▶ api ──▶ Postgres (Drizzle, ever
 
 The browser never sees the API token or provider secrets. It gets short-lived signed media URLs only.
 
+## Picture decisions (visual planning and static-ad backgrounds)
+
+Both are deterministic functions in `production-engine`; no model looks at pixels.
+
+- **Scene composition** (`composition.ts`): what a picture must contain (`SINGLE_HERO`, `ASSORTMENT`, `LIFESTYLE`, `DETAIL`, `ENVIRONMENT`, `DEMONSTRATION`) plus required subjects with approximate quantities. Written by the storyboard director; older storyboards get it inferred from the visual text and the business's product list. When instructions disagree, the order is: verified business/product constraints → storyboard requirements → scene purpose → campaign look → generic framing. The planner adapts the framing or lens instead of letting it override the content, and records each contradiction (`VisualConflict`) with its resolution.
+- **Media authenticity** (`shared/authenticity.ts`): `VERIFIED_PRODUCT_PHOTO`, `VERIFIED_BUSINESS_PHOTO`, `REFERENCE_GUIDED_AI`, `SYNTHETIC_AI`, `GENERIC_STOCK`, `ILLUSTRATION`, from provenance and file type. Unknown provenance is never treated as verified.
+- **Background ranking** (`static-ad-background.ts`): explainable points per candidate: offered products shown (from the brief and the business's products), authenticity, fit with the campaign goal, crop retention for 1:1 / 4:5 / 9:16, resolution, room for text, campaign look. The winner's reasons are stored on the ad (`background.selection`). An owner's pick is stored as `chosenBy: OWNER` and kept on rebuild while the picture is usable. What a picture shows comes from metadata: an upload's description and tags, an AI image's plan.
+
+## Future: Campaign Director (not built)
+
+A Hebrew conversational orchestrator over these services: typed tools generated from the Zod contracts, memory with per-fact provenance, approvals for every spend and publish, and persistent scheduled workflows in the customer's timezone. Architecture, memory model, phases and the small adjustments that keep the current code ready for it are in [CAMPAIGN_DIRECTOR_ROADMAP.md](CAMPAIGN_DIRECTOR_ROADMAP.md).
+
 ## Security baseline
 
 - Every tenant table carries `org_id`. Repositories require an `AuthContext` and always filter by it.

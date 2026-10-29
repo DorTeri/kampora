@@ -180,6 +180,7 @@ const STORYBOARD_SYSTEM = [
   'First scene role HOOK, last scene role CTA. If offerExactText exists include one OFFER scene with visualKind GRAPHIC whose onScreenText contains the exact price.',
   'assetTags: choose only from availableTags so existing business media is reused. Prefer PHOTO scenes with camera motion presets.',
   'Set requiresHumanMotion / requiresComplexAction true ONLY when the scene is impossible without real movement. onScreenText: max ~6 words or null. Never put text inside images.',
+  'composition and subjects say what the picture must contain; they take priority over the shot. A scene that shows several products is ASSORTMENT (with a shot wide enough for them, never detail or extreme-close-up); a scene about the place is ENVIRONMENT. Name subjects from the business products and the offer, with approximate quantities when they matter (e.g. two drinks and one dessert).',
   'Follow the concept storyStructure. Every scene states its purpose for the viewer, a shot framing and (when useful) an editorNote an editor can act on. Visual variety: consecutive scenes must differ in shot framing or motion preset. One OFFER scene at most; the hook scene lands within 2–3 seconds.',
 ].join('\n');
 
@@ -299,7 +300,18 @@ function toStoryboard(output: StoryboardLlm, input: StoryboardStepInput): Storyb
         requiresProductAccuracy: s.requiresProductAccuracy,
         brandCritical: s.role === 'OFFER' || s.role === 'CTA',
       },
-      direction: { purpose: s.purpose, shot: s.shot, editorNote: s.editorNote ?? undefined },
+      direction: {
+        purpose: s.purpose,
+        shot: s.shot,
+        editorNote: s.editorNote ?? undefined,
+        composition: {
+          type: s.composition,
+          subjects: s.subjects
+            .map((x) => ({ name: x.name.trim(), quantity: x.quantity ?? undefined }))
+            .filter((x) => x.name)
+            .slice(0, 6),
+        },
+      },
     };
   });
   const storyboard = StoryboardSchema.parse({ conceptKey: input.concept.key, aspectRatio: '9:16', scenes });
