@@ -171,3 +171,15 @@ Each step is approved separately, runs with `KAMPORA_ALLOW_PAID_GENERATION=true`
 | V3. Full journey | `e2e:journey final --approve-paid --max-usd=0.35` with OpenAI creative, ElevenLabs narration (voice chosen in V2) and OpenAI images (1 image + 1 regeneration) | creative $0.07 expected ($0.14 cap) + narration $0.06 + images $0.10 ≈ $0.30 at the caps | $0.35            | the MP4 and static ads as a whole: Hebrew pronunciation (names, prices, address), caption sync, RTL, offer clarity, CTA |
 
 Suggested order: V1, then V2, then V3, so the full run uses a voice and image settings that people have already accepted. Worst case for all three at their caps is $1.05. Rendering and static ads are local and cost nothing. Not included: image-to-video (quoted per scene, not integrated), Meta Ads, scheduling.
+
+### V1 results: real OpenAI images (approved, run 2026-10-29)
+
+- **Setup:** fresh project with mock creative and mock voice; only the image provider was real. Paid generation was switched on for two separate processes (API on port 4001 and one worker) with tighter server caps (`PER_GENERATION_MAX_USD=0.07`, `PROJECT_MAX_BUDGET_USD=0.25`), then stopped. `.env` was never changed.
+- **First attempt refused, $0:** OpenAI rejected all three requests (HTTP 400) because Kampora sent the demo business's SVG illustrations as reference photos. Fixed: assets carry their file type, only JPEG/PNG/WebP can be references, and the worker refuses any other reference before calling the provider (also protects stored plans). This also removed the reference surcharge from the quotes ($0.051–0.061 → $0.041).
+- **Run:** hook, product, CTA, then one regeneration of product: 4 calls × $0.041 = **$0.164** (ESTIMATED in the ledger; the provider invoice is the confirmation). 27–31 s per image, 1024x1536 JPEG. The three refused calls are recorded at $0.
+- **What we saw** (to be confirmed by people): photorealistic, no text or logos in any image, warm look shared by hook and product (same cloth, ceramics, light); the regenerated product was a clearly different take, as asked. The images were used in a local render (16.1 s, timeline QA clean) and in the three static ads; 1024x1536 is sharp enough (no low-resolution warning).
+- **Not tested:** product fidelity. The demo business has no real product photos, so every prompt was text-only and the products are invented. Needs real JPEG/PNG photos from a business.
+- **Fixed during the run:** a version the provider refused counted as a rejected take, so the next prompt said "earlier versions were not right". Only versions that produced a picture count now (`regenerationVariant`).
+- **Open findings:**
+  1. The planner's framing for a `detail` shot ("macro detail shot of one meaningful element") overrides a scene that asks for a spread of products; both product takes showed a single pastry.
+  2. Static ads choose the product-scene image first; for a coffee + pastry offer the hook image (coffee and croissant) matches the text better. The owner can switch it in the editor.
