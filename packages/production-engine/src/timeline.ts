@@ -131,6 +131,24 @@ function visualFor(
   }
 }
 
+const words = (text: string) =>
+  stripNiqqud(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 1);
+
+/**
+ * The CTA card (button + address) is the on-screen text of the closing scene. A caption that only repeats it
+ * covers the picture and splits the address into fragments, so it is dropped; a caption that says something
+ * the card does not (an extra reason to come) stays.
+ */
+function shownOnCtaCard(spoken: string, overlays: Overlay[]): boolean {
+  const card = overlays.find((o) => o.type === 'cta');
+  if (!card || card.type !== 'cta') return false;
+  const shown = new Set(words(`${card.text} ${card.subtext ?? ''}`));
+  const said = words(spoken);
+  return said.length > 0 && said.filter((w) => shown.has(w)).length / said.length >= 0.8;
+}
+
 function overlaysFor(scene: StoryboardScene, input: BuildVideoProjectInput): Overlay[] {
   const text = scene.onScreenText?.trim();
   if (scene.role === 'CTA') {
@@ -180,7 +198,9 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
       durationSec: timing.durationInFrames / fps,
     });
     previousPreset = visual.type === 'image-motion' ? visual.motion.preset : undefined;
-    const caption = stripNiqqud(scene.voiceover).trim();
+    const overlays = overlaysFor(scene, input);
+    const spoken = stripNiqqud(scene.voiceover).trim();
+    const caption = shownOnCtaCard(spoken, overlays) ? '' : spoken;
     // Subtitle cues follow the speech: shift by the narration offset, clamp to the scene.
     const cues = voice?.cues?.length
       ? voice.cues
@@ -199,7 +219,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
       sourceSceneKey: scene.key,
       durationInFrames: timing.durationInFrames,
       visual,
-      overlays: overlaysFor(scene, input),
+      overlays,
       caption: caption ? { text: caption, cues } : undefined,
       voiceover: voice
         ? {

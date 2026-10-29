@@ -228,6 +228,54 @@ describe('creative → plan → timeline pipeline (mock provider)', () => {
     expect(project.scenes[3]!.overlays.some((o) => o.type === 'cta')).toBe(true);
   });
 
+  it('drops the CTA caption only when the card already shows what is said', async () => {
+    const provider = new MockCreativeLlmProvider();
+    const brief = await generateCampaignBrief(
+      {
+        business: DEMO_BUSINESS,
+        request: DEMO_CAMPAIGN_REQUEST,
+        defaults: { budgetUsd: 5, qualityTier: 'standard', targetDurationSec: 20 },
+      },
+      { provider },
+    );
+    const { conceptSet } = await generateConcepts({ business: DEMO_BUSINESS, brief }, { provider });
+    const concept = conceptSet.concepts.find((c) => c.key === conceptSet.recommendedKey)!;
+    const { storyboard } = await generateStoryboard(
+      { business: DEMO_BUSINESS, brief, concept, assets: demoAssets },
+      { provider },
+    );
+    const plan = planProduction({
+      storyboard,
+      assets: demoAssets,
+      budgetUsd: 5,
+      perGenerationMaxUsd: 1,
+      qualityTier: 'standard',
+      catalog,
+    });
+    const build = (ctaVoiceover: string) =>
+      buildVideoProject({
+        projectId: 'p1',
+        title: 'demo',
+        business: DEMO_BUSINESS,
+        brief,
+        storyboard: {
+          ...storyboard,
+          scenes: storyboard.scenes.map((s) => (s.role === 'CTA' ? { ...s, voiceover: ctaVoiceover } : s)),
+        },
+        plan,
+        assets: mediaAssets,
+      });
+
+    const cta = build(`${brief.cta} – ${DEMO_BUSINESS.address}.`).scenes.at(-1)!;
+    expect(cta.overlays.some((o) => o.type === 'cta')).toBe(true);
+    expect(cta.caption).toBeUndefined();
+
+    const extra = build('קפצו אלינו היום, הקרואסונים יוצאים מהתנור בשמונה').scenes.at(-1)!;
+    expect(extra.caption?.text).toMatch(/קרואסונים/);
+    // Other scenes keep their captions.
+    expect(build('x').scenes[0]!.caption).toBeDefined();
+  });
+
   it('stretches a scene to fit its voiceover', async () => {
     const provider = new MockCreativeLlmProvider();
     const brief = await generateCampaignBrief(
