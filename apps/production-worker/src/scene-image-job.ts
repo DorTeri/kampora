@@ -17,7 +17,7 @@ import {
   type Database,
 } from '@kampora/database';
 import type { GeneratedMedia, ImageGenerationProvider, ReferenceImage } from '@kampora/media-providers';
-import type { SceneImageJobPayload } from '@kampora/shared';
+import { REFERENCE_IMAGE_MIME_TYPES, type SceneImageJobPayload } from '@kampora/shared';
 import type { StorageDriver } from '@kampora/storage';
 
 export interface SceneImageJobDeps {
@@ -75,10 +75,10 @@ export async function processSceneImageJob(
       return;
     }
 
+    const references = await loadReferences(deps, payload.orgId, row.plan.referenceAssetIds);
     const estimateUsd = row.estimatedMicroUsd / 1e6;
     if (provider.paid) await assertImageSpendAllowed(deps, row, estimateUsd);
 
-    const references = await loadReferences(deps, payload.orgId, row.plan.referenceAssetIds);
     const step = `scene-image.${row.sceneKey}`;
     let media: GeneratedMedia;
     try {
@@ -184,6 +184,12 @@ async function loadReferences(
     .from(brandAssets)
     .where(and(eq(brandAssets.orgId, orgId), inArray(brandAssets.id, [...ids])));
   if (rows.length !== ids.length) throw new ImageDeniedError('A reference photo is no longer available');
+  // Checked before any provider call: an unreadable reference is rejected by the provider (and may be billed).
+  const unreadable = rows.find((r) => !REFERENCE_IMAGE_MIME_TYPES.includes(r.mimeType));
+  if (unreadable)
+    throw new ImageDeniedError(
+      `Reference ${unreadable.id} is ${unreadable.mimeType}; only JPEG, PNG or WebP can be sent`,
+    );
   return Promise.all(
     rows.map(async (r) => ({
       data: await deps.storage.getBuffer(r.storageKey),

@@ -20,7 +20,7 @@ import {
   type ImageToVideoProvider,
   type ImageToVideoQuote,
 } from '@kampora/media-providers';
-import { pickReferenceImages, planSceneVisual } from '@kampora/production-engine';
+import { pickReferenceImages, planSceneVisual, regenerationVariant } from '@kampora/production-engine';
 import type { SceneImageJobPayload, StoryboardScene, VisualScenePlan } from '@kampora/shared';
 import type { StorageDriver } from '@kampora/storage';
 import type { AuthContext } from '../common/auth';
@@ -141,7 +141,7 @@ export class SceneImagesService {
     scene: StoryboardScene,
   ): SceneImageQuote & { plan: VisualScenePlan } {
     const existing = c.versions.filter((v) => v.sceneKey === scene.key);
-    const plan = this.visualPlan(c, scene, existing.length);
+    const plan = this.visualPlan(c, scene, regenerationVariant(existing));
     const strategy = c.project.plan?.scenes.find((s) => s.sceneKey === scene.key)?.strategy;
     return {
       sceneKey: scene.key,

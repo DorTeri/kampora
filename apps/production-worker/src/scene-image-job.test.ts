@@ -16,6 +16,7 @@ import {
 } from '@kampora/creative-engine';
 import {
   approvals,
+  brandAssets,
   businesses,
   campaignBriefs,
   costLedger,
@@ -110,11 +111,16 @@ describe.skipIf(!dbAvailable)('scene image job (integration)', () => {
     provider,
   });
 
-  async function queueImage(provider: ImageGenerationProvider, variant: number, approvedUsd?: number) {
+  async function queueImage(
+    provider: ImageGenerationProvider,
+    variant: number,
+    approvedUsd?: number,
+    references: Array<{ id: string; description: string }> = [],
+  ) {
     const plan = planSceneVisual({
       scene,
       business: DEMO_BUSINESS,
-      references: [],
+      references,
       lookSeed: projectId,
       aspect: '9:16',
       variant,
@@ -255,6 +261,28 @@ describe.skipIf(!dbAvailable)('scene image job (integration)', () => {
     await processSceneImageJob(deps(paid), { orgId, sceneImageId: third.id });
     expect((await reload(third.id)).error).toMatch(/PROJECT_BUDGET_EXCEEDED/);
     expect(paid.calls).toBe(2);
+  });
+
+  it('never sends a reference the provider cannot read (an SVG from an older plan)', async () => {
+    const [svg] = await handle.db
+      .insert(brandAssets)
+      .values({
+        orgId,
+        businessId,
+        kind: 'image',
+        storageKey: `test/${randomUUID()}.svg`,
+        mimeType: 'image/svg+xml',
+        bytes: 10,
+        sha256: 'x',
+        provenance: { source: 'DEMO', license: 'test', commercialUse: true },
+      })
+      .returning();
+    const paid = new FakePaidImages();
+    const row = await queueImage(paid, 9, 0.05, [{ id: svg!.id, description: 'illustration' }]);
+    await processSceneImageJob(deps(paid), { orgId, sceneImageId: row.id });
+    expect(await reload(row.id)).toMatchObject({ status: 'FAILED' });
+    expect((await reload(row.id)).error).toMatch(/JPEG, PNG or WebP/);
+    expect(paid.calls).toBe(0);
   });
 
   it('fails cleanly when no provider is configured or the provider changed', async () => {

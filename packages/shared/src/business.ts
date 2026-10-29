@@ -48,6 +48,11 @@ export const AvailableAssetSchema = z.object({
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   durationSec: z.number().positive().optional(),
+  /** File type, when known; decides whether an image can be sent to an image provider as a reference. */
+  mimeType: z.string().optional(),
   commercialUse: z.boolean(),
 });
 export type AvailableAsset = z.infer<typeof AvailableAssetSchema>;
+
+/** Photo formats image providers accept as references (OpenAI: JPEG, PNG, WebP). SVG illustrations are not. */
+export const REFERENCE_IMAGE_MIME_TYPES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp'];

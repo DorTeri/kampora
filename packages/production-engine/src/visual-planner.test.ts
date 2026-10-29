@@ -5,6 +5,7 @@ import { routeScene, type RouterContext } from './router';
 import {
   IMAGE_ALWAYS_AVOID,
   pickReferenceImages,
+  regenerationVariant,
   planSceneVisual,
   type PlanSceneVisualInput,
 } from './visual-planner';
@@ -109,6 +110,17 @@ describe('planSceneVisual', () => {
   });
 });
 
+describe('regenerationVariant', () => {
+  it('counts only earlier takes that produced a picture', () => {
+    expect(regenerationVariant([])).toBe(0);
+    // The provider refused v1 (no picture): v2 is still the first take, not an "alternative".
+    expect(regenerationVariant([{ status: 'FAILED' }])).toBe(0);
+    expect(
+      regenerationVariant([{ status: 'SUCCEEDED' }, { status: 'FAILED' }, { status: 'SUCCEEDED' }]),
+    ).toBe(2);
+  });
+});
+
 describe('pickReferenceImages', () => {
   const asset = (id: string, tags: string[], extra: Partial<AvailableAsset> = {}): AvailableAsset => ({
     id,
@@ -126,6 +138,16 @@ describe('pickReferenceImages', () => {
       asset('d', ['coffee'], { kind: 'video' }),
     ]);
     expect(picked.map((a) => a.id)).toEqual(['a']);
+  });
+
+  it('only sends photo formats the image providers accept (an SVG illustration is not a product photo)', () => {
+    const picked = pickReferenceImages(scene(), [
+      asset('svg', ['coffee'], { mimeType: 'image/svg+xml' }),
+      asset('gif', ['coffee'], { mimeType: 'image/gif' }),
+      asset('jpg', ['coffee'], { mimeType: 'image/jpeg' }),
+      asset('webp', ['coffee'], { mimeType: 'image/webp' }),
+    ]);
+    expect(picked.map((a) => a.id)).toEqual(['jpg', 'webp']);
   });
 });
 

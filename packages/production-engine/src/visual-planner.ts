@@ -11,6 +11,7 @@ import type {
   VisualScenePlan,
   VisualStyle,
 } from '@kampora/shared';
+import { REFERENCE_IMAGE_MIME_TYPES } from '@kampora/shared';
 
 /** Never in a generated image: on-screen text is rendered by Kampora (RTL-correct, editable), not baked in. */
 export const IMAGE_ALWAYS_AVOID = [
@@ -193,8 +194,16 @@ export function planSceneVisual(input: PlanSceneVisualInput): VisualScenePlan {
 }
 
 /**
- * Customer photos to use as references for a scene: commercially usable images whose tags overlap the scene's
- * requirements (the product photos), best match first, at most `max`.
+ * Which alternative take the next version asks for: the number of earlier versions that produced a picture. A
+ * version the provider refused showed the owner nothing, so it does not count as a take that "was not right".
+ */
+export function regenerationVariant(versions: readonly { status: string }[]): number {
+  return versions.filter((v) => v.status === 'SUCCEEDED').length;
+}
+
+/**
+ * Customer photos to use as references for a scene: commercially usable photos (JPEG, PNG, WebP) whose tags
+ * overlap the scene's requirements (the product photos), best match first, at most `max`.
  */
 export function pickReferenceImages(
   scene: StoryboardScene,
@@ -205,6 +214,7 @@ export function pickReferenceImages(
   const preferred = new Set(scene.requiredAssets.map((r) => r.preferredAssetId).filter(Boolean));
   return assets
     .filter((a) => a.kind === 'image' && a.commercialUse)
+    .filter((a) => !a.mimeType || REFERENCE_IMAGE_MIME_TYPES.includes(a.mimeType))
     .map((a) => ({ a, score: (preferred.has(a.id) ? 10 : 0) + a.tags.filter((t) => tags.has(t)).length }))
     .filter(({ score }) => score > 0)
     .sort((x, y) => y.score - x.score || x.a.id.localeCompare(y.a.id))
