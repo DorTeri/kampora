@@ -27,6 +27,14 @@ describe('chunkCaption', () => {
     expect(chunks.every((c) => !c.endsWith('+') && !c.startsWith('+'))).toBe(true);
   });
 
+  it('never ends a chunk on a short connecting word ("עד", "של", "כל"…)', () => {
+    const chunks = splitCaptionChunks('עכשיו: קפה + מאפה ב-29.90 ₪ עד סוף החודש.');
+    expect(chunks).toEqual(['עכשיו: קפה + מאפה ב-29.90 ₪', 'עד סוף החודש.']);
+    expect(
+      splitCaptionChunks('קולים את הפולים בעצמנו ומאפים טריים כל בוקר').every((c) => !/ (כל|את)$/.test(c)),
+    ).toBe(true);
+  });
+
   it('strips niqqud from subtitles and returns nothing for empty text', () => {
     expect(chunkCaption('בואו ללוּז', 60)[0]!.text).toBe('בואו ללוז');
     expect(chunkCaption('   ', 60)).toEqual([]);

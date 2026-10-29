@@ -18,9 +18,30 @@ export interface CaptionChunk {
   endFrame: number;
 }
 
+/** Short Hebrew words that lean on the next word; a caption chunk never ends on one ("עד" / "סוף החודש"). */
+const LEANING_WORDS = new Set([
+  'עד',
+  'של',
+  'עם',
+  'את',
+  'על',
+  'אל',
+  'כי',
+  'או',
+  'גם',
+  'אם',
+  'כל',
+  'כמו',
+  'בין',
+  'בלי',
+  'ללא',
+  'רק',
+  'לא',
+]);
+
 /**
  * Splits a caption into short, readable chunks (max N words, sentence-aware). Keeps "29.90 ₪" together,
- * drops standalone dashes and avoids a dangling single word.
+ * drops standalone dashes, never ends a chunk on a leaning word and avoids a dangling single word.
  */
 export function splitCaptionChunks(text: string, maxWordsPerChunk = 4): string[] {
   const clean = stripNiqqud(text).replace(/\s+/g, ' ').trim();
@@ -36,7 +57,7 @@ export function splitCaptionChunks(text: string, maxWordsPerChunk = 4): string[]
 
   const chunks: string[] = [];
   let current: string[] = [];
-  for (const word of words) {
+  for (const [i, word] of words.entries()) {
     // A standalone dash ends the chunk rather than opening the next one.
     if (/^[-–—]$/.test(word)) {
       if (current.length) chunks.push(current.join(' '));
@@ -46,8 +67,11 @@ export function splitCaptionChunks(text: string, maxWordsPerChunk = 4): string[]
     current.push(word);
     const endsSentence = /[.!?,:]$/.test(word);
     if (current.length >= maxWordsPerChunk || (endsSentence && current.length >= 2)) {
+      // A leaning word moves to the next chunk, with the word it belongs to.
+      const carry = !endsSentence && i < words.length - 1 && current.length > 1 && LEANING_WORDS.has(word);
+      if (carry) current.pop();
       chunks.push(current.join(' '));
-      current = [];
+      current = carry ? [word] : [];
     }
   }
   if (current.length) {
