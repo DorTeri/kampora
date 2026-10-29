@@ -2,8 +2,13 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { CampaignRequestSchema, type VoiceStyle } from '@kampora/shared';
-import { ApiRequestError, api, type CampaignDetail, type RenderDto } from '@/lib/api';
+import {
+  CampaignRequestSchema,
+  type StaticAdEdit,
+  type StaticAdFormat,
+  type VoiceStyle,
+} from '@kampora/shared';
+import { ApiRequestError, api, type CampaignDetail, type RenderDto, type StaticAdsResponse } from '@/lib/api';
 
 export interface ActionState {
   error?: string;
@@ -182,6 +187,39 @@ export async function rateVoiceLabSampleAction(
       body: { ratings, notes: notes.trim() || undefined },
     });
     return {};
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+}
+
+/** Builds the static image ads from the approved script (all formats, or the given ones). Local render, no cost. */
+export async function createStaticAdsAction(
+  projectId: string,
+  formats?: StaticAdFormat[],
+): Promise<{ data?: StaticAdsResponse; error?: string }> {
+  try {
+    const data = await api<StaticAdsResponse>(`/v1/projects/${projectId}/static-ads`, {
+      method: 'POST',
+      body: { formats },
+    });
+    return { data };
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+}
+
+/** Saves an owner's change to one static ad as a new version of that format. */
+export async function editStaticAdAction(
+  projectId: string,
+  staticAdId: string,
+  edit: StaticAdEdit,
+): Promise<{ data?: StaticAdsResponse; error?: string }> {
+  try {
+    const data = await api<StaticAdsResponse>(`/v1/projects/${projectId}/static-ads/${staticAdId}`, {
+      method: 'PATCH',
+      body: edit,
+    });
+    return { data };
   } catch (e) {
     return { error: errorCode(e) };
   }

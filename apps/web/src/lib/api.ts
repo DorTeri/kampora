@@ -6,6 +6,8 @@ import type {
   NarrationState,
   ProductionPlan,
   ProjectStatus,
+  StaticAdFormat,
+  StaticAdText,
   Storyboard,
   VoiceOption,
   VoiceStyle,
@@ -277,4 +279,33 @@ export interface VoiceLabOverview {
     quote: VoiceLabQuote;
   }>;
   samples: VoiceLabSample[];
+}
+
+export interface StaticAdDto {
+  id: string;
+  format: StaticAdFormat;
+  version: number;
+  versions: number;
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  error: string | null;
+  width: number;
+  height: number;
+  text: StaticAdText;
+  backgroundAssetId: string | null;
+  qa: Array<{ code: string; severity: 'error' | 'warning'; detail: string }>;
+  pngUrl: string | null;
+  jpegUrl: string | null;
+  pngDownloadUrl: string | null;
+  jpegDownloadUrl: string | null;
+  pngBytes: number | null;
+  jpegBytes: number | null;
+  createdAt: string;
+}
+
+export interface StaticAdsResponse {
+  scriptApproved: boolean;
+  maxVersions: number;
+  ads: StaticAdDto[];
+  /** Pictures the owner may put behind the text: their own photos and approved AI images. */
+  pictures: Array<{ assetId: string; source: 'AI' | 'BUSINESS'; url: string }>;
 }

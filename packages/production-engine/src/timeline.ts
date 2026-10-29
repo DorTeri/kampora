@@ -149,27 +149,41 @@ function shownOnCtaCard(spoken: string, overlays: Overlay[]): boolean {
   return said.length > 0 && said.filter((w) => shown.has(w)).length / said.length >= 0.8;
 }
 
+/** The button carries the call to action; the address goes underneath — never the same text twice. */
+export function ctaCard(
+  onScreenText: string | undefined,
+  address: string | undefined,
+  briefCta: string,
+): { text: string; subtext?: string } {
+  const text = onScreenText?.trim();
+  const addr = address?.trim();
+  const textIsAddress = Boolean(text && addr && (addr.includes(text) || text.includes(addr)));
+  const buttonText = text && !textIsAddress ? text : briefCta;
+  return { text: buttonText, subtext: addr && addr !== buttonText ? addr : undefined };
+}
+
+/** A price in on-screen offer text, split into the amount and the words around it. */
+export function splitPrice(text: string): { price: string; label?: string } | undefined {
+  const price = text.match(PRICE_RE)?.[0];
+  if (!price) return undefined;
+  const label = text
+    .replace(price, '')
+    .replace(/\s*(ב-|ב)\s*$/, '')
+    .trim();
+  return { price: price.trim(), label: label || undefined };
+}
+
 function overlaysFor(scene: StoryboardScene, input: BuildVideoProjectInput): Overlay[] {
   const text = scene.onScreenText?.trim();
   if (scene.role === 'CTA') {
-    // The button carries the call to action; the address goes underneath — never the same text twice.
-    const address = input.business.address?.trim();
-    const textIsAddress = Boolean(text && address && (address.includes(text) || text.includes(address)));
-    const buttonText = text && !textIsAddress ? text : input.brief.cta;
     return [
       { type: 'logo', assetId: input.logoAssetId },
-      { type: 'cta', text: buttonText, subtext: address && address !== buttonText ? address : undefined },
+      { type: 'cta', ...ctaCard(text, input.business.address, input.brief.cta) },
     ];
   }
   if (!text) return [];
-  const price = scene.role === 'OFFER' ? text.match(PRICE_RE)?.[0] : undefined;
-  if (price) {
-    const label = text
-      .replace(price, '')
-      .replace(/\s*(ב-|ב)\s*$/, '')
-      .trim();
-    return [{ type: 'price-tag', price: price.trim(), label: label || undefined }];
-  }
+  const price = scene.role === 'OFFER' ? splitPrice(text) : undefined;
+  if (price) return [{ type: 'price-tag', ...price }];
   return [{ type: 'headline', text, position: 'top' }];
 }
 

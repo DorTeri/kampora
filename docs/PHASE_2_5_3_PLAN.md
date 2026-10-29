@@ -93,6 +93,7 @@ Nothing has been generated. No voice is called "best" until people have listened
   - at most 6 versions per scene
 
   A fingerprint match reuses the existing image and is never paid for twice.
+
 - **Flow:** the image is generated as a new version, and the owner approves or rejects it. Approving re-plans the project: the scene switches to `AI_IMAGE_MOTION` (or parallax) with the image, and the planned generation cost is dropped. The approved images are part of the timeline approval key. Text always stays in Kampora's RTL overlays.
 - **Prices** (planning estimates, not re-verified in this session; charges are ESTIMATED): gpt-image-2 at 1024x1536 costs $0.005 (low), $0.041 (medium) and $0.165 (high). Each reference photo adds a planning surcharge of $0.01.
 
@@ -111,4 +112,25 @@ Generate 3 scenes (hook, product with one reference photo, CTA) at `medium` qual
   - **Warnings:** slow hook, scene too short, transition too long, dead air, silent gaps between lines, same shot repeated, missing or short CTA, total length out of range, music not ducked.
 
   It does not judge whether the ad is good. Run over the saved timelines, it flags 1.1–2.2 s gaps between lines in the two older line-by-line ElevenLabs projects. The continuous-narration projects are clean.
+
 - Timeline rules are now `r7`, so existing productions show "update production" and are rebuilt with the new motion rules.
+
+### Tests before Milestone E
+
+A full mock run through the API (campaign → concept → images → script → narration → approval → preview and final render) passed, and every guardrail held, including paid-image refusals with the kill switch off. Two fixes came out of it:
+
+- A regenerated scene image now asks for a different camera angle and composition. Before, it reused the rejected prompt, so the mock returned the identical image and a real provider would just have resampled it.
+- In the closing scene, the caption is dropped when the CTA card already shows what is said; it was covering the picture and splitting the address into fragments. Narration that adds something new keeps its caption. Timeline rules are now `r8`.
+
+## Milestone E: static image ads
+
+- **Formats:** 1:1 (1080x1080, feed), 4:5 (1080x1350, feed) and 9:16 (1080x1920, Stories), exported as PNG and JPEG (quality 90). Feed formats keep 64 px clear on every side. 9:16 uses the Stories safe area (270 px top, 384 px bottom, 65 px sides), which is stricter than the Reels one, so the same file works in both.
+- **Editable representation:** a validated `StaticAd` JSON document per format (shared schema), not pixels. It holds the background image and its focal point, the text layers (headline, sub-headline, price and label, CTA and address, logo on/off) and the brand. Layout comes from one fixed, tested template; free-form positioning is not offered, so text cannot be pushed out of the safe area. Every edit (`StaticAdEdit`, strict and partial) creates a new version, and older versions are kept (up to 20 per format). The same content twice reuses the existing version (content fingerprint).
+- **Type scale:** `fitStaticAdType` estimates every block's height conservatively and scales all type together (down to 50%) until the top and bottom blocks fit the safe height with room left for the picture. Prices never wrap away from the ₪, and a short Hebrew prefix never wraps away from its word ("ב-Luz").
+- **Builder** (`buildStaticAd`, deterministic, no LLM): it takes the texts from the approved storyboard and brief (hook text as the headline, the offer price as a price tag, CTA plus address, as on the video's CTA card). The background is the approved AI image for the product or hook scene, then the business's own planned photo, otherwise a brand gradient. Only commercially usable images can be used, also when the owner picks a background.
+- **Renderer:** one fixed Remotion still composition (`KamporaStaticAd`) rendered with `renderStill` by the worker (`static-ad` job on the render queue), using the same Heebo font and RTL text rules as the video.
+- **QA** (`staticAdQa`, warnings shown to the owner in Hebrew): long headline or sub-headline, a crowded square, no photo, a photo enlarged too much for the format (would look soft), repeated text. Missing headline or CTA and backgrounds without commercial rights are rejected by the schema.
+- **API and Studio:** `GET/POST /v1/projects/:id/static-ads` (build or rebuild from the approved script) and `PATCH /v1/projects/:id/static-ads/:adId` (edit). The project page shows the three formats with status, version, QA notes, PNG/JPEG downloads and an edit form (texts, logo, background from the business's photos and approved AI images, or the brand colour).
+- **Tests:** builder and edit rules (8), layout in headless Chrome for every format with typical and worst-case texts (every glyph inside the safe area, no collision between the blocks) plus RTL reading order, worker job integration (render, store, idempotency, failure handling).
+- **Cost:** rendering is local, so it is $0 and nothing paid is involved. Static ads reuse approved images; they never trigger new image generation.
+- **Limits:** one layout template; no free positioning or font choice; the focal point can be set through the API but not yet in the UI; the layout tests run without the Heebo font (system fallback), so the real renders were also checked by eye.

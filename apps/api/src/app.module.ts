@@ -23,6 +23,7 @@ import { NarrationService } from './studio/narration.service';
 import { PaidOperationsService } from './studio/paid.service';
 import { VoiceLabService } from './studio/voice-lab.service';
 import { SceneImagesService } from './studio/scene-images.service';
+import { StaticAdsService } from './studio/static-ads.service';
 
 @ApiTags('health')
 @Controller('health')
@@ -60,6 +61,7 @@ class HealthController {
     VoiceLabService,
     StudioService,
     SceneImagesService,
+    StaticAdsService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: DevAuthGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },

@@ -66,8 +66,9 @@ export interface PreparedAssets {
  * content) and serves it on 127.0.0.1:<random port> for the renderer. The renderer never touches storage
  * credentials, and long renders cannot hit expiring URLs.
  */
+/** Downloads, validates and serves the assets of a video timeline or a static ad. */
 export async function prepareAssets(
-  project: VideoProject,
+  project: Pick<VideoProject, 'assets'>,
   dir: string,
   loadBytes: (asset: MediaAsset) => Promise<Buffer>,
   maxBytes: number,

@@ -11,6 +11,8 @@ import {
   SceneImageJobPayloadSchema,
   RENDER_QUEUE_NAME,
   RenderJobPayloadSchema,
+  STATIC_AD_JOB_NAME,
+  StaticAdJobPayloadSchema,
 } from '@kampora/shared';
 import { storageFromEnv } from '@kampora/storage';
 import { getServeUrl } from '@kampora/video-renderer';
@@ -18,6 +20,7 @@ import { processNarrationJob } from './narration-job';
 import { processVoiceLabJob } from './voice-lab-job';
 import { processSceneImageJob } from './scene-image-job';
 import { RenderJobNotFoundError, processRenderJob } from './render-job';
+import { StaticAdNotFoundError, processStaticAdJob } from './static-ad-job';
 import { redisConnection } from './redis';
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info', base: { service: 'production-worker' } });
@@ -45,6 +48,20 @@ async function main() {
   const worker = new Worker(
     RENDER_QUEUE_NAME,
     async (job) => {
+      // Static image ads share the render queue (and its browser and bundle) with videos.
+      if (job.name === STATIC_AD_JOB_NAME) {
+        const payload = StaticAdJobPayloadSchema.safeParse(job.data);
+        if (!payload.success) throw new UnrecoverableError('Invalid static ad job payload');
+        try {
+          await processStaticAdJob(deps, payload.data, {
+            isFinal: job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
+          });
+        } catch (error) {
+          if (error instanceof StaticAdNotFoundError) throw new UnrecoverableError(error.message);
+          throw error;
+        }
+        return;
+      }
       const parsed = RenderJobPayloadSchema.safeParse(job.data);
       if (!parsed.success) throw new UnrecoverableError('Invalid render job payload');
       const maxAttempts = job.opts.attempts ?? 1;

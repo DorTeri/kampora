@@ -8,7 +8,7 @@ import { FONT_FAMILY, alpha, useAsset, useRenderContext } from './context';
  * it takes the direction from the first strong character, so "Luz …" or "29.90 ₪" became LTR lines, and a line
  * whose words are atomic boxes (no strong characters at all) fell back to LTR and painted the words reversed.
  */
-const textBase: CSSProperties = {
+export const textBase: CSSProperties = {
   fontFamily: FONT_FAMILY,
   direction: 'rtl',
   unicodeBidi: 'isolate',

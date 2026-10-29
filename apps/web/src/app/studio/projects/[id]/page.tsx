@@ -8,9 +8,11 @@ import {
   api,
   type ProjectDetail,
   type SceneImagesResponse,
+  type StaticAdsResponse,
   type VoicesResponse,
 } from '@/lib/api';
 import { SceneImagePanel } from './images';
+import { StaticAdsPanel } from './static-ads';
 import { ApproveButton, ApproveScriptButton, ProductionPanel } from './production';
 import { VoicePanel } from './voice';
 
@@ -18,7 +20,7 @@ const ROLE_TONE = { HOOK: 'accent', OFFER: 'primary', CTA: 'success' } as const;
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [project, voices, images] = await Promise.all([
+  const [project, voices, images, staticAds] = await Promise.all([
     api<ProjectDetail>(`/v1/projects/${id}`).catch((e) => {
       if (e instanceof ApiRequestError && (e.status === 404 || e.status === 400)) notFound();
       throw e;
@@ -26,6 +28,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     api<VoicesResponse>('/v1/voices'),
     // Images are optional: the page works without them (e.g. image generation disabled).
     api<SceneImagesResponse>(`/v1/projects/${id}/images`).catch(() => null),
+    api<StaticAdsResponse>(`/v1/projects/${id}/static-ads`).catch(() => null),
   ]);
   const plan = project.plan;
   const scenes = [...project.storyboard.scenes].sort((a, b) => a.order - b.order);
@@ -201,6 +204,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           </div>
         </aside>
       </div>
+
+      {staticAds && (
+        <section className="mt-6">
+          <StaticAdsPanel projectId={project.id} initial={staticAds} />
+        </section>
+      )}
     </div>
   );
 }

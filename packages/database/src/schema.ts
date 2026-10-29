@@ -23,6 +23,8 @@ import type {
   PlannedGeneration,
   ProductionPlan,
   ScenePlan,
+  StaticAd,
+  StaticAdFormat,
   Storyboard,
   StoryboardScene,
   VideoProject,
@@ -586,6 +588,38 @@ export const sceneImages = pgTable(
   (t) => [
     index('scene_images_project_idx').on(t.videoProjectId, t.sceneKey),
     uniqueIndex('scene_images_version_uq').on(t.videoProjectId, t.sceneKey, t.version),
+  ],
+);
+
+/**
+ * Static image ad per project and format. Every build or edit is a new version holding the full editable StaticAd
+ * document; rendering writes a PNG and a JPEG. The fingerprint lets an identical document reuse its render.
+ */
+export const staticAds = pgTable(
+  'static_ads',
+  {
+    id: id(),
+    orgId: orgId(),
+    videoProjectId: uuid('video_project_id')
+      .notNull()
+      .references(() => videoProjects.id, { onDelete: 'cascade' }),
+    format: text('format').$type<StaticAdFormat>().notNull(),
+    version: integer('version').notNull(),
+    ad: jsonb('ad').$type<StaticAd>().notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    status: jobStatus('status').notNull().default('QUEUED'),
+    error: text('error'),
+    pngKey: text('png_key'),
+    jpegKey: text('jpeg_key'),
+    pngBytes: integer('png_bytes'),
+    jpegBytes: integer('jpeg_bytes'),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: createdAt(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('static_ads_project_idx').on(t.videoProjectId, t.format),
+    uniqueIndex('static_ads_version_uq').on(t.videoProjectId, t.format, t.version),
   ],
 );
 

@@ -8,3 +8,4 @@ export * from './workflow';
 export * from './text';
 export * from './narration';
 export * from './visual';
+export * from './static-ad';

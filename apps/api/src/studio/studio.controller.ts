@@ -1,11 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
   CampaignRequestSchema,
   NarrationModeSchema,
   RenderQualitySchema,
+  StaticAdEditSchema,
+  StaticAdFormatSchema,
   VoiceStyleSchema,
+  type StaticAdEdit,
 } from '@kampora/shared';
 import { Auth, type AuthContext } from '../common/auth';
 import { UuidPipe, ZodPipe, openApiSchema } from '../common/zod';
@@ -13,6 +16,7 @@ import { BusinessService } from './business.service';
 import { NarrationService } from './narration.service';
 import { PaidOperationsService } from './paid.service';
 import { SceneImagesService } from './scene-images.service';
+import { StaticAdsService } from './static-ads.service';
 import { StudioService } from './studio.service';
 import { VoiceLabService } from './voice-lab.service';
 
@@ -38,6 +42,9 @@ const SceneImageRequestSchema = z.object({ approvedUsd: z.number().nonnegative()
 type SceneImageRequest = z.infer<typeof SceneImageRequestSchema>;
 const SceneImageDecisionRequestSchema = z.object({ decision: z.enum(['APPROVED', 'REJECTED']) });
 type SceneImageDecisionRequest = z.infer<typeof SceneImageDecisionRequestSchema>;
+
+const StaticAdsRequestSchema = z.object({ formats: z.array(StaticAdFormatSchema).min(1).max(3).optional() });
+type StaticAdsRequest = z.infer<typeof StaticAdsRequestSchema>;
 
 const NarrationLineRequestSchema = z.object({
   voiceId: z.string().min(1).max(64),
@@ -121,7 +128,43 @@ export class ProjectsController {
     private readonly studio: StudioService,
     private readonly narration: NarrationService,
     private readonly images: SceneImagesService,
+    private readonly staticAds: StaticAdsService,
   ) {}
+
+  @Get(':id/static-ads')
+  @ApiOperation({
+    summary: 'Static image ads: latest version per format (1:1, 4:5, 9:16) and usable pictures',
+  })
+  listStaticAds(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
+    return this.staticAds.list(ctx, id);
+  }
+
+  @Post(':id/static-ads')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Build static image ads from the approved script and queue their render (no paid calls)',
+  })
+  @ApiBody({ schema: openApiSchema(StaticAdsRequestSchema) })
+  createStaticAds(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Body(new ZodPipe(StaticAdsRequestSchema)) body: StaticAdsRequest,
+  ) {
+    return this.staticAds.create(ctx, id, body.formats);
+  }
+
+  @Patch(':id/static-ads/:adId')
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Edit a static ad (texts, background); creates a new version and re-renders it' })
+  @ApiBody({ schema: openApiSchema(StaticAdEditSchema) })
+  editStaticAd(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Param('adId', UuidPipe) adId: string,
+    @Body(new ZodPipe(StaticAdEditSchema)) body: StaticAdEdit,
+  ) {
+    return this.staticAds.edit(ctx, id, adId, body);
+  }
 
   @Get(':id/images')
   @ApiOperation({ summary: 'Scene images: per-scene quote and every generated version' })

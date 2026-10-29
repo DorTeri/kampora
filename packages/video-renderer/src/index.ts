@@ -1,15 +1,20 @@
 import path from 'node:path';
 import { bundle } from '@remotion/bundler';
-import { ensureBrowser, renderMedia, selectComposition } from '@remotion/renderer';
+import { ensureBrowser, renderMedia, renderStill, selectComposition } from '@remotion/renderer';
 import {
   RenderInputSchema,
+  StaticAdRenderInputSchema,
   projectDurationInFrames,
   type RenderInput,
   type RenderQuality,
+  type StaticAdFileType,
+  type StaticAdRenderInput,
 } from '@kampora/shared';
 
 /** Must match COMPOSITION_ID in src/remotion/KamporaAd.tsx (not imported to keep React out of Node code). */
 export const COMPOSITION_ID = 'KamporaAd';
+/** Must match STATIC_COMPOSITION_ID in src/remotion/StaticAd.tsx. */
+export const STATIC_COMPOSITION_ID = 'KamporaStaticAd';
 
 /** The Remotion entry is bundled from source; dist/ sits next to src/ in this package. */
 export const REMOTION_ENTRY = path.resolve(__dirname, '../src/remotion/index.ts');
@@ -48,15 +53,52 @@ export const QUALITY_SETTINGS: Record<RenderQuality, { scale: number; crfOffset:
   final: { scale: 1, crfOffset: 0 },
 };
 
+/** REMOTION_BROWSER_EXECUTABLE pins a browser; otherwise Remotion downloads its headless shell once. */
+async function browser(): Promise<string | null> {
+  const executable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
+  if (!executable) await ensureBrowser();
+  return executable;
+}
+
+export interface RenderStaticAdOptions {
+  input: StaticAdRenderInput;
+  outputPath: string;
+  fileType: StaticAdFileType;
+}
+
+/** Renders one static image ad (PNG or JPEG) from its validated StaticAd document. */
+export async function renderStaticAd(
+  options: RenderStaticAdOptions,
+): Promise<{ outputPath: string; width: number; height: number }> {
+  const inputProps = StaticAdRenderInputSchema.parse(options.input);
+  const browserExecutable = await browser();
+  const serveUrl = await getServeUrl();
+  const composition = await selectComposition({
+    serveUrl,
+    id: STATIC_COMPOSITION_ID,
+    inputProps,
+    browserExecutable,
+  });
+  await renderStill({
+    browserExecutable,
+    composition,
+    serveUrl,
+    inputProps,
+    output: options.outputPath,
+    imageFormat: options.fileType,
+    jpegQuality: options.fileType === 'jpeg' ? 90 : undefined,
+    overwrite: true,
+  });
+  return { outputPath: options.outputPath, width: composition.width, height: composition.height };
+}
+
 export async function renderVideoProject(options: RenderVideoOptions): Promise<RenderVideoResult> {
   const input = RenderInputSchema.parse(options.input);
   const { scale, crfOffset } = QUALITY_SETTINGS[options.quality];
   const inputProps = { ...input, scale };
 
-  // REMOTION_BROWSER_EXECUTABLE lets ops pin a browser (e.g. when node_modules sits in a path longer than
-  // Windows' 260-char process limit). Otherwise Remotion downloads its headless shell once.
-  const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
-  if (!browserExecutable) await ensureBrowser();
+  // A pinned browser also avoids Windows' 260-char process path limit when node_modules sits deep.
+  const browserExecutable = await browser();
   const serveUrl = await getServeUrl(options.onBundleProgress);
   const composition = await selectComposition({
     serveUrl,
