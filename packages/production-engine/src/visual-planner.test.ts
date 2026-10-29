@@ -90,6 +90,18 @@ describe('planSceneVisual', () => {
     ).not.toBe(base);
   });
 
+  it('a new version after a rejection asks for a different take, keeping the ad look', () => {
+    const v0 = planSceneVisual(input());
+    const v1 = planSceneVisual(input({ variant: 1 }));
+    const v2 = planSceneVisual(input({ variant: 2 }));
+    expect(v1.prompt).not.toBe(v0.prompt);
+    expect(v2.prompt).not.toBe(v1.prompt);
+    expect(v1.prompt).toMatch(/different/i);
+    expect(v1.look).toBe(v0.look);
+    expect(v1.prompt).toContain(v0.look);
+    expect(v0.prompt).not.toMatch(/different camera/i);
+  });
+
   it('tells the model to keep the referenced product exact', () => {
     const plan = planSceneVisual(input({ references: [{ id: 'photo-1', description: 'bag' }] }));
     expect(plan.referenceAssetIds).toEqual(['photo-1']);

@@ -85,6 +85,18 @@ const LOOKS = [
   'controlled studio light with soft shadows, neutral true-color grade, 100mm macro lens look',
 ];
 
+/**
+ * A new version of a scene image follows a rejection, so it must be a different take, not a resample of the
+ * same prompt: vary the camera and composition, never the product or the shared look.
+ */
+const ALTERNATIVE_TAKES = [
+  'lower camera angle, subject slightly off-center',
+  'higher three-quarter angle, tighter crop on the subject',
+  'side angle with more calm negative space around the subject',
+  'different surface and supporting props, same subject',
+  'eye-level straight-on angle, simpler background',
+];
+
 const SAFE_ZONES: Record<ImageAspect, string> = {
   '9:16':
     'Vertical 9:16 frame. Keep the main subject in the central band; leave the top 15% and bottom 25% calm and uncluttered (captions and call-to-action are overlaid there).',
@@ -136,6 +148,9 @@ export function planSceneVisual(input: PlanSceneVisualInput): VisualScenePlan {
     `Scene (described in Hebrew): ${scene.visual}`,
     scene.direction?.purpose ? `What the viewer should feel or understand: ${scene.direction.purpose}` : '',
     `Framing: ${SHOT_DIRECTION[shot]}.`,
+    input.variant > 0
+      ? `Alternative take: earlier versions were not right, so use a clearly different camera angle and composition (${ALTERNATIVE_TAKES[(input.variant - 1) % ALTERNATIVE_TAKES.length]}). Keep the same product, look and mood.`
+      : '',
     `Campaign look, identical across all scenes of this ad: ${look}.`,
     `Mood: ${mood}.`,
     `Brand colors appear naturally as accents in props, surfaces or light: ${palette.join(', ')}. Never as text.`,
