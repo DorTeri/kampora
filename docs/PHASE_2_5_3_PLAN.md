@@ -99,7 +99,7 @@ Nothing has been generated. No voice is called "best" until people have listened
 
 ### Real-provider image validation (waiting for approval)
 
-Generate 3 scenes (hook, product with one reference photo, CTA) at `medium` quality, then 1 regeneration. That is 4 calls, about $0.041 × 4 + $0.01 = **about $0.17** (cap of $0.25). People review the images for realism, product fidelity, text-free output and consistency between scenes; passing tests is not enough. This needs `IMAGE_PROVIDER=openai`, `KAMPORA_ALLOW_PAID_GENERATION=true` and your explicit approval.
+Generate 3 scenes (hook, product, CTA) at `medium` quality, then 1 regeneration. The live quotes (2026-10-29, which include the reference-photo surcharge) are $0.051 for hook and CTA and $0.061 for product, so 4 calls come to **about $0.21** (cap $0.25). People review the images for realism, product fidelity, text-free output and consistency between scenes; passing tests is not enough. This needs `IMAGE_PROVIDER=openai`, `KAMPORA_ALLOW_PAID_GENERATION=true` and your explicit approval.
 
 ## Milestone D: hybrid video engine (offline)
 
@@ -134,3 +134,40 @@ A full mock run through the API (campaign → concept → images → script → 
 - **Tests:** builder and edit rules (8), layout in headless Chrome for every format with typical and worst-case texts (every glyph inside the safe area, no collision between the blocks) plus RTL reading order, worker job integration (render, store, idempotency, failure handling).
 - **Cost:** rendering is local, so it is $0 and nothing paid is involved. Static ads reuse approved images; they never trigger new image generation.
 - **Limits:** one layout template; no free positioning or font choice; the focal point can be set through the API but not yet in the UI; the layout tests run without the Heebo font (system fallback), so the real renders were also checked by eye.
+
+## Milestone F: end-to-end journey
+
+`npm run e2e:journey -- final [--out=<dir>]` runs the whole chain against the running API and worker and stops at the first broken step. It writes `journey-report.json`, the MP4, one frame per scene and the static ads to the output folder.
+
+| Stage                | What the journey checks                                                                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Business brief    | invalid brief → 400; paid creative without approval refused                                                                                                      |
+| 2. Creative strategy | 3 concepts, 3 different angles, each with a strategy (format, voice style)                                                                                       |
+| 3. Approved concept  | recommended concept selected; selecting again returns the same project                                                                                           |
+| 4. Storyboard        | opens with a hook, closes with a CTA                                                                                                                             |
+| 5. Visual planning   | a production strategy per scene; plan within budget                                                                                                              |
+| 6. Asset selection   | which scenes reuse the business's media and which still need a picture                                                                                           |
+| 7. AI images         | needed scenes get an image (or one optional scene when media covers all); reject → regenerate must give a different picture; approve                             |
+| 8. Voice direction   | voice, style suggested by the concept, continuous take, quote                                                                                                    |
+| 9. Hebrew narration  | recorded, measured, captions timed; an identical request reuses the audio                                                                                        |
+| 10. Motion planning  | per scene: visual type, camera move, transition, picture source (new `timeline` summary on the project)                                                          |
+| 11. Timeline         | at least as long as the narration; narrated scenes have captions (except a CTA card that already shows the words); re-approval without changes keeps the version |
+| 12. Final render     | idempotent request; render succeeds                                                                                                                              |
+| 13. QA               | no timeline QA errors                                                                                                                                            |
+| 14. Download         | attachment MP4 with video + audio (ffprobe); tampered signature → 403; scene frames saved                                                                        |
+| + Static ads         | 1:1, 4:5, 9:16 PNG and JPEG at the right sizes; rebuilding without changes reuses version 1                                                                      |
+| Costs                | a run without `--approve-paid` records no ESTIMATED or CONFIRMED charge                                                                                          |
+
+**Mock run (2026-10-29):** passed. 16.1 s 1080x1920 video for 14.8 s of narration, timeline QA clean, 3 static ads, $0 real cost (simulated $0.03). Looking at the frames found one defect the tests did not: a caption chunk ended on "עד" and left the word on its own line. Fixed in `splitCaptionChunks` (a chunk never ends on a short connecting word); rules version `r9`. Run against the real providers without `--approve-paid`, the journey stops at the first paid step: the API refuses (`PAID_GENERATION_DISABLED`) and the ledger is unchanged.
+
+### Real-provider validation plan (waiting for approval)
+
+Each step is approved separately, runs with `KAMPORA_ALLOW_PAID_GENERATION=true` for that session only and is switched back off afterwards. Quotes are from 2026-10-29 (free GET requests; nothing was generated). Image and voice prices are planning estimates (ESTIMATED in the ledger); creative uses verified OpenAI token prices.
+
+| Step             | What runs                                                                                                                                                      | Quote                                                                                    | Cap              | People review                                                                                                           |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| V1. Images       | 3 scenes + 1 regeneration, gpt-image-2 medium                                                                                                                  | ~$0.21                                                                                   | $0.25            | realism, product fidelity, no text in the image, same look across scenes                                                |
+| V2. Voices       | voice comparison from Milestone A: 6 readings (or 8 with a second C voice)                                                                                     | ~$0.11 published price, $0.42 catalog estimate                                           | $0.45 (or $0.60) | listening ratings per criterion; no voice is called best without them                                                   |
+| V3. Full journey | `e2e:journey final --approve-paid --max-usd=0.35` with OpenAI creative, ElevenLabs narration (voice chosen in V2) and OpenAI images (1 image + 1 regeneration) | creative $0.07 expected ($0.14 cap) + narration $0.06 + images $0.10 ≈ $0.30 at the caps | $0.35            | the MP4 and static ads as a whole: Hebrew pronunciation (names, prices, address), caption sync, RTL, offer clarity, CTA |
+
+Suggested order: V1, then V2, then V3, so the full run uses a voice and image settings that people have already accepted. Worst case for all three at their caps is $1.05. Rendering and static ads are local and cost nothing. Not included: image-to-video (quoted per scene, not integrated), Meta Ads, scheduling.

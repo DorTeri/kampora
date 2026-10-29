@@ -7,7 +7,7 @@ import {
   type VideoProjectInput,
 } from '@kampora/shared';
 import { chooseMotion, chooseTransition } from './motion-router';
-import { timelineQa } from './timeline-qa';
+import { describeTimeline, timelineQa } from './timeline-qa';
 
 const scene = (overrides: Partial<StoryboardScene> = {}): StoryboardScene => ({
   key: 'hook',
@@ -197,5 +197,43 @@ describe('timelineQa', () => {
       ]),
     );
     expect(timelineQa(project([timelineScene('only')])).map((i) => i.code)).toContain('NO_CTA');
+  });
+});
+
+describe('describeTimeline', () => {
+  it('summarises what each scene shows and how it moves', () => {
+    const p = project([
+      timelineScene('hook', {
+        durationInFrames: 90,
+        voiceover: { assetId: 'vo', volume: 1, startOffsetFrames: 9, durationInFrames: 75 },
+        caption: { text: 'שלום', cues: [{ text: 'שלום', startFrame: 10, endFrame: 80 }] },
+      }),
+      timelineScene('cta', {
+        durationInFrames: 60,
+        visual: { type: 'motion-graphics', template: 'brand-gradient' },
+        overlays: [cta],
+        transition: { type: 'zoom', durationInFrames: 8 },
+      }),
+    ]);
+    const summary = describeTimeline(p);
+    expect(summary.totalSec).toBe(5);
+    expect(summary.scenes[0]).toMatchObject({
+      sceneKey: 'hook',
+      seconds: 3,
+      visual: 'image-motion',
+      pictureSource: 'DEMO',
+      captionCues: 1,
+      narrated: true,
+    });
+    expect(summary.scenes[0]!.motion).toBeTruthy();
+    expect(summary.scenes[1]).toMatchObject({
+      sceneKey: 'cta',
+      visual: 'motion-graphics',
+      motion: undefined,
+      pictureSource: undefined,
+      transition: 'zoom',
+      overlays: ['cta'],
+      narrated: false,
+    });
   });
 });

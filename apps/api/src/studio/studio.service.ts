@@ -17,7 +17,13 @@ import {
   videoProjects,
   type Database,
 } from '@kampora/database';
-import { buildVideoProject, planProduction, sceneContentHash, timelineQa } from '@kampora/production-engine';
+import {
+  buildVideoProject,
+  describeTimeline,
+  planProduction,
+  sceneContentHash,
+  timelineQa,
+} from '@kampora/production-engine';
 import type { ImageSetup } from '@kampora/media-providers';
 import {
   assertProjectTransition,
@@ -410,6 +416,8 @@ export class StudioService {
       imagesKey: sceneImagesKey(approvedImages),
       /** Technical QA of the current timeline (internal review aid; not a quality verdict). */
       timelineQa: current ? timelineQa(current.project) : [],
+      /** What each scene of the current timeline shows and how it moves (review aid). */
+      timeline: current ? describeTimeline(current.project) : null,
       versions,
       renders,
       costs: await this.projectCosts(ctx, projectId),

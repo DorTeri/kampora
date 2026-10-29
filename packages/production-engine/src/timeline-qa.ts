@@ -136,3 +136,44 @@ export function timelineQa(project: VideoProject): TimelineIssue[] {
 
   return issues;
 }
+
+export interface TimelineSceneSummary {
+  sceneKey: string;
+  seconds: number;
+  visual: 'image-motion' | 'video' | 'motion-graphics';
+  /** Camera move on a still picture; real subject motion would need video. */
+  motion?: string;
+  /** Where the picture came from (AI_GENERATED, BUSINESS_UPLOAD, …), when the scene shows one. */
+  pictureSource?: string;
+  transition: string;
+  overlays: string[];
+  captionCues: number;
+  narrated: boolean;
+}
+
+/** A readable summary of a built timeline: what each scene shows and how it moves. For review, not for rendering. */
+export function describeTimeline(project: VideoProject): {
+  totalSec: number;
+  scenes: TimelineSceneSummary[];
+} {
+  const fps = project.output.fps;
+  const source = (assetId?: string) =>
+    assetId ? project.assets.find((a) => a.id === assetId)?.provenance.source : undefined;
+  return {
+    totalSec: Math.round((projectDurationInFrames(project) / fps) * 100) / 100,
+    scenes: project.scenes.map((scene) => {
+      const v = scene.visual;
+      return {
+        sceneKey: scene.sourceSceneKey,
+        seconds: Math.round((scene.durationInFrames / fps) * 100) / 100,
+        visual: v.type,
+        motion: v.type === 'image-motion' ? v.motion.preset : undefined,
+        pictureSource: source(v.type === 'motion-graphics' ? v.backgroundAssetId : v.assetId),
+        transition: scene.transition.type,
+        overlays: scene.overlays.map((o) => o.type),
+        captionCues: scene.caption?.cues?.length ?? 0,
+        narrated: Boolean(scene.voiceover),
+      };
+    }),
+  };
+}
