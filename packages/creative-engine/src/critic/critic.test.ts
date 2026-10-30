@@ -243,7 +243,7 @@ describe('Creative Critic: static ads and the revision loop', () => {
     expect(history.rounds[0]!.revisions[0]!.change).toMatch(/Rebuilt the OFFER_RETAIL/);
   });
 
-  it('never lets an AI picture pass as the real product, and leaves that to the owner', () => {
+  it('never lets an AI picture pass as the real product: a free layout switch, else the owner', () => {
     const showcase = designFor('PRODUCT_SHOWCASE', '4:5', DEMO_BUSINESS.brandColors, true);
     const synthetic: StaticAd = {
       ...ad(showcase),
@@ -253,7 +253,13 @@ describe('Creative Critic: static ads and the revision loop', () => {
       },
     };
     const auth = critiqueStaticAd(synthetic).find((r) => r.criterion === 'PRODUCT_AUTHENTICITY')!;
-    expect(auth).toMatchObject({ severity: 'MAJOR', component: 'OWNER' });
+    expect(auth).toMatchObject({ severity: 'MAJOR', component: 'ART_DIRECTOR' });
+    const { ad: fixed, history } = reviewStaticAd(synthetic, { alternatives: ['LOCAL_PROMO'] });
+    expect(fixed.design!.layoutFamily).toBe('LOCAL_PROMO');
+    expect(history.stoppedBecause).toBe('PASSED');
+    const owners: StaticAd = { ...synthetic, design: { ...showcase, chosenBy: 'OWNER' } };
+    const kept = critiqueStaticAd(owners).find((r) => r.criterion === 'PRODUCT_AUTHENTICITY')!;
+    expect(kept).toMatchObject({ severity: 'MAJOR', component: 'OWNER' });
   });
 });
 

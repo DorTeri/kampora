@@ -49,6 +49,13 @@ export interface ArtDirectionInput {
 const FAMILIES = Object.keys(LAYOUT_FAMILY_PROFILES) as LayoutFamily[];
 const REAL: readonly MediaAuthenticity[] = ['VERIFIED_PRODUCT_PHOTO', 'VERIFIED_BUSINESS_PHOTO'];
 
+/** Families that frame their picture as "this is the product". The Critic checks the same list. */
+export const PRODUCT_HERO_FAMILIES: readonly LayoutFamily[] = [
+  'PRODUCT_SHOWCASE',
+  'PREMIUM_MINIMAL',
+  'EDITORIAL_PRODUCT',
+];
+
 /** Scores every layout family against the situation; highest first, ties in a fixed order. */
 export function scoreLayoutFamilies(input: ArtDirectionInput): ArtDirectionPlan['alternatives'] {
   const industry = input.industryId ? industryById(input.industryId) : undefined;
@@ -84,13 +91,10 @@ export function scoreLayoutFamilies(input: ArtDirectionInput): ArtDirectionPlan[
       add(1, 'the copy is about the product itself');
     if (pic?.busy && (family === 'LIFESTYLE_PHOTO' || family === 'OFFER_RETAIL'))
       add(-1, 'text over a busy picture');
-    // A product hero claims "this is the product": with a generated stand-in, prefer families that do not.
-    if (
-      pic &&
-      !REAL.includes(pic.authenticity) &&
-      (family === 'PRODUCT_SHOWCASE' || family === 'PREMIUM_MINIMAL')
-    )
-      add(-1, 'would present an AI picture as the real product');
+    // A product hero claims "this is the product": with a generated stand-in the Critic rejects it (MAJOR), so
+    // the penalty outweighs a goal or tone fit.
+    if (pic && !REAL.includes(pic.authenticity) && PRODUCT_HERO_FAMILIES.includes(family))
+      add(-3, 'would present an AI picture as the real product');
     if (input.previousLayout === family) add(-1, 'the previous ad used it');
     return { layoutFamily: family, score, reasons };
   }).sort((x, y) => y.score - x.score || FAMILIES.indexOf(x.layoutFamily) - FAMILIES.indexOf(y.layoutFamily));

@@ -91,6 +91,11 @@ describe('Art Director', () => {
       (a) => a.layoutFamily === 'PRODUCT_SHOWCASE',
     )!;
     expect(showcase.reasons.join(' ')).toMatch(/AI picture as the real product/);
+    // The Critic's list too: an awareness ad with an AI picture is not an editorial product hero.
+    const awareness = directArt({ ...base, goal: 'AWARENESS', hasPrice: false, hasOffer: false });
+    expect(['PRODUCT_SHOWCASE', 'PREMIUM_MINIMAL', 'EDITORIAL_PRODUCT']).not.toContain(
+      awareness.layoutFamily,
+    );
   });
 
   it('prefers another family than the previous ad when one fits almost as well', () => {

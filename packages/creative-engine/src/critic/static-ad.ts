@@ -14,6 +14,7 @@ import {
   type StaticAd,
 } from '@kampora/shared';
 import { staticAdQa } from '@kampora/production-engine';
+import { PRODUCT_HERO_FAMILIES } from '../art-director';
 import { unverifiedIndustryClaims } from '../copy-qa';
 import { measured, notMeasured, type Finding } from './report';
 
@@ -34,7 +35,6 @@ export interface StaticAdCritiqueContext {
 }
 
 /** Families that present the picture as the product itself. */
-const SHOWS_PRODUCT: readonly LayoutFamily[] = ['PRODUCT_SHOWCASE', 'PREMIUM_MINIMAL', 'EDITORIAL_PRODUCT'];
 const PRODUCT_SHOTS: readonly CompositionType[] = ['SINGLE_HERO', 'DETAIL'];
 
 /**
@@ -440,7 +440,7 @@ export function critiqueStaticAd(ad: StaticAd, ctx: StaticAdCritiqueContext = {}
   // Production.
   const auth: Finding[] = [];
   if (authenticity === 'SYNTHETIC_AI' || has('SYNTHETIC_PICTURE')) {
-    const asProduct = d && SHOWS_PRODUCT.includes(d.layoutFamily);
+    const asProduct = d && PRODUCT_HERO_FAMILIES.includes(d.layoutFamily);
     auth.push(
       at({
         severity: asProduct ? 'MAJOR' : 'MINOR',
@@ -448,8 +448,11 @@ export function critiqueStaticAd(ad: StaticAd, ctx: StaticAdCritiqueContext = {}
           ? `An AI picture is framed as the real product (${d!.layoutFamily}).`
           : 'AI picture: labelled for the owner as a stand-in.',
         evidence: ['SYNTHETIC_AI'],
-        correction: 'Upload a real photo of the product.',
-        component: 'OWNER',
+        // Another layout fixes the framing for free; only the owner can replace the picture or their own layout.
+        correction: asProduct
+          ? 'Use a layout that does not present the picture as the product, or upload a real photo.'
+          : 'Upload a real photo of the product.',
+        component: asProduct && d!.chosenBy !== 'OWNER' ? 'ART_DIRECTOR' : 'OWNER',
       }),
     );
   } else if (has('REFERENCE_GUIDED_PICTURE'))
