@@ -13,6 +13,13 @@ OpenAI structured creative (concepts, script, storyboard) with grounding checks;
 for AI approval, script approval, voice choice, narration preview and production approval.
 Mock providers produce the same shapes (and real audio) for paid-free development and tests.
 
+## Professional agent quality upgrade ✅ (Q0–Q5)
+Professional Creative Brief, versioned expertise (playbooks, industry profiles, reference library), Copywriter,
+Art Director with eight layout families, Creative Critic with a versioned rubric and bounded, approval-aware
+revisions, a fixed evaluation set with a regression baseline, owner feedback and quality metrics. See
+[CREATIVE_QUALITY.md](CREATIVE_QUALITY.md). The checks prove the rules hold. They do not prove commercial quality,
+which still needs people.
+
 ## Phase 2b — Remaining real AI media (next)
 1. Listening-test results → choose default voice/model; decide selective niqqud and audio tags.
 2. Voice QC: STT round-trip, silence/clipping detection, brand-name verification.

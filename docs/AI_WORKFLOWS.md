@@ -43,6 +43,9 @@ Steps have no tools, shell, network or code execution. They return JSON. Determi
 | Storyboard Director | `creative.storyboard` step | profile + brief + concept + assets → `Storyboard` (4–6 scenes) |
 | Production Planner | deterministic `planProduction` | storyboard + assets + budget → `ProductionPlan` |
 | Voice Director | deterministic `hebrew-voice` normalizer + provider prep | voiceover text → provider payload |
+| Copywriter | `creative.concepts` step with copywriting / Hebrew playbooks | concepts with hook technique, headline, sub-headline |
+| Art Director | deterministic `directArt` | goal, picture, tone, price, industry → `ArtDirectionPlan` (layout family, focal point, per-format design, motion) |
+| Creative Critic | deterministic `critique*` + optional labelled LLM opinion | concept set / static ad / video → per-criterion results, verdict, routed revisions (max 2 rounds, paid fixes need approval) |
 | Quality Control | `checkClaims` guard (unapproved superlatives); STT checks in Phase 2 | concept/storyboard → warnings |
 | Business Research, Media Buyer, Performance Analyst | not started | — |
 

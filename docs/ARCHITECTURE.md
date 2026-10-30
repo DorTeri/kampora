@@ -16,7 +16,9 @@ packages/
   cost-engine/        Price catalog (estimates), budget guard, ledger summaries, idempotency keys.
   production-engine/  Rule-based Production Router, production planner, storyboard → VideoProject builder,
                       scene invalidation (content hashes).
-  creative-engine/    Bounded AI reasoning steps (brief, concepts, storyboard) + deterministic mock provider.
+  agent-expertise/    Versioned playbooks, industry profiles, reference library, Critic rubric and policy.
+  creative-engine/    Bounded AI reasoning steps (brief, concepts, storyboard), Art Director, Creative Critic,
+                      evaluation runner + deterministic mock provider.
   media-providers/    Provider contracts (LLM, image, video) + mocks.
   storage/            Storage drivers: S3 (prod / any S3-compatible) and local disk with HMAC-signed URLs (dev).
   video-renderer/     Remotion compositions (the tested component library) + Node render API.
@@ -62,6 +64,18 @@ Both are deterministic functions in `production-engine`; no model looks at pixel
 - **Scene composition** (`composition.ts`): what a picture must contain (`SINGLE_HERO`, `ASSORTMENT`, `LIFESTYLE`, `DETAIL`, `ENVIRONMENT`, `DEMONSTRATION`) plus required subjects with approximate quantities. Written by the storyboard director; older storyboards get it inferred from the visual text and the business's product list. When instructions disagree, the order is: verified business/product constraints → storyboard requirements → scene purpose → campaign look → generic framing. The planner adapts the framing or lens instead of letting it override the content, and records each contradiction (`VisualConflict`) with its resolution.
 - **Media authenticity** (`shared/authenticity.ts`): `VERIFIED_PRODUCT_PHOTO`, `VERIFIED_BUSINESS_PHOTO`, `REFERENCE_GUIDED_AI`, `SYNTHETIC_AI`, `GENERIC_STOCK`, `ILLUSTRATION`, from provenance and file type. Unknown provenance is never treated as verified.
 - **Background ranking** (`static-ad-background.ts`): explainable points per candidate: offered products shown (from the brief and the business's products), authenticity, fit with the campaign goal, crop retention for 1:1 / 4:5 / 9:16, resolution, room for text, campaign look. The winner's reasons are stored on the ad (`background.selection`). An owner's pick is stored as `chosenBy: OWNER` and kept on rebuild while the picture is usable. What a picture shows comes from metadata: an upload's description and tags, an AI image's plan.
+
+## Creative quality (Art Director, Critic, evaluation)
+
+The brief, Copywriter, Art Director, Creative Critic, evaluation set and owner feedback are described in
+[CREATIVE_QUALITY.md](CREATIVE_QUALITY.md). In short:
+- `agent-expertise` holds versioned playbooks, industry profiles, a reference library of principles and the Critic's
+  rubric.
+- The Art Director scores layout families with reasons.
+- The Critic reports per-criterion results and applies free layout fixes, at most 2 rounds. Paid fixes wait for
+  approval.
+- Reviews and owner feedback are stored per business (`creative_reviews`, `creative_feedback`).
+- A fixed evaluation set guards against regressions.
 
 ## Future: Campaign Director (not built)
 
