@@ -3,16 +3,19 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
   CampaignRequestSchema,
+  CreativeFeedbackInputSchema,
   NarrationModeSchema,
   RenderQualitySchema,
   StaticAdEditSchema,
   StaticAdFormatSchema,
   VoiceStyleSchema,
+  type CreativeFeedbackInput,
   type StaticAdEdit,
 } from '@kampora/shared';
 import { Auth, type AuthContext } from '../common/auth';
 import { UuidPipe, ZodPipe, openApiSchema } from '../common/zod';
 import { BusinessService } from './business.service';
+import { CriticService } from './critic.service';
 import { NarrationService } from './narration.service';
 import { PaidOperationsService } from './paid.service';
 import { SceneImagesService } from './scene-images.service';
@@ -90,7 +93,21 @@ export class BusinessesController {
 @ApiBearerAuth()
 @Controller('v1/campaigns')
 export class CampaignsController {
-  constructor(private readonly studio: StudioService) {}
+  constructor(
+    private readonly studio: StudioService,
+    private readonly critic: CriticService,
+  ) {}
+
+  @Post(':id/feedback')
+  @ApiOperation({ summary: 'Owner feedback on a concept (accept / reject / revise, with reasons)' })
+  @ApiBody({ schema: openApiSchema(CreativeFeedbackInputSchema) })
+  feedback(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Body(new ZodPipe(CreativeFeedbackInputSchema)) body: CreativeFeedbackInput,
+  ) {
+    return this.critic.feedback(ctx, { campaignBriefId: id }, body);
+  }
 
   @Get()
   list(@Auth() ctx: AuthContext) {
@@ -129,7 +146,19 @@ export class ProjectsController {
     private readonly narration: NarrationService,
     private readonly images: SceneImagesService,
     private readonly staticAds: StaticAdsService,
+    private readonly critic: CriticService,
   ) {}
+
+  @Post(':id/feedback')
+  @ApiOperation({ summary: 'Owner feedback on a static ad, scene image, narration or video of this project' })
+  @ApiBody({ schema: openApiSchema(CreativeFeedbackInputSchema) })
+  feedback(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Body(new ZodPipe(CreativeFeedbackInputSchema)) body: CreativeFeedbackInput,
+  ) {
+    return this.critic.feedback(ctx, { videoProjectId: id }, body);
+  }
 
   @Get(':id/static-ads')
   @ApiOperation({
@@ -287,6 +316,24 @@ export class ProjectsController {
     @Body(new ZodPipe(RenderRequestSchema)) body: RenderRequest,
   ) {
     return this.studio.requestRender(ctx, id, body.quality);
+  }
+}
+
+const MetricsQuerySchema = z.object({ businessId: z.string().uuid().optional() });
+type MetricsQuery = z.infer<typeof MetricsQuerySchema>;
+
+@ApiTags('quality')
+@ApiBearerAuth()
+@Controller('v1/quality')
+export class QualityController {
+  constructor(private readonly critic: CriticService) {}
+
+  @Get('metrics')
+  @ApiOperation({
+    summary: 'Critic findings, free fixes, owner feedback and creative cost (counts, not a quality score)',
+  })
+  metrics(@Auth() ctx: AuthContext, @Query(new ZodPipe(MetricsQuerySchema)) query: MetricsQuery) {
+    return this.critic.metrics(ctx, query.businessId);
   }
 }
 

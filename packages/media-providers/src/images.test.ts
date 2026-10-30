@@ -15,7 +15,7 @@ describe('MockImageProvider', () => {
     expect(a.usage).toMatchObject({ chargeType: 'SIMULATED', costUsd: 0 });
     const square = await p.generate({ prompt: 'x', aspectRatio: '1:1' });
     expect(square.data.readUInt32BE(20)).toBe(540);
-  });
+  }, 20_000); // Three pure-JS PNG encodes: slow when the whole suite runs in parallel.
 });
 
 describe('OpenAiImageProvider (fake client, no network)', () => {

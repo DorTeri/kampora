@@ -406,11 +406,16 @@ export function critiqueStaticAd(ad: StaticAd, ctx: StaticAdCritiqueContext = {}
   // The picture.
   const picture: Finding[] = [];
   const missing = reasons.find((r) => r.code === 'OFFER_SUBJECTS_MISSING');
+  // Judged from what the picture was planned or described to show (no image recognition). It is a serious
+  // problem only when the ad sells the product and the picture shows none of it; a leads or awareness ad may
+  // rightly show the place or the people.
+  const sellsProduct = !ctx.plan || ctx.plan.primaryFocal === 'PRODUCT' || ctx.plan.primaryFocal === 'PRICE';
+  const showsSome = reasons.some((r) => r.code === 'OFFER_SUBJECTS');
   if (missing)
     picture.push(
       at({
-        severity: 'MAJOR',
-        explanation: 'The picture does not show the products the ad offers.',
+        severity: sellsProduct && !showsSome ? 'MAJOR' : 'MINOR',
+        explanation: `By its description, the picture does not show: ${(missing.subjects ?? []).join(', ') || missing.detail}.`,
         evidence: missing.subjects ?? [missing.detail],
         correction: 'Use a picture of the offered product.',
       }),

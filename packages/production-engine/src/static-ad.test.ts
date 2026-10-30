@@ -27,6 +27,7 @@ import {
   staticAdQa,
 } from './static-ad';
 import { offerSubjects, rankBackgrounds } from './static-ad-background';
+import { splitPrice } from './timeline';
 
 const catalog = new PriceCatalog(DEFAULT_PRICE_CATALOG);
 const demoAssets: AvailableAsset[] = [
@@ -407,5 +408,16 @@ describe('art-directed static ads', () => {
     });
     expect(chosen.asset?.id).toBe(build().background.assetId);
     expect(chosen.candidate?.composition).toBeDefined();
+  });
+});
+
+describe('splitPrice', () => {
+  it('splits a shekel amount or a percentage discount from its words', () => {
+    expect(splitPrice('קפה + מאפה ב-29.90 ₪')).toEqual({ price: '29.90 ₪', label: 'קפה + מאפה' });
+    expect(splitPrice('15% הנחה על הקולקציה החדשה')).toEqual({
+      price: '15%',
+      label: 'הנחה על הקולקציה החדשה',
+    });
+    expect(splitPrice('בואו להכיר')).toBeUndefined();
   });
 });

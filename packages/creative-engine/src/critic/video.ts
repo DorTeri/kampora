@@ -40,13 +40,25 @@ export function critiqueVideo(project: VideoProject): CriterionResult[] {
   const motion: Finding[] = [];
   for (let i = 2; i < presets.length; i++)
     if (presets[i] === presets[i - 1] && presets[i] === presets[i - 2] && presets[i] !== 'video')
-      motion.push({
-        severity: 'MAJOR',
-        explanation: `Three scenes in a row use the same move (${presets[i]}).`,
-        evidence: presets.slice(i - 2, i + 1),
-        correction: 'Vary the camera move.',
-        target: project.scenes[i]!.id,
-      });
+      motion.push(
+        presets[i] === 'motion-graphics'
+          ? {
+              // Usually scenes that need real movement (people, an action): stills cannot fake it honestly.
+              severity: 'MAJOR',
+              explanation: 'Three graphic cards in a row: the video shows no picture for most of its length.',
+              evidence: presets.slice(i - 2, i + 1),
+              correction: 'Add photos or short clips of the business for these scenes.',
+              component: 'OWNER',
+              target: project.scenes[i]!.id,
+            }
+          : {
+              severity: 'MAJOR',
+              explanation: `Three scenes in a row use the same move (${presets[i]}).`,
+              evidence: presets.slice(i - 2, i + 1),
+              correction: 'Vary the camera move.',
+              target: project.scenes[i]!.id,
+            },
+      );
   const stills = project.scenes.filter((s) => s.visual.type === 'image-motion').length;
 
   const sa = project.safeArea;

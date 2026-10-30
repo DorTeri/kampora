@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import {
   CampaignRequestSchema,
+  type CreativeFeedbackInput,
   type StaticAdEdit,
   type StaticAdFormat,
   type VoiceStyle,
@@ -203,6 +204,24 @@ export async function createStaticAdsAction(
       body: { formats },
     });
     return { data };
+  } catch (e) {
+    return { error: errorCode(e) };
+  }
+}
+
+/** The owner's verdict on one static ad version (the learning signal); returns the refreshed ads. */
+export async function staticAdFeedbackAction(
+  projectId: string,
+  staticAdId: string,
+  decision: CreativeFeedbackInput['decision'],
+  reasons: CreativeFeedbackInput['reasons'],
+): Promise<{ data?: StaticAdsResponse; error?: string }> {
+  try {
+    await api(`/v1/projects/${projectId}/feedback`, {
+      method: 'POST',
+      body: { subjectType: 'STATIC_AD', subjectRef: staticAdId, decision, reasons },
+    });
+    return { data: await api<StaticAdsResponse>(`/v1/projects/${projectId}/static-ads`) };
   } catch (e) {
     return { error: errorCode(e) };
   }

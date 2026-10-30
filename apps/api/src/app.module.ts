@@ -17,6 +17,7 @@ import {
   BusinessesController,
   CampaignsController,
   ProjectsController,
+  QualityController,
   RendersController,
   VoiceLabController,
 } from './studio/studio.controller';
@@ -51,6 +52,7 @@ class HealthController {
     BusinessesController,
     CampaignsController,
     ProjectsController,
+    QualityController,
     RendersController,
     AiController,
     MediaController,

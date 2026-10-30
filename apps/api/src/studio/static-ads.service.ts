@@ -202,6 +202,11 @@ export class StaticAdsService {
       reviews: (await this.critic.latest(ctx, { videoProjectId: projectId })).filter(
         (r) => r.subjectType === 'STATIC_AD',
       ),
+      // The owner's latest verdict on each shown version.
+      feedback: await this.critic.feedbackFor(
+        ctx,
+        ads.flatMap((a) => (a ? [a.id] : [])),
+      ),
       pictures: await Promise.all(
         c.pictures.map(async (p) => ({
           assetId: p.id,

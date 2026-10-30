@@ -43,7 +43,8 @@ export interface BuildVideoProjectInput {
 
 export class TimelineBuildError extends Error {}
 
-const PRICE_RE = /(₪\s?\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{1,2})?\s?₪)/;
+// A shekel amount, or a percentage discount ("15% הנחה"): either is the offer's number on screen.
+const PRICE_RE = /(₪\s?\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{1,2})?\s?₪|\d{1,3}\s?%)/;
 
 export interface SceneTiming {
   /** Total scene length in frames. */

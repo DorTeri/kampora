@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState, useTransition, type FormEvent } from 'react';
-import type { LayoutFamily, StaticAdEdit } from '@kampora/shared';
+import type { FeedbackReason, LayoutFamily, StaticAdEdit } from '@kampora/shared';
 import { Button, Card, CardTitle, ErrorNote, cn } from '@/components/ui';
 import { errorMessage, he } from '@/i18n/he';
 import type { CriticReviewDto, StaticAdDto, StaticAdsResponse } from '@/lib/api';
-import { createStaticAdsAction, editStaticAdAction } from '../../actions';
+import { createStaticAdsAction, editStaticAdAction, staticAdFeedbackAction } from '../../actions';
 import { CriticReview } from '../../critic-review';
 
 const t = he.staticAds;
@@ -126,6 +126,10 @@ export function StaticAdsPanel({ projectId, initial }: { projectId: string; init
                   <StaticAdCard
                     ad={ad}
                     review={data.reviews?.find((r) => r.subjectRef === ad.format)}
+                    feedback={data.feedback?.find((f) => f.subjectRef === ad.id)}
+                    onFeedback={(decision, reasons) =>
+                      run(() => staticAdFeedbackAction(projectId, ad.id, decision, reasons))
+                    }
                     pictures={data.pictures}
                     atLimit={ad.versions >= data.maxVersions}
                     disabled={pending}
@@ -142,9 +146,106 @@ export function StaticAdsPanel({ projectId, initial }: { projectId: string; init
   );
 }
 
+const REASONS: FeedbackReason[] = [
+  'WEAK_HOOK',
+  'TOO_GENERIC',
+  'WRONG_TONE',
+  'OFF_BRAND',
+  'HARD_TO_READ',
+  'WRONG_PRODUCT',
+  'PRICE_UNCLEAR',
+  'FACT_ERROR',
+  'OTHER',
+];
+const fb = he.critic.feedback;
+
+/** Accept or reject one ad, with reasons: kept per business as the learning signal. */
+function AdFeedback({
+  current,
+  disabled,
+  onSend,
+}: {
+  current?: StaticAdsResponse['feedback'][number];
+  disabled: boolean;
+  onSend: (decision: 'ACCEPTED' | 'REJECTED', reasons: FeedbackReason[]) => void;
+}) {
+  const [rejecting, setRejecting] = useState(false);
+  const [reasons, setReasons] = useState<FeedbackReason[]>([]);
+  if (current && !rejecting)
+    return (
+      <p className="text-xs text-muted">
+        {fb[current.decision as 'ACCEPTED'] ?? current.decision}
+        {current.reasons.length > 0 && <> · {current.reasons.map((r) => fb.reasons[r] ?? r).join(', ')}</>}
+      </p>
+    );
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">{fb.ask}</span>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onSend('ACCEPTED', [])}
+          className="rounded-full border border-line px-2.5 py-1 hover:border-ink/30"
+        >
+          {fb.accept}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setRejecting(true)}
+          aria-expanded={rejecting}
+          className="rounded-full border border-line px-2.5 py-1 hover:border-ink/30"
+        >
+          {fb.reject}
+        </button>
+      </div>
+      {rejecting && (
+        <fieldset className="space-y-2">
+          <legend className="font-semibold">{fb.why}</legend>
+          <div className="flex flex-wrap gap-1.5">
+            {REASONS.map((r) => (
+              <label
+                key={r}
+                className={cn(
+                  'cursor-pointer rounded-full border px-2 py-0.5',
+                  reasons.includes(r) ? 'border-primary bg-primary/10' : 'border-line',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={reasons.includes(r)}
+                  onChange={() =>
+                    setReasons((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]))
+                  }
+                />
+                {fb.reasons[r]}
+              </label>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              onSend('REJECTED', reasons);
+              setRejecting(false);
+            }}
+            className="rounded-full bg-ink px-3 py-1 font-semibold text-white"
+          >
+            {fb.send}
+          </button>
+        </fieldset>
+      )}
+    </div>
+  );
+}
+
 function StaticAdCard({
   ad,
   review,
+  feedback,
+  onFeedback,
   pictures,
   atLimit,
   disabled,
@@ -152,6 +253,8 @@ function StaticAdCard({
 }: {
   ad: StaticAdDto;
   review?: CriticReviewDto;
+  feedback?: StaticAdsResponse['feedback'][number];
+  onFeedback: (decision: 'ACCEPTED' | 'REJECTED', reasons: FeedbackReason[]) => void;
   pictures: StaticAdsResponse['pictures'];
   atLimit: boolean;
   disabled: boolean;
@@ -215,6 +318,7 @@ function StaticAdCard({
       )}
 
       {review && <CriticReview review={review} />}
+      {ad.status === 'SUCCEEDED' && <AdFeedback current={feedback} disabled={disabled} onSend={onFeedback} />}
 
       {ad.qa.length > 0 && (
         <ul className="space-y-1">

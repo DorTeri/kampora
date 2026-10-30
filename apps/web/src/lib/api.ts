@@ -373,6 +373,8 @@ export interface StaticAdsResponse {
   ads: StaticAdDto[];
   /** The Critic's latest review per format (subjectRef is the format). */
   reviews: CriticReviewDto[];
+  /** The owner's latest verdict per shown ad version (subjectRef is the ad id). */
+  feedback: Array<{ subjectRef: string; decision: string; reasons: string[]; createdAt: string }>;
   /** Pictures the owner may put behind the text: their own photos and approved AI images. */
   pictures: Array<{ assetId: string; source: 'AI' | 'BUSINESS'; authenticity: string; url: string }>;
 }

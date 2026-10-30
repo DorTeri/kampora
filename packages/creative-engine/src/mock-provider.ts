@@ -41,7 +41,7 @@ const PROBLEM_HOOK: Record<string, string> = {
   fitness: 'רוצים להתחיל להתאמן ולא יודעים איפה?',
   'beauty-wellness': 'מתי בפעם האחרונה עשיתם משהו רק בשבילכם?',
   'local-services': 'תקלה בבית ואין למי להתקשר?',
-  ecommerce: 'מחפשים מתנה שלא תיגמר במגירה?',
+  ecommerce: 'מחפשים משהו מיוחד שלא ייגמר במגירה?',
 };
 
 /** An everyday moment, per industry (hook technique PATTERN_INTERRUPT for awareness). */
@@ -307,7 +307,11 @@ export class MockCreativeLlmProvider implements LlmProvider {
         {
           role: 'PRODUCT',
           durationSec: 5.5,
-          visual: 'פריסת מוצרים טריים על הדלפק',
+          // A spread on the counter suits a café; elsewhere the product (or service) itself, framed clean.
+          visual:
+            industryFor(business).profile.id === 'cafe-restaurant'
+              ? 'פריסת מוצרים טריים על הדלפק'
+              : `${brief.productName} מקרוב, בפריים נקי`,
           visualKind: 'PHOTO',
           voiceover: `ב-${business.name} ${claimA}${claimB ? `, ו${claimB}` : ''}.`,
           onScreenText: claimB ?? null,

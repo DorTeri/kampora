@@ -1,0 +1,108 @@
+{
+  "versions": {
+    "expertise": "copywriting@1.0.0 hebrew-advertising@1.0.0 creative-strategy@1.0.0 art-direction@1.0.0 video-direction@1.0.0 creative-rubric@1.0.0 references@1.0.0",
+    "criticPolicy": "critic-policy@1.0.0",
+    "provider": "mock (free)"
+  },
+  "aggregate": {
+    "checksPassed": 27,
+    "checksTotal": 27,
+    "distinctLayoutFamilies": 3,
+    "seriousProblems": 1,
+    "appliedFixes": 0,
+    "pendingApproval": 0,
+    "costUsd": 0.1
+  },
+  "scenarios": [
+    {
+      "id": "cafe-offer",
+      "layoutFamily": "OFFER_RETAIL",
+      "primaryFocal": "PRICE",
+      "formats": {
+        "1:1": "OFFER_RETAIL",
+        "4:5": "OFFER_RETAIL",
+        "9:16": "OFFER_RETAIL"
+      },
+      "serious": {
+        "concepts": [],
+        "static:1:1": [],
+        "static:4:5": [],
+        "static:9:16": [],
+        "video": []
+      },
+      "video": ["hook:ken-burns-in", "product:pan-left", "offer:motion-graphics", "cta:parallax"]
+    },
+    {
+      "id": "fitness-leads",
+      "layoutFamily": "BOLD_TYPOGRAPHIC",
+      "primaryFocal": "HEADLINE",
+      "formats": {
+        "1:1": "BOLD_TYPOGRAPHIC",
+        "4:5": "BOLD_TYPOGRAPHIC",
+        "9:16": "BOLD_TYPOGRAPHIC"
+      },
+      "serious": {
+        "concepts": [],
+        "static:1:1": [],
+        "static:4:5": [],
+        "static:9:16": [],
+        "video": ["MOTION_APPROPRIATENESS"]
+      },
+      "video": ["hook:motion-graphics", "product:motion-graphics", "offer:motion-graphics", "cta:parallax"]
+    },
+    {
+      "id": "premium-product",
+      "layoutFamily": "EDITORIAL_PRODUCT",
+      "primaryFocal": "PRODUCT",
+      "formats": {
+        "1:1": "EDITORIAL_PRODUCT",
+        "4:5": "EDITORIAL_PRODUCT",
+        "9:16": "EDITORIAL_PRODUCT"
+      },
+      "serious": {
+        "concepts": [],
+        "static:1:1": [],
+        "static:4:5": [],
+        "static:9:16": [],
+        "video": []
+      },
+      "video": ["hook:motion-graphics", "product:pan-left", "proof:ken-burns-out", "cta:parallax"]
+    },
+    {
+      "id": "local-service",
+      "layoutFamily": "BOLD_TYPOGRAPHIC",
+      "primaryFocal": "HEADLINE",
+      "formats": {
+        "1:1": "BOLD_TYPOGRAPHIC",
+        "4:5": "BOLD_TYPOGRAPHIC",
+        "9:16": "BOLD_TYPOGRAPHIC"
+      },
+      "serious": {
+        "concepts": [],
+        "static:1:1": [],
+        "static:4:5": [],
+        "static:9:16": [],
+        "video": []
+      },
+      "video": ["hook:motion-graphics", "product:motion-graphics", "proof:ken-burns-out", "cta:parallax"]
+    },
+    {
+      "id": "ecommerce-launch",
+      "layoutFamily": "OFFER_RETAIL",
+      "primaryFocal": "PRICE",
+      "formats": {
+        "1:1": "OFFER_RETAIL",
+        "4:5": "OFFER_RETAIL",
+        "9:16": "OFFER_RETAIL"
+      },
+      "serious": {
+        "concepts": [],
+        "static:1:1": [],
+        "static:4:5": [],
+        "static:9:16": [],
+        "video": []
+      },
+      "video": ["hook:motion-graphics", "product:pan-left", "offer:motion-graphics", "cta:parallax"]
+    }
+  ]
+}
