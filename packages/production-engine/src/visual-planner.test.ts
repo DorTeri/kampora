@@ -64,6 +64,29 @@ describe('planSceneVisual', () => {
     expect(a.prompt).toContain('#7c3aed');
   });
 
+  it('follows the Art Director: photography direction and calm space for the text', () => {
+    const plain = planSceneVisual(input());
+    const art = {
+      photography: {
+        style: 'lifestyle-photo' as const,
+        direction: 'a real everyday moment, natural light',
+        avoid: ['text or letters in the picture', 'staged smiles'],
+      },
+      composition: {
+        imageRole: 'HERO' as const,
+        subject: 'LIFESTYLE' as const,
+        negativeSpace: 'BOTTOM' as const,
+      },
+    };
+    const directed = planSceneVisual(input({ artDirection: art }));
+    expect(directed.prompt).toContain('Art direction: a real everyday moment, natural light.');
+    expect(directed.prompt).toMatch(/bottom third of the frame carries the ad's text/);
+    expect(directed.avoid).toContain('staged smiles');
+    expect(directed.fingerprint).not.toBe(plain.fingerprint);
+    // Without art direction the plan (and its cached image) is unchanged.
+    expect(plain.prompt).not.toContain('Art direction');
+  });
+
   it('defaults to photography, never illustration', () => {
     expect(planSceneVisual(input()).style).toBe('lifestyle-photo');
     expect(planSceneVisual(input({ scene: scene({ role: 'PRODUCT' }) })).style).toBe('photoreal-product');

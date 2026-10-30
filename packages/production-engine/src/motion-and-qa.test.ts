@@ -73,6 +73,20 @@ describe('chooseTransition', () => {
     expect(chooseTransition({ role: 'OFFER' }, 2, 150)).toEqual({ type: 'zoom', durationInFrames: 10 });
     expect(chooseTransition({ role: 'CTA' }, 3, 30).durationInFrames).toBe(6);
   });
+
+  it('follows the Art Director’s pacing and in-between transition', () => {
+    const calm = { pacing: 'CALM', transition: 'fade' } as const;
+    const fast = { pacing: 'FAST', transition: 'slide-up' } as const;
+    expect(chooseTransition({ role: 'BENEFIT' }, 1, 150, calm)).toEqual({
+      type: 'fade',
+      durationInFrames: 11,
+    });
+    expect(chooseTransition({ role: 'BENEFIT' }, 1, 150, fast)).toEqual({
+      type: 'slide-up',
+      durationInFrames: 6,
+    });
+    expect(chooseTransition({ role: 'OFFER' }, 2, 150, fast).type).toBe('zoom');
+  });
 });
 
 const timelineScene = (id: string, overrides: Partial<TimelineScene> = {}): TimelineScene => ({

@@ -3,6 +3,7 @@ import { DEFAULT_PRICE_CATALOG, PriceCatalog } from '@kampora/cost-engine';
 import {
   STATIC_AD_FORMATS,
   StaticAdSchema,
+  designFor,
   type AvailableAsset,
   type CampaignBrief,
   type MediaAsset,
@@ -18,7 +19,13 @@ import {
   generateStoryboard,
 } from '@kampora/creative-engine';
 import { planProduction } from './planner';
-import { StaticAdEditError, applyStaticAdEdit, buildStaticAd, staticAdQa } from './static-ad';
+import {
+  StaticAdEditError,
+  applyStaticAdEdit,
+  buildStaticAd,
+  chooseStaticAdBackground,
+  staticAdQa,
+} from './static-ad';
 import { offerSubjects, rankBackgrounds } from './static-ad-background';
 
 const catalog = new PriceCatalog(DEFAULT_PRICE_CATALOG);
@@ -355,5 +362,50 @@ describe('staticAdQa', () => {
     ]);
     expect(staticAdQa(small).map((i) => i.code)).toContain('LOW_RESOLUTION_PHOTO');
     expect(staticAdQa(build()).filter((i) => i.severity === 'error')).toEqual([]);
+  });
+});
+
+describe('art-directed static ads', () => {
+  const design = designFor('SPLIT', '4:5', DEMO_BUSINESS.brandColors, true);
+
+  it('uses the Copywriter’s written headline and the Art Director’s design', () => {
+    const ad = build({ copy: { headline: 'קפה ומאפה, במחיר מבצע' }, design });
+    expect(ad.text.headline).toBe('קפה ומאפה, במחיר מבצע');
+    expect(ad.design?.layoutFamily).toBe('SPLIT');
+    expect(StaticAdSchema.safeParse(ad).success).toBe(true);
+  });
+
+  it('falls back to the family’s no-picture version when the format has no usable picture', () => {
+    const noRights = mediaAssets.map((a) => ({
+      ...a,
+      provenance: { ...a.provenance, commercialUse: false },
+    }));
+    const ad = build({ assets: noRights, design });
+    expect(ad.background.assetId).toBeUndefined();
+    expect(ad.design?.layoutFamily).toBe('SPLIT');
+    expect(ad.design?.image.mode).toBe('NONE');
+  });
+
+  it('lets the owner switch the layout family and keeps it marked as the owner’s', () => {
+    const ad = build({ design });
+    const edited = applyStaticAdEdit(ad, { layoutFamily: 'PREMIUM_MINIMAL' }, mediaAssets);
+    expect(edited.design?.layoutFamily).toBe('PREMIUM_MINIMAL');
+    expect(edited.design?.chosenBy).toBe('OWNER');
+    // A later text edit keeps the owner's family.
+    expect(applyStaticAdEdit(edited, { headline: 'כותרת אחרת' }, mediaAssets).design).toEqual(edited.design);
+  });
+
+  it('exposes the background it would choose, with what is known about it', () => {
+    const chosen = chooseStaticAdBackground({
+      id: 'x',
+      format: '4:5',
+      business: DEMO_BUSINESS,
+      brief,
+      storyboard,
+      plan,
+      assets: mediaAssets,
+    });
+    expect(chosen.asset?.id).toBe(build().background.assetId);
+    expect(chosen.candidate?.composition).toBeDefined();
   });
 });

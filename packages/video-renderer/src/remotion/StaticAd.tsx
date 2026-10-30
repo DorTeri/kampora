@@ -1,25 +1,14 @@
 import type { CSSProperties } from 'react';
 import { AbsoluteFill, Img } from 'remotion';
-import {
-  STATIC_AD_LINE_HEIGHT as LH,
-  fitStaticAdType,
-  stripNiqqud,
-  type StaticAdRenderInput,
-} from '@kampora/shared';
+import { STATIC_AD_LINE_HEIGHT as LH, fitStaticAdType, type StaticAdRenderInput } from '@kampora/shared';
 import { FONT_FAMILY, alpha } from './context';
-import { keepPricesTogether, textBase } from './overlays';
+import { displayText } from './display-text';
+import { textBase } from './overlays';
+import { DesignedStaticAd } from './StaticAdDesigned';
+
+export { displayText } from './display-text';
 
 export const STATIC_COMPOSITION_ID = 'KamporaStaticAd';
-
-const WORD_JOINER = String.fromCharCode(0x2060);
-
-/**
- * Display text: no niqqud, an amount never wraps away from its ₪, and a short Hebrew prefix never wraps away from
- * the word it is attached to ("ב-Luz?" breaking after the hyphen read as "ב-" / "Luz?").
- */
-export function displayText(text: string): string {
-  return keepPricesTogether(stripNiqqud(text)).replace(/(^|\s)(\p{L}{1,3})-(?=\S)/gu, `$1$2-${WORD_JOINER}`);
-}
 
 const fill: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 const column: CSSProperties = {
@@ -30,7 +19,8 @@ const column: CSSProperties = {
 };
 
 /**
- * One static image ad, rendered from the validated StaticAd document (never from generated code). Layout: logo,
+ * One static image ad, rendered from the validated StaticAd document (never from generated code). With a design
+ * from the Art Director it is drawn by DesignedStaticAd; otherwise the original template: logo,
  * headline and sub-headline at the top; price, CTA and address at the bottom; the picture between them. Type is
  * scaled as one system (fitStaticAdType) so every block stays inside the safe area, and all text is live RTL text.
  */
@@ -42,6 +32,7 @@ export function KamporaStaticAd({ ad, assetUrls }: StaticAdRenderInput) {
   const logo = ad.branding.logoAssetId ? assetUrls[ad.branding.logoAssetId] : undefined;
   if (ad.background.assetId && !background)
     throw new Error(`Asset "${ad.background.assetId}" has no resolved URL`);
+  if (ad.design) return <DesignedStaticAd ad={ad} design={ad.design} background={background} logo={logo} />;
 
   return (
     <AbsoluteFill style={{ backgroundColor: colors.primary, fontFamily: FONT_FAMILY, overflow: 'hidden' }}>

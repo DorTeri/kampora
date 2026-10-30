@@ -134,7 +134,11 @@ export const he = {
     insight: 'התובנה',
     offer: 'ההצעה',
     media: (real: number, ai: number) =>
-      real ? `${real} צילומים אמיתיים שלכם` : ai ? `אין צילומים אמיתיים (${ai} תמונות AI)` : 'אין עדיין תמונות',
+      real
+        ? `${real} צילומים אמיתיים שלכם`
+        : ai
+          ? `אין צילומים אמיתיים (${ai} תמונות AI)`
+          : 'אין עדיין תמונות',
     restrictions: 'מה לא נכתוב',
     questions: 'כדי לדייק את המודעות – כמה שאלות',
     required: 'חובה',
@@ -325,6 +329,35 @@ export const he = {
       ILLUSTRATION: () => 'איור ולא צילום',
       OWNER_CHOICE: () => 'בחירה שלכם',
     } as Record<string, (subjects: string) => string>,
+    art: {
+      title: 'הכיוון העיצובי',
+      layout: 'סגנון',
+      first: 'מה בולט קודם',
+      considered: 'נשקלו גם',
+      ownerLayout: 'בחרתם',
+      field: 'סגנון עיצוב',
+      families: {
+        EDITORIAL_PRODUCT: 'מוצר בסגנון מגזיני',
+        PREMIUM_MINIMAL: 'מינימליסטי יוקרתי',
+        OFFER_RETAIL: 'מבצע במרכז',
+        LIFESTYLE_PHOTO: 'צילום אווירה',
+        BOLD_TYPOGRAPHIC: 'טיפוגרפיה נועזת',
+        PRODUCT_SHOWCASE: 'תצוגת מוצר',
+        SPLIT: 'מפוצל: תמונה ומסר',
+        LOCAL_PROMO: 'עסק שכונתי',
+      } as Record<string, string>,
+      elements: {
+        PRODUCT: 'המוצר',
+        PEOPLE: 'אנשים',
+        PLACE: 'המקום',
+        HEADLINE: 'הכותרת',
+        SUBHEADLINE: 'כותרת המשנה',
+        PRICE: 'המחיר',
+        CTA: 'הקריאה לפעולה',
+        LOGO: 'הלוגו',
+        ADDRESS: 'הכתובת',
+      } as Record<string, string>,
+    },
     qa: {
       LONG_HEADLINE: 'הכותרת ארוכה – כותרת קצרה נקראת טוב יותר בגלילה.',
       LONG_SUBHEADLINE: 'כותרת המשנה ארוכה לפורמט הזה.',

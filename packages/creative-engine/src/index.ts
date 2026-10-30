@@ -10,3 +10,4 @@ export * from './creative-qa';
 export * from './copy-qa';
 export * from './professional-brief';
 export * from './evaluation/scenarios';
+export * from './art-director';

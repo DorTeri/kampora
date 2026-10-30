@@ -50,6 +50,13 @@
       "when": 1793365136881,
       "tag": "0006_professional_quality",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793366494421,
+      "tag": "0007_art_direction",
+      "breakpoints": true
     }
   ]
 }

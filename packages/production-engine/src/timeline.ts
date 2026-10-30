@@ -2,6 +2,7 @@ import {
   REELS_SAFE_AREA,
   VideoProjectSchema,
   stripNiqqud,
+  type ArtDirectionPlan,
   type BusinessProfile,
   type CampaignBrief,
   type MediaAsset,
@@ -33,6 +34,8 @@ export interface BuildVideoProjectInput {
   voiceovers?: Record<string, { assetId: string; durationSec: number; cues?: SpeechCue[]; slice?: boolean }>;
   musicAssetId?: string;
   logoAssetId?: string;
+  /** The Art Director's motion choices: where headlines sit and how scenes change. */
+  motion?: ArtDirectionPlan['motion'];
   fps?: number;
   width?: number;
   height?: number;
@@ -184,7 +187,7 @@ function overlaysFor(scene: StoryboardScene, input: BuildVideoProjectInput): Ove
   if (!text) return [];
   const price = scene.role === 'OFFER' ? splitPrice(text) : undefined;
   if (price) return [{ type: 'price-tag', ...price }];
-  return [{ type: 'headline', text, position: 'top' }];
+  return [{ type: 'headline', text, position: input.motion?.headlinePosition ?? 'top' }];
 }
 
 /**
@@ -243,7 +246,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
             durationInFrames: Math.max(1, Math.round(voice.durationSec * fps)),
           }
         : undefined,
-      transition: chooseTransition(scene, index, timing.durationInFrames),
+      transition: chooseTransition(scene, index, timing.durationInFrames, input.motion),
     };
   });
 

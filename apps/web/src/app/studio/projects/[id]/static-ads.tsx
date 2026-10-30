@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState, useTransition, type FormEvent } from 'react';
-import type { StaticAdEdit } from '@kampora/shared';
+import type { LayoutFamily, StaticAdEdit } from '@kampora/shared';
 import { Button, Card, CardTitle, ErrorNote, cn } from '@/components/ui';
 import { errorMessage, he } from '@/i18n/he';
 import type { StaticAdDto, StaticAdsResponse } from '@/lib/api';
 import { createStaticAdsAction, editStaticAdAction } from '../../actions';
 
 const t = he.staticAds;
+const FAMILIES = Object.keys(t.art.families) as LayoutFamily[];
 const busyStatus = (ad: StaticAdDto) => ad.status === 'QUEUED' || ad.status === 'RUNNING';
 const kb = (bytes: number | null) => (bytes ? `${Math.round(bytes / 1024).toLocaleString('he-IL')} KB` : '');
 
@@ -94,6 +95,29 @@ export function StaticAdsPanel({ projectId, initial }: { projectId: string; init
             <p className="text-sm text-muted">{data.ads.length ? t.rebuildHint : t.free}</p>
           </div>
 
+          {data.artDirection && data.ads.length > 0 && (
+            <div className="rounded-xl bg-ink/[0.03] px-3 py-2.5 text-sm">
+              <p>
+                <span className="font-bold">{t.art.title}:</span>{' '}
+                {t.art.families[data.artDirection.layoutFamily] ?? data.artDirection.layoutFamily}
+              </p>
+              <p className="text-muted">
+                {t.art.first}:{' '}
+                {data.artDirection.hierarchy
+                  .slice(0, 3)
+                  .map((e) => t.art.elements[e] ?? e)
+                  .join(' ← ')}
+                {' · '}
+                {t.art.considered}:{' '}
+                {data.artDirection.alternatives
+                  .filter((a) => a.layoutFamily !== data.artDirection!.layoutFamily)
+                  .slice(0, 2)
+                  .map((a) => t.art.families[a.layoutFamily] ?? a.layoutFamily)
+                  .join(', ')}
+              </p>
+            </div>
+          )}
+
           {data.ads.length > 0 && (
             <ul className="grid items-start gap-5 md:grid-cols-3">
               {data.ads.map((ad) => (
@@ -138,6 +162,12 @@ function StaticAdCard({
         <p className="text-sm font-bold">{t.formats[ad.format]}</p>
         <span className="whitespace-nowrap text-xs text-muted">{t.version(ad.version, ad.versions)}</span>
       </div>
+      {ad.design && (
+        <p className="text-xs text-muted">
+          {t.art.layout}: {t.art.families[ad.design.layoutFamily] ?? ad.design.layoutFamily}
+          {ad.design.chosenBy === 'OWNER' && <> · {t.art.ownerLayout}</>}
+        </p>
+      )}
 
       <div
         className="relative overflow-hidden rounded-xl bg-ink/[0.05]"
@@ -253,6 +283,7 @@ function StaticAdEditForm({
   onSave: (edit: StaticAdEdit) => void;
 }) {
   const [background, setBackground] = useState<string | null>(ad.backgroundAssetId);
+  const [family, setFamily] = useState<LayoutFamily | undefined>(ad.design?.layoutFamily);
   const [note, setNote] = useState<string>();
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
@@ -274,6 +305,7 @@ function StaticAdEditForm({
     const showLogo = form.get('showLogo') === 'on';
     if (showLogo !== ad.text.showLogo) edit.showLogo = showLogo;
     if (background !== ad.backgroundAssetId) edit.backgroundAssetId = background;
+    if (family && family !== ad.design?.layoutFamily) edit.layoutFamily = family;
     if (Object.keys(edit).length === 0) return setNote(t.noChanges);
     setNote(undefined);
     onSave(edit);
@@ -315,6 +347,23 @@ function StaticAdEditForm({
         />
         {t.fields.showLogo}
       </label>
+
+      {ad.design && (
+        <label className="block space-y-1 text-sm">
+          <span className="font-semibold">{t.art.field}</span>
+          <select
+            value={family}
+            onChange={(e) => setFamily(e.target.value as LayoutFamily)}
+            className={field}
+          >
+            {FAMILIES.map((f) => (
+              <option key={f} value={f}>
+                {t.art.families[f]}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold">{t.fields.background}</legend>

@@ -14,3 +14,5 @@ export * from './professional-brief';
 export * from './art-direction';
 export * from './critique';
 export * from './agents';
+export * from './color';
+export * from './layout-families';

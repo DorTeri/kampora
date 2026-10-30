@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type {
+  ArtDirectionPlan,
   AvailableAsset,
   BusinessProfile,
   ConceptStrategy,
@@ -105,6 +106,13 @@ const SAFE_ZONES: Record<ImageAspect, string> = {
     'Square frame. Keep the main subject centered; leave the bottom 20% calm and uncluttered for overlays.',
 };
 
+const NEGATIVE_SPACE_SIDE = {
+  TOP: 'top third',
+  BOTTOM: 'bottom third',
+  START: 'right side',
+  END: 'left side',
+} as const;
+
 export interface PlanSceneVisualInput {
   scene: StoryboardScene;
   business: Pick<BusinessProfile, 'name' | 'category' | 'tone' | 'brandColors'> & {
@@ -120,6 +128,8 @@ export interface PlanSceneVisualInput {
   variant: number;
   /** Provider identity is part of the fingerprint: a different model is a different image. */
   provider: { id: string; model: string; quality: string };
+  /** The Art Director's photography direction and where the picture must keep calm space for text. */
+  artDirection?: Pick<ArtDirectionPlan, 'photography' | 'composition'>;
 }
 
 /**
@@ -166,9 +176,11 @@ export function planSceneVisual(input: PlanSceneVisualInput): VisualScenePlan {
       resolution:
         'Planned as a generic, unbranded stand-in and labelled as AI; a real product photo is preferred.',
     });
+  const art = input.artDirection;
   const avoid = [
     ...IMAGE_ALWAYS_AVOID,
     ...(STYLE_AVOID[style] ?? []),
+    ...(art?.photography.avoid.filter((a) => !(IMAGE_ALWAYS_AVOID as readonly string[]).includes(a)) ?? []),
     ...(standIn && place ? ['storefront names, shop signs, recognisable real landmarks'] : []),
   ];
 
@@ -194,6 +206,11 @@ export function planSceneVisual(input: PlanSceneVisualInput): VisualScenePlan {
     `Campaign look, identical across all scenes of this ad: ${lens.look}.`,
     `Mood: ${mood}.`,
     `Brand colors appear naturally as accents in props, surfaces or light: ${palette.join(', ')}. Never as text.`,
+    // 4b. Art direction: how the ad's layout will use the picture.
+    art ? `Art direction: ${art.photography.direction}.` : '',
+    art && art.composition.negativeSpace !== 'NONE'
+      ? `The ${NEGATIVE_SPACE_SIDE[art.composition.negativeSpace]} of the frame carries the ad's text: keep it calm, plain or softly out of focus.`
+      : '',
     // 5. Generic framing, already adapted to the requirements.
     `Framing: ${framing.direction}.`,
     input.variant > 0

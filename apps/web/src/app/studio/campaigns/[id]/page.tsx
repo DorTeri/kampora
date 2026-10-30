@@ -7,7 +7,13 @@ import { SelectConceptButton } from './select-button';
 const k = he.knowledge;
 
 /** One known fact with where it came from (never shows an inference as a fact). */
-function Fact({ label, field }: { label: string; field: { value: string | string[] | null; provenance: string } }) {
+function Fact({
+  label,
+  field,
+}: {
+  label: string;
+  field: { value: string | string[] | null; provenance: string };
+}) {
   if (field.value === null || (Array.isArray(field.value) && !field.value.length)) return null;
   return (
     <div>
@@ -77,7 +83,12 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-bold text-muted">{k.title}</h2>
           <Badge>{k.industry(pro.industry.label)}</Badge>
-          <Badge>{k.media(pro.business.media.verifiedProductPhotos + pro.business.media.verifiedBusinessPhotos, pro.business.media.aiImages)}</Badge>
+          <Badge>
+            {k.media(
+              pro.business.media.verifiedProductPhotos + pro.business.media.verifiedBusinessPhotos,
+              pro.business.media.aiImages,
+            )}
+          </Badge>
         </div>
         <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <Fact label={k.valueProposition} field={pro.strategy.valueProposition} />

@@ -7,6 +7,7 @@ import type {
   ProfessionalCreativeBrief,
   ProductionPlan,
   ProjectStatus,
+  StaticAdDesign,
   StaticAdFormat,
   StaticAdText,
   Storyboard,
@@ -308,6 +309,8 @@ export interface StaticAdDto {
     reasons: Array<{ code: string; points: number; detail: string; subjects?: string[] }>;
   } | null;
   qa: Array<{ code: string; severity: 'error' | 'warning'; detail: string }>;
+  /** The Art Director's layout for this format (absent on ads built before art direction). */
+  design: StaticAdDesign | null;
   pngUrl: string | null;
   jpegUrl: string | null;
   pngDownloadUrl: string | null;
@@ -320,6 +323,16 @@ export interface StaticAdDto {
 export interface StaticAdsResponse {
   scriptApproved: boolean;
   maxVersions: number;
+  /** What the Art Director decided for this ad, and the families it weighed. */
+  artDirection: {
+    layoutFamily: string;
+    visualConcept: string;
+    hierarchy: string[];
+    decisions: Array<{ topic: string; decision: string; because: string }>;
+    alternatives: Array<{ layoutFamily: string; score: number; reasons: string[] }>;
+    referenceIds: string[];
+    playbookVersion: string;
+  } | null;
   ads: StaticAdDto[];
   /** Pictures the owner may put behind the text: their own photos and approved AI images. */
   pictures: Array<{ assetId: string; source: 'AI' | 'BUSINESS'; authenticity: string; url: string }>;

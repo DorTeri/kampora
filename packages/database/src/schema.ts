@@ -17,6 +17,7 @@ import {
 import type {
   AssetProvenance,
   BrandColors,
+  ArtDirectionPlan,
   CampaignBrief,
   CreativeConcept,
   CreativeFeedbackInput,
@@ -309,6 +310,8 @@ export const videoProjects = pgTable(
     scriptApprovedAt: timestamp('script_approved_at', { withTimezone: true }),
     /** Active narration (voice, generated segments, timing). */
     narration: jsonb('narration').$type<NarrationState>(),
+    /** The Art Director's plan (layout family, hierarchy, photography, motion); null until first needed. */
+    artDirection: jsonb('art_direction').$type<ArtDirectionPlan>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

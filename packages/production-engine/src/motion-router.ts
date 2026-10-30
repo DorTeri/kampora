@@ -1,4 +1,11 @@
-import type { MotionPreset, MotionSpec, ShotType, StoryboardScene, Transition } from '@kampora/shared';
+import type {
+  ArtDirectionPlan,
+  MotionPreset,
+  MotionSpec,
+  ShotType,
+  StoryboardScene,
+  Transition,
+} from '@kampora/shared';
 
 /**
  * Camera moves that suit each framing. Programmatic motion only moves a virtual camera over existing pixels;
@@ -82,14 +89,17 @@ export function chooseTransition(
   scene: Pick<StoryboardScene, 'role'>,
   index: number,
   durationInFrames: number,
+  /** Art direction: calm ads change scenes slower, fast ones quicker; the in-between transition follows it. */
+  motion?: Pick<ArtDirectionPlan['motion'], 'pacing' | 'transition'>,
 ): Transition {
   const cap = Math.max(4, Math.floor(durationInFrames * 0.2));
+  const k = motion?.pacing === 'CALM' ? 1.4 : motion?.pacing === 'FAST' ? 0.75 : 1;
   const pick = (type: Transition['type'], frames: number): Transition => ({
     type,
-    durationInFrames: Math.min(frames, cap),
+    durationInFrames: Math.min(Math.round(frames * k), cap),
   });
   if (index === 0) return pick('fade', 6);
   if (scene.role === 'OFFER') return pick('zoom', 10);
   if (scene.role === 'CTA') return pick('slide-up', 10);
-  return pick('fade', 8);
+  return pick(motion && motion.transition !== 'none' ? motion.transition : 'fade', 8);
 }

@@ -33,6 +33,7 @@ import {
   PRICE_CATALOG,
   STORAGE,
 } from '../infra/tokens';
+import { ArtDirectionService } from './art-direction.service';
 import { BusinessService, toAvailableAssets } from './business.service';
 import { imagePriceEntry, planAuthenticity } from './scene-image-assets';
 import { StudioService } from './studio.service';
@@ -67,6 +68,7 @@ export class SceneImagesService {
     @Inject(IMAGE_SETUP) private readonly setup: ImageSetup,
     private readonly businesses: BusinessService,
     private readonly studio: StudioService,
+    private readonly artDirection: ArtDirectionService,
   ) {
     const videoSetup = videoSetupFromEnv();
     const price = this.catalog.find('planning', videoSetup.model, 'IMAGE_TO_VIDEO');
@@ -103,6 +105,8 @@ export class SceneImagesService {
       project,
       storyboard: storyboard!.storyboard,
       concept: concept!.concept,
+      // Photography direction and calm space for text, so the pictures fit the planned layout.
+      artDirection: await this.artDirection.current(ctx, projectId),
       profile,
       assets,
       versions,
@@ -133,6 +137,7 @@ export class SceneImagesService {
       aspect: '9:16',
       variant,
       provider: { id: this.setup.provider, model: this.setup.model, quality: this.setup.quality },
+      artDirection: c.artDirection,
     });
   }
 

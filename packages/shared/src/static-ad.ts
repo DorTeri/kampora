@@ -182,6 +182,8 @@ export const StaticAdDesignSchema = z.object({
   cta: z.enum(['PILL', 'BAR', 'TEXT']),
   logo: z.enum(['BADGE', 'WORDMARK', 'NONE']),
   palette: z.object({ field: Hex, text: Hex, muted: Hex, accent: Hex, accentText: Hex }),
+  /** OWNER: the owner picked this layout family; a rebuild keeps it. */
+  chosenBy: z.enum(['ART_DIRECTOR', 'OWNER']).optional(),
 });
 export type StaticAdDesign = z.infer<typeof StaticAdDesignSchema>;
 
@@ -266,20 +268,21 @@ export function staticAdLayout(
   const base = STATIC_AD_TYPE[ad.format];
   const lh = STATIC_AD_LINE_HEIGHT;
   const t = ad.text;
+  // Slightly less pessimistic than the classic template: Heebo is always loaded (the Chrome layout tests check it).
   const lines = (chars: number, size: number, boxWidth: number) =>
-    Math.max(1, Math.ceil((chars * 0.6 * size) / (boxWidth * 0.85)));
+    Math.max(1, Math.ceil((chars * 0.56 * size) / (boxWidth * 0.88)));
   const sizesAt = (k: number) => {
     const s = (v: number) => Math.round(v * k);
     return {
       headline: s(base.headline * d.headlineScale),
       sub: s(base.sub),
-      price: s(base.price * (d.price === 'HERO' ? 1.45 : d.price === 'INLINE' ? 0.5 : 1)),
+      price: s(base.price * (d.price === 'HERO' ? 1.45 : d.price === 'INLINE' ? 0.6 : 1)),
       label: s(base.label * (d.price === 'INLINE' ? 0.8 : 1)),
       cta: s(base.cta),
       ctaSub: s(base.ctaSub),
       logo: s(base.logo),
       gap: s(base.gap),
-      stamp: s(base.price * 2.5),
+      stamp: s(base.price * 2.8),
     };
   };
   const height = (k: number) => {
@@ -287,14 +290,22 @@ export function staticAdLayout(
     const w = text.width;
     const blocks: number[] = [];
     if (d.logo === 'BADGE') blocks.push(z.logo);
-    if (d.logo === 'WORDMARK') blocks.push(z.logo * 0.4 * 1.15);
+    if (d.logo === 'WORDMARK') blocks.push(z.logo * 0.4 * 1.5);
     blocks.push(lines(t.headline.length, z.headline, w) * z.headline * lh.headline);
     if (t.subheadline) blocks.push(lines(t.subheadline.length, z.sub, w) * z.sub * lh.sub);
     if (t.price) {
       const label = t.price.label ?? '';
-      if (d.price === 'STAMP') blocks.push(z.stamp);
+      // A stamp carries the amount; its label sits under it. The stamp is rotated: allow its corners.
+      if (d.price === 'STAMP')
+        blocks.push(
+          z.stamp * 1.04 + (label ? 0.6 * z.gap + lines(label.length, z.label, w) * z.label * lh.label : 0),
+        );
       else if (d.price === 'INLINE')
-        blocks.push(lines(label.length + t.price.price.length + 3, z.label, w) * z.label * lh.label);
+        // A quiet label line over a small accent-colored amount.
+        blocks.push(
+          (label ? lines(label.length, z.label, w) * z.label * lh.label + 0.3 * z.gap : 0) +
+            z.price * lh.price,
+        );
       else {
         let h = z.price * lh.price + 12;
         if (label) h += 0.6 * z.gap + lines(label.length, z.label, w) * z.label * lh.label;
@@ -308,7 +319,8 @@ export function staticAdLayout(
     if (t.ctaSubtext) blocks.push(lines(t.ctaSubtext.length, z.ctaSub, w) * z.ctaSub * lh.ctaSub);
     // SPLIT layouts separate the top and bottom groups by at least one more gap.
     const gaps = (blocks.length - 1 + (reserve ? 1 : 0) + (d.textZone === 'SPLIT' ? 1 : 0)) * z.gap;
-    const panelPad = d.surface === 'PANEL' ? 2 * 1.4 * z.gap : 0;
+    // A panel's padding, once per text group (SPLIT has two groups).
+    const panelPad = d.surface === 'PANEL' ? (d.textZone === 'SPLIT' ? 4 : 2) * 1.4 * z.gap : 0;
     return blocks.reduce((a, b) => a + b, 0) + gaps + reserve + panelPad;
   };
   let scale = 1;
@@ -454,6 +466,8 @@ export const StaticAdEditSchema = z
     showLogo: z.boolean(),
     backgroundAssetId: z.string().min(1).max(64).nullable(),
     focalPoint: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+    /** Switch to another layout family (kept when the ad is rebuilt). */
+    layoutFamily: LayoutFamilySchema,
   })
   .partial()
   .strict();

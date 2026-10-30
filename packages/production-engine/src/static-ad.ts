@@ -1,6 +1,7 @@
 import {
   STATIC_AD_FORMATS,
   StaticAdSchema,
+  designFor,
   stripNiqqud,
   type BackgroundSelection,
   type BusinessProfile,
@@ -10,6 +11,7 @@ import {
   type ProductionPlan,
   type SceneRole,
   type StaticAd,
+  type StaticAdDesign,
   type StaticAdEdit,
   type StaticAdFormat,
   type Storyboard,
@@ -38,6 +40,10 @@ export interface BuildStaticAdInput {
   candidates?: readonly BackgroundCandidate[];
   /** The owner picked the background (assetId absent: brand color). Kept as long as the picture is usable. */
   ownerBackground?: { assetId?: string };
+  /** The Copywriter's written headline (and sub-headline) for ads; the hook's words otherwise. */
+  copy?: { headline: string; subheadline?: string };
+  /** The Art Director's design for this format. Absent: the original fixed template. */
+  design?: StaticAdDesign;
 }
 
 export class StaticAdEditError extends Error {}
@@ -147,6 +153,17 @@ function referencedAssets(assets: readonly MediaAsset[], ...ids: (string | undef
 }
 
 /**
+ * The background the ad will get (the owner's choice, or the best-ranked picture) without building the ad: the
+ * Art Director decides the layout from it.
+ */
+export function chooseStaticAdBackground(input: BuildStaticAdInput) {
+  const candidates = input.candidates ?? defaultCandidates(input);
+  const pool = unique([...input.assets, ...candidates.map((c) => c.asset)]);
+  const chosen = chooseBackground(input, pool, candidates);
+  return { ...chosen, candidate: candidates.find((c) => c.asset.id === chosen.asset?.id) };
+}
+
+/**
  * Deterministic static ad from the approved storyboard, brief and plan: the hook's words as the headline, the
  * offer as a price tag (or a sub-headline), the CTA with the address, the best approved picture behind it.
  * No AI is involved and nothing is generated: it only reuses what the owner already approved.
@@ -159,6 +176,7 @@ export function buildStaticAd(input: BuildStaticAdInput): StaticAd {
   const cta = byRole('CTA');
 
   const headline =
+    fit(input.copy?.headline, LIMITS.headline) ??
     fit(hook?.onScreenText, LIMITS.headline) ??
     fit(hook?.voiceover && firstSentence(hook.voiceover), LIMITS.headline) ??
     fit(input.brief.keyMessage, LIMITS.headline)!;
@@ -167,12 +185,20 @@ export function buildStaticAd(input: BuildStaticAdInput): StaticAd {
     ? { price: fit(priced.price, LIMITS.price)!, label: fit(priced.label, LIMITS.priceLabel) }
     : undefined;
   const subCandidate = price ? input.brief.keyMessage : (input.brief.offer ?? input.brief.keyMessage);
-  const subheadline = fit(subCandidate, LIMITS.subheadline);
+  const subheadline = fit(input.copy?.subheadline ?? subCandidate, LIMITS.subheadline);
   const card = ctaCard(cta?.onScreenText, input.business.address, input.brief.cta);
   const candidates = input.candidates ?? defaultCandidates(input);
   const pool = unique([...input.assets, ...candidates.map((c) => c.asset)]);
   const { asset: background, selection } = chooseBackground(input, pool, candidates);
   const logo = usableImage(input.assets, input.business.logoAssetId);
+  // A design planned around a picture falls back to the family's no-picture version when this format has none.
+  const design =
+    input.design && !background && input.design.image.mode !== 'NONE'
+      ? {
+          ...designFor(input.design.layoutFamily, input.format, input.business.brandColors, false),
+          chosenBy: input.design.chosenBy,
+        }
+      : input.design;
 
   return StaticAdSchema.parse({
     schemaVersion: 1,
@@ -198,6 +224,7 @@ export function buildStaticAd(input: BuildStaticAdInput): StaticAd {
       ctaSubtext: fit(card.subtext, LIMITS.ctaSubtext),
       showLogo: true,
     },
+    ...(design ? { design } : {}),
     assets: referencedAssets(pool, background?.id, logo?.id),
   });
 }
@@ -236,8 +263,18 @@ export function applyStaticAdEdit(
     selection = ownerSelection(picked, candidates);
   }
   const pool = [...ad.assets, ...allowedAssets];
+  // A layout switch (or a picture change) re-derives the family's design for this format; the owner's family stays.
+  let design = ad.design;
+  const family = edit.layoutFamily ?? ad.design?.layoutFamily;
+  if (family && (edit.layoutFamily !== undefined || edit.backgroundAssetId !== undefined)) {
+    design = {
+      ...designFor(family, ad.format, ad.branding.colors, Boolean(backgroundId)),
+      chosenBy: edit.layoutFamily !== undefined ? 'OWNER' : ad.design?.chosenBy,
+    };
+  }
   const result = StaticAdSchema.safeParse({
     ...ad,
+    ...(design ? { design } : {}),
     background: {
       assetId: backgroundId,
       focalPoint: edit.focalPoint ?? ad.background.focalPoint,

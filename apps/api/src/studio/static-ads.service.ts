@@ -5,6 +5,7 @@ import { and, asc, eq, max } from 'drizzle-orm';
 import {
   auditLog,
   campaignBriefs,
+  creativeConcepts,
   staticAds,
   storyboards,
   videoProjects,
@@ -14,6 +15,7 @@ import {
   StaticAdEditError,
   applyStaticAdEdit,
   buildStaticAd,
+  chooseStaticAdBackground,
   staticAdQa,
   type BackgroundCandidate,
 } from '@kampora/production-engine';
@@ -32,6 +34,7 @@ import type { StorageDriver } from '@kampora/storage';
 import type { AuthContext } from '../common/auth';
 import { ApiError, notFound } from '../common/errors';
 import { DATABASE, RENDER_QUEUE, STORAGE } from '../infra/tokens';
+import { ArtDirectionService } from './art-direction.service';
 import { BusinessService, toMediaAssets } from './business.service';
 import { approvedSceneImages } from './scene-image-assets';
 
@@ -57,6 +60,7 @@ export class StaticAdsService {
     @Inject(STORAGE) private readonly storage: StorageDriver,
     @Inject(RENDER_QUEUE) private readonly queue: Queue,
     private readonly businesses: BusinessService,
+    private readonly artDirection: ArtDirectionService,
   ) {}
 
   private async context(ctx: AuthContext, projectId: string) {
@@ -73,6 +77,10 @@ export class StaticAdsService {
       .select()
       .from(campaignBriefs)
       .where(and(eq(campaignBriefs.id, project.briefId), eq(campaignBriefs.orgId, ctx.orgId)));
+    const [concept] = await this.db
+      .select({ concept: creativeConcepts.concept })
+      .from(creativeConcepts)
+      .where(eq(creativeConcepts.id, storyboard!.conceptId));
     const profile = await this.businesses.loadProfile(ctx, project.businessId);
     const brandRows = await this.businesses.assets(ctx, project.businessId);
     const approved = await approvedSceneImages(this.db, ctx.orgId, projectId);
@@ -110,6 +118,7 @@ export class StaticAdsService {
       project,
       storyboard: storyboard!.storyboard,
       brief: brief!.brief,
+      concept: concept?.concept,
       profile,
       brand,
       approved,
@@ -145,6 +154,7 @@ export class StaticAdsService {
       text: ad.text,
       backgroundAssetId: ad.background.assetId ?? null,
       backgroundSelection: ad.background.selection ?? null,
+      design: ad.design ?? null,
       qa: staticAdQa(ad),
       pngUrl: await this.url(row.pngKey),
       jpegUrl: await this.url(row.jpegKey),
@@ -167,8 +177,21 @@ export class StaticAdsService {
         return latest ? this.toDto(latest, mine.length) : null;
       }),
     );
+    const art = c.project.artDirection;
     return {
       scriptApproved: Boolean(c.project.scriptApprovedAt),
+      // What the Art Director decided and why (the per-format designs travel with each ad).
+      artDirection: art
+        ? {
+            layoutFamily: art.layoutFamily,
+            visualConcept: art.visualConcept,
+            hierarchy: art.hierarchy,
+            decisions: art.decisions,
+            alternatives: art.alternatives.slice(0, 4),
+            referenceIds: art.referenceIds,
+            playbookVersion: art.playbookVersion,
+          }
+        : null,
       maxVersions: MAX_STATIC_AD_VERSIONS,
       ads: ads.filter((a) => a !== null),
       pictures: await Promise.all(
@@ -190,22 +213,47 @@ export class StaticAdsService {
     if (!c.project.plan) throw new ApiError(HttpStatus.CONFLICT, 'PLAN_NOT_READY', 'The plan is not ready');
     const approvedImages = Object.fromEntries(c.approved.map((i) => [i.sceneKey, i.assetId]));
     const rows = await this.rows(ctx, projectId);
-    for (const format of [...new Set(formats)]) {
-      // A background the owner picked survives the rebuild (the builder drops it if the picture is gone).
+    const ownerBackground = (format: StaticAdFormat) => {
       const latest = rows.filter((r) => r.format === format).at(-1);
       const previous = latest ? StaticAdSchema.parse(latest.ad).background : undefined;
+      return previous?.selection?.chosenBy === 'OWNER' ? { assetId: previous.assetId } : undefined;
+    };
+    const base = {
+      business: c.profile,
+      brief: c.brief,
+      storyboard: c.storyboard,
+      plan: c.project.plan,
+      assets: [...c.brand, ...c.approved.map((i) => i.media)],
+      approvedImages,
+      candidates: c.candidates,
+    };
+    // The Art Director decides the layout from the picture the feed ad will actually show.
+    const lead = chooseStaticAdBackground({
+      ...base,
+      id: projectId,
+      format: '4:5',
+      ownerBackground: ownerBackground('4:5'),
+    });
+    const art = await this.artDirection.direct(
+      ctx,
+      projectId,
+      lead.asset
+        ? {
+            composition: lead.candidate?.composition,
+            authenticity: lead.selection.authenticity ?? 'SYNTHETIC_AI',
+          }
+        : null,
+    );
+    const copy = c.concept?.copy;
+    for (const format of [...new Set(formats)]) {
+      // A background the owner picked survives the rebuild (the builder drops it if the picture is gone).
       const ad = buildStaticAd({
+        ...base,
         id: `${projectId}:${format}`,
         format,
-        business: c.profile,
-        brief: c.brief,
-        storyboard: c.storyboard,
-        plan: c.project.plan,
-        assets: [...c.brand, ...c.approved.map((i) => i.media)],
-        approvedImages,
-        candidates: c.candidates,
-        ownerBackground:
-          previous?.selection?.chosenBy === 'OWNER' ? { assetId: previous.assetId } : undefined,
+        ownerBackground: ownerBackground(format),
+        copy: copy ? { headline: copy.headline, subheadline: copy.subheadline } : undefined,
+        design: art.formats[format],
       });
       await this.saveVersion(ctx, projectId, ad);
     }

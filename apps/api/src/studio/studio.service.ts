@@ -45,6 +45,7 @@ import { BUDGET_POLICY, DATABASE, IMAGE_SETUP, PRICE_CATALOG, RENDER_QUEUE, STOR
 import { BusinessService, toAvailableAssets, toMediaAssets } from './business.service';
 import { NarrationService } from './narration.service';
 import { PaidOperationsService } from './paid.service';
+import { ArtDirectionService } from './art-direction.service';
 import { approvedSceneImages, imagePriceEntry } from './scene-image-assets';
 
 const TARGET_DURATION_SEC = 20;
@@ -66,6 +67,7 @@ export class StudioService {
     private readonly businesses: BusinessService,
     private readonly paid: PaidOperationsService,
     private readonly narration: NarrationService,
+    private readonly artDirection: ArtDirectionService,
   ) {}
 
   private audit(
@@ -150,7 +152,10 @@ export class StudioService {
     const { provider, recorder } = this.paid.creativeProviderFor(ctx, briefId);
     let result: Awaited<ReturnType<typeof generateConcepts>>;
     try {
-      result = await generateConcepts({ business: profile, brief: brief.brief, assets }, { provider, recorder });
+      result = await generateConcepts(
+        { business: profile, brief: brief.brief, assets },
+        { provider, recorder },
+      );
     } finally {
       // Spend is recorded even when the step fails.
       await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: briefId });
@@ -553,6 +558,7 @@ export class StudioService {
       voiceovers: narration?.voiceovers,
       musicAssetId: music?.id,
       logoAssetId: profile.logoAssetId,
+      motion: (await this.artDirection.current(ctx, projectId)).motion,
     });
     const qaErrors = timelineQa(timeline).filter((i) => i.severity === 'error');
     if (qaErrors.length) {
