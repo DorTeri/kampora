@@ -135,6 +135,187 @@ export function fitStaticAdType(ad: Pick<StaticAd, 'format' | 'width' | 'height'
   };
 }
 
+/**
+ * Layout families: tested design tools the Art Director chooses between (never one universal template). Each is
+ * a set of decisions about where the picture goes, where the text sits, and what carries the price and the action.
+ */
+export const LayoutFamilySchema = z.enum([
+  /** Large product picture, restrained editorial type aligned to the reading edge. */
+  'EDITORIAL_PRODUCT',
+  /** Calm brand field, the picture as a framed inset, light hierarchy, a text-link action. */
+  'PREMIUM_MINIMAL',
+  /** The price is the hero: a stamp, a bold headline and a full-width action bar. */
+  'OFFER_RETAIL',
+  /** Full-bleed photograph of a moment; the text sits low on a soft scrim. */
+  'LIFESTYLE_PHOTO',
+  /** Type is the image: a very large headline on a brand-color field; the picture (if any) supports it. */
+  'BOLD_TYPOGRAPHIC',
+  /** The product on a clean field, framed, with a price badge. */
+  'PRODUCT_SHOWCASE',
+  /** Picture on one side, message on the other; picture on top in tall formats. */
+  'SPLIT',
+  /** Neighbourhood promotion: business name and address are prominent, the picture shows the place or product. */
+  'LOCAL_PROMO',
+]);
+export type LayoutFamily = z.infer<typeof LayoutFamilySchema>;
+
+const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
+/** Renderer-facing design of one static ad (one format). Deterministic components draw it; no generated code. */
+export const StaticAdDesignSchema = z.object({
+  layoutFamily: LayoutFamilySchema,
+  image: z.object({
+    mode: z.enum(['FULL_BLEED', 'PANEL', 'INSET', 'NONE']),
+    /** PANEL: the frame edge the picture sits on. START is the reading edge (right, in Hebrew). */
+    edge: z.enum(['TOP', 'BOTTOM', 'START', 'END']).optional(),
+    /** PANEL: share of the frame the picture takes. */
+    share: z.number().min(0.3).max(0.75).optional(),
+  }),
+  /** Where the text sits. SPLIT keeps the message at the top and the action at the bottom. */
+  textZone: z.enum(['TOP', 'BOTTOM', 'CENTER', 'SPLIT']),
+  align: z.enum(['START', 'CENTER']),
+  /** How text stays readable: a scrim on the picture, a solid panel behind the text, or a solid color field. */
+  surface: z.enum(['SCRIM', 'PANEL', 'FIELD']),
+  headlineScale: z.number().min(0.7).max(1.5),
+  headlineWeight: z.union([z.literal(700), z.literal(800), z.literal(900)]),
+  price: z.enum(['CARD', 'BADGE', 'STAMP', 'INLINE', 'HERO']),
+  cta: z.enum(['PILL', 'BAR', 'TEXT']),
+  logo: z.enum(['BADGE', 'WORDMARK', 'NONE']),
+  palette: z.object({ field: Hex, text: Hex, muted: Hex, accent: Hex, accentText: Hex }),
+});
+export type StaticAdDesign = z.infer<typeof StaticAdDesignSchema>;
+
+export interface LayoutRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface StaticAdLayout {
+  /** Where the picture is drawn (absent: no picture, or an inset sized inside the text column). */
+  image?: LayoutRect;
+  /** The text column; always inside the safe area. */
+  text: LayoutRect;
+  /** Height inside the text column kept for the picture (full-bleed bands, insets). */
+  reserve: number;
+  scale: number;
+  sizes: {
+    headline: number;
+    sub: number;
+    price: number;
+    label: number;
+    cta: number;
+    ctaSub: number;
+    logo: number;
+    gap: number;
+    /** Diameter of a price stamp. */
+    stamp: number;
+  };
+}
+
+/** Space between a picture panel and the text column. */
+const PANEL_GUTTER = 48;
+
+/**
+ * Geometry and type sizes of a designed static ad: where the picture and the text column go, and the single
+ * scale factor at which every text block fits the column (estimated pessimistically, like fitStaticAdType).
+ */
+export function staticAdLayout(
+  ad: Pick<StaticAd, 'format' | 'width' | 'height' | 'safeArea' | 'text'> & { design: StaticAdDesign },
+): StaticAdLayout {
+  const { width: W, height: H, safeArea: sa, design: d } = ad;
+  const safe: LayoutRect = {
+    x: sa.sidePx,
+    y: sa.topPx,
+    width: W - 2 * sa.sidePx,
+    height: H - sa.topPx - sa.bottomPx,
+  };
+  let image: LayoutRect | undefined;
+  let text = safe;
+  let reserve = 0;
+  const share = d.image.share ?? 0.5;
+  if (d.image.mode === 'FULL_BLEED') {
+    image = { x: 0, y: 0, width: W, height: H };
+    reserve =
+      d.textZone === 'SPLIT'
+        ? STATIC_AD_TYPE[ad.format].photoBand
+        : d.textZone === 'CENTER'
+          ? 0
+          : Math.round(safe.height * 0.34);
+  } else if (d.image.mode === 'INSET') {
+    reserve = Math.round(safe.height * 0.3);
+  } else if (d.image.mode === 'PANEL') {
+    const edge = d.image.edge ?? 'TOP';
+    if (edge === 'TOP' || edge === 'BOTTOM') {
+      const ph = Math.round(H * share);
+      image = { x: 0, y: edge === 'TOP' ? 0 : H - ph, width: W, height: ph };
+      const top = edge === 'TOP' ? Math.max(sa.topPx, ph + PANEL_GUTTER) : sa.topPx;
+      const bottom = edge === 'TOP' ? H - sa.bottomPx : Math.min(H - sa.bottomPx, H - ph - PANEL_GUTTER);
+      text = { x: safe.x, y: top, width: safe.width, height: bottom - top };
+    } else {
+      // START is the reading edge: the right side of a Hebrew ad.
+      const pw = Math.round(W * share);
+      image = { x: edge === 'START' ? W - pw : 0, y: 0, width: pw, height: H };
+      const left = edge === 'START' ? sa.sidePx : pw + PANEL_GUTTER;
+      const right = edge === 'START' ? W - pw - PANEL_GUTTER : W - sa.sidePx;
+      text = { x: left, y: safe.y, width: right - left, height: safe.height };
+    }
+  }
+
+  const base = STATIC_AD_TYPE[ad.format];
+  const lh = STATIC_AD_LINE_HEIGHT;
+  const t = ad.text;
+  const lines = (chars: number, size: number, boxWidth: number) =>
+    Math.max(1, Math.ceil((chars * 0.6 * size) / (boxWidth * 0.85)));
+  const sizesAt = (k: number) => {
+    const s = (v: number) => Math.round(v * k);
+    return {
+      headline: s(base.headline * d.headlineScale),
+      sub: s(base.sub),
+      price: s(base.price * (d.price === 'HERO' ? 1.45 : d.price === 'INLINE' ? 0.5 : 1)),
+      label: s(base.label * (d.price === 'INLINE' ? 0.8 : 1)),
+      cta: s(base.cta),
+      ctaSub: s(base.ctaSub),
+      logo: s(base.logo),
+      gap: s(base.gap),
+      stamp: s(base.price * 2.5),
+    };
+  };
+  const height = (k: number) => {
+    const z = sizesAt(k);
+    const w = text.width;
+    const blocks: number[] = [];
+    if (d.logo === 'BADGE') blocks.push(z.logo);
+    if (d.logo === 'WORDMARK') blocks.push(z.logo * 0.4 * 1.15);
+    blocks.push(lines(t.headline.length, z.headline, w) * z.headline * lh.headline);
+    if (t.subheadline) blocks.push(lines(t.subheadline.length, z.sub, w) * z.sub * lh.sub);
+    if (t.price) {
+      const label = t.price.label ?? '';
+      if (d.price === 'STAMP') blocks.push(z.stamp);
+      else if (d.price === 'INLINE')
+        blocks.push(lines(label.length + t.price.price.length + 3, z.label, w) * z.label * lh.label);
+      else {
+        let h = z.price * lh.price + 12;
+        if (label) h += 0.6 * z.gap + lines(label.length, z.label, w) * z.label * lh.label;
+        if (d.price === 'CARD') h += 2.2 * z.gap;
+        blocks.push(h);
+      }
+    }
+    const ctaBox = d.cta === 'PILL' ? w - 2 * 2.4 * z.gap : d.cta === 'BAR' ? w - 2 * 1.2 * z.gap : w;
+    const ctaPad = d.cta === 'TEXT' ? 12 : d.cta === 'BAR' ? 2 * z.gap : 1.6 * z.gap;
+    blocks.push(lines(t.cta.length, z.cta, ctaBox) * z.cta * lh.cta + ctaPad);
+    if (t.ctaSubtext) blocks.push(lines(t.ctaSubtext.length, z.ctaSub, w) * z.ctaSub * lh.ctaSub);
+    // SPLIT layouts separate the top and bottom groups by at least one more gap.
+    const gaps = (blocks.length - 1 + (reserve ? 1 : 0) + (d.textZone === 'SPLIT' ? 1 : 0)) * z.gap;
+    const panelPad = d.surface === 'PANEL' ? 2 * 1.4 * z.gap : 0;
+    return blocks.reduce((a, b) => a + b, 0) + gaps + reserve + panelPad;
+  };
+  let scale = 1;
+  while (scale > 0.45 && height(scale) > text.height) scale = Math.round((scale - 0.02) * 100) / 100;
+  return { image, text, reserve, scale, sizes: sizesAt(scale) };
+}
+
 export const StaticAdFileTypeSchema = z.enum(['png', 'jpeg']);
 export type StaticAdFileType = z.infer<typeof StaticAdFileTypeSchema>;
 
@@ -229,6 +410,8 @@ export const StaticAdSchema = z
       selection: BackgroundSelectionSchema.optional(),
     }),
     text: StaticAdTextSchema,
+    /** The Art Director's layout. Absent: the original fixed template (ads built before art direction). */
+    design: StaticAdDesignSchema.optional(),
     assets: z.array(MediaAssetSchema),
   })
   .superRefine((ad, ctx) => {

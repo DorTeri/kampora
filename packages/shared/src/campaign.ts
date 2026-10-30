@@ -88,6 +88,45 @@ export const ConceptStrategySchema = z.object({
 });
 export type ConceptStrategy = z.infer<typeof ConceptStrategySchema>;
 
+/** How a hook stops the scroll (from the copywriting playbook). Three concepts never share one. */
+export const HookTechniqueSchema = z.enum([
+  'QUESTION',
+  'BOLD_STATEMENT',
+  'OFFER_FIRST',
+  'PATTERN_INTERRUPT',
+  'FIRST_PERSON',
+  'SENSORY_DETAIL',
+  'CONTRAST',
+  'HOW_TO',
+]);
+export type HookTechnique = z.infer<typeof HookTechniqueSchema>;
+
+/** Where a piece of copy runs. */
+export const CopyFormatSchema = z.enum(['VIDEO_9_16', 'STATIC_1_1', 'STATIC_4_5', 'STATIC_9_16']);
+export type CopyFormat = z.infer<typeof CopyFormatSchema>;
+
+/**
+ * The Copywriter's written layer of a concept. The spoken script (voiceover) and the written copy are separate:
+ * a headline is read in a second, a voice line is heard once.
+ */
+export const ConceptCopySchema = z.object({
+  hookTechnique: HookTechniqueSchema,
+  /** Written headline for static ads and the opening title card (not a transcript of the voice line). */
+  headline: z.string().trim().min(1).max(70),
+  subheadline: z.string().trim().min(1).max(110).optional(),
+  /** Approved claims (verbatim) or verified facts the copy relies on. */
+  claimsUsed: z.array(z.string()),
+  formats: z.array(CopyFormatSchema).min(1),
+  density: z.object({
+    spokenWords: z.number().int().nonnegative(),
+    estimatedSec: z.number().nonnegative(),
+    headlineWords: z.number().int().nonnegative(),
+  }),
+  /** Copywriting playbook version that produced it. */
+  playbookVersion: z.string(),
+});
+export type ConceptCopy = z.infer<typeof ConceptCopySchema>;
+
 export const CreativeConceptSchema = z.object({
   key: z.string().min(1),
   title: z.string().min(1),
@@ -104,8 +143,54 @@ export const CreativeConceptSchema = z.object({
   estimatedDurationSec: z.number().int().min(8).max(60).default(20),
   /** Phase 3 concepts carry their strategy; concepts stored before it do not. */
   strategy: ConceptStrategySchema.optional(),
+  /** Written copy and copywriting metadata. Concepts stored before the Copywriter upgrade do not have it. */
+  copy: ConceptCopySchema.optional(),
 });
 export type CreativeConcept = z.infer<typeof CreativeConceptSchema>;
+
+/** The Copywriter's deliverable for one concept, as the Campaign Director and the Critic read it. */
+export const CopywritingProposalSchema = z.object({
+  conceptKey: z.string(),
+  concept: z.object({ title: z.string(), angle: ConceptAngleSchema, hypothesis: z.string().nullable() }),
+  hook: z.string(),
+  hookTechnique: HookTechniqueSchema.nullable(),
+  mainMessage: z.string(),
+  spokenScript: z.string(),
+  headline: z.string(),
+  subheadline: z.string().nullable(),
+  emotionalDirection: z.string().nullable(),
+  cta: z.string(),
+  rationale: z.string(),
+  claimsUsed: z.array(z.string()),
+  targetFormats: z.array(CopyFormatSchema),
+  estimatedDurationSec: z.number(),
+  textDensity: z.object({ spokenWords: z.number(), headlineWords: z.number() }),
+});
+export type CopywritingProposal = z.infer<typeof CopywritingProposalSchema>;
+
+export function toCopywritingProposal(c: CreativeConcept): CopywritingProposal {
+  const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+  return {
+    conceptKey: c.key,
+    concept: { title: c.title, angle: c.angle, hypothesis: c.strategy?.hypothesis ?? null },
+    hook: c.hook,
+    hookTechnique: c.copy?.hookTechnique ?? null,
+    mainMessage: c.mainMessage,
+    spokenScript: c.voiceover,
+    headline: c.copy?.headline ?? c.hook,
+    subheadline: c.copy?.subheadline ?? null,
+    emotionalDirection: c.strategy?.emotionalDirection ?? null,
+    cta: c.cta,
+    rationale: c.rationale,
+    claimsUsed: c.copy?.claimsUsed ?? [],
+    targetFormats: c.copy?.formats ?? ['VIDEO_9_16'],
+    estimatedDurationSec: c.estimatedDurationSec,
+    textDensity: {
+      spokenWords: c.copy?.density.spokenWords ?? words(c.voiceover),
+      headlineWords: c.copy?.density.headlineWords ?? words(c.copy?.headline ?? c.hook),
+    },
+  };
+}
 
 export const ConceptSetSchema = z
   .object({

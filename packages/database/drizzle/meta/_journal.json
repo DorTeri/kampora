@@ -43,6 +43,13 @@
       "when": 1793258459360,
       "tag": "0005_static_ads",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793365136881,
+      "tag": "0006_professional_quality",
+      "breakpoints": true
     }
   ]
 }

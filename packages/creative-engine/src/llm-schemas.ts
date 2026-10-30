@@ -3,6 +3,7 @@ import {
   ComplexitySchema,
   CompositionTypeSchema,
   ConceptAngleSchema,
+  HookTechniqueSchema,
   MotionPresetSchema,
   ProductionFormatSchema,
   SceneRoleSchema,
@@ -41,6 +42,17 @@ export const ConceptLlmSchema = z.object({
   visualStyle: VisualStyleSchema,
   productionFormat: ProductionFormatSchema,
   voiceStyle: VoiceStyleSchema,
+  hookTechnique: HookTechniqueSchema.describe('How the hook stops the scroll; different in every concept'),
+  headline: z
+    .string()
+    .describe(
+      'Written headline for static ads and title cards: 3–7 Hebrew words, not a transcript of the hook',
+    ),
+  subheadline: z.string().nullable().describe('One short supporting written line, or null'),
+  claimsUsed: z
+    .array(z.string())
+    .max(4)
+    .describe('Approved claims this concept relies on, quoted exactly; empty if none'),
 });
 export type ConceptLlm = z.infer<typeof ConceptLlmSchema>;
 

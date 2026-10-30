@@ -11,6 +11,7 @@
     "packages/cost-engine",
     "packages/storage",
     "packages/media-providers",
+    "packages/agent-expertise",
     "packages/production-engine",
     "packages/creative-engine",
     "packages/video-renderer",

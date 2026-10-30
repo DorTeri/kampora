@@ -10,6 +10,7 @@
     "start": "node --env-file-if-exists=../../.env dist/main.js"
   },
   "dependencies": {
+    "@kampora/agent-expertise": "0.1.0",
     "@kampora/cost-engine": "0.1.0",
     "@kampora/creative-engine": "0.1.0",
     "@kampora/database": "0.1.0",

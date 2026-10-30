@@ -1,0 +1,14 @@
+{
+  "name": "@kampora/agent-expertise",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@kampora/shared": "0.1.0",
+    "zod": "4.6.7"
+  }
+}

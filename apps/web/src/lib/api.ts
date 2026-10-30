@@ -4,6 +4,7 @@ import type {
   CampaignStatus,
   CreativeConcept,
   NarrationState,
+  ProfessionalCreativeBrief,
   ProductionPlan,
   ProjectStatus,
   StaticAdFormat,
@@ -92,6 +93,8 @@ export interface CampaignDetail {
   businessId: string;
   status: CampaignStatus;
   brief: CampaignBrief;
+  /** What is known (and how), and the questions still open. */
+  professionalBrief: ProfessionalCreativeBrief;
   concepts: ConceptItem[];
   project: { id: string; status: ProjectStatus } | null;
 }

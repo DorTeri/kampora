@@ -17,11 +17,20 @@ import {
   type StoryboardScene,
 } from '@kampora/shared';
 import { assessScriptLength, estimateSpeechSec, normalizeHebrewForSpeech } from '@kampora/hebrew-voice';
+import {
+  COPYWRITING_PLAYBOOK,
+  copywriterExpertise,
+  industryFor,
+  playbookTag,
+  type IndustryProfile,
+} from '@kampora/agent-expertise';
 import type { LlmProvider } from '@kampora/media-providers';
 import { runReasoningStep, StepValidationError, type UsageRecorder } from './step-runner';
 import { checkClaims, checkFacts, type ClaimFlag } from './claims';
 import { conceptTypesGuide } from './concept-types';
 import { conceptQa, qaErrors, storyboardQa } from './creative-qa';
+import { conceptSetQa } from './copy-qa';
+import { buildProfessionalBrief } from './professional-brief';
 import {
   ConceptSetLlmSchema,
   StoryboardLlmSchema,
@@ -43,6 +52,8 @@ export type BriefStepInput = z.infer<typeof BriefStepInputSchema>;
 export const ConceptsStepInputSchema = z.object({
   business: BusinessProfileSchema,
   brief: CampaignBriefSchema,
+  /** The business's media: tells the Copywriter whether real product photos exist. */
+  assets: z.array(AvailableAssetSchema).optional(),
 });
 export type ConceptsStepInput = z.infer<typeof ConceptsStepInputSchema>;
 
@@ -163,7 +174,7 @@ const RULES = [
 ].join('\n');
 
 const CONCEPTS_SYSTEM = [
-  "You are Kampora's Creative Strategist, writing vertical (9:16) Instagram/Facebook Reels ads for Israeli small businesses.",
+  "You are Kampora's Copywriter and Creative Strategist, writing ads for Israeli small businesses: vertical (9:16) Instagram/Facebook Reels plus static feed and Stories ads from the same concepts.",
   RULES,
   'Return exactly 3 concepts with genuinely different angles: different hook mechanism, structure and emotional driver — never three rewrites of one idea. Choose from these concept types (prefer types whose "best for" includes the brief goal):',
   conceptTypesGuide(),
@@ -171,7 +182,14 @@ const CONCEPTS_SYSTEM = [
   'Hooks: max ~8 words, specific to this business and audience; no generic openers like "הכירו את" or "מחפשים?" alone.',
   'hook: the opening spoken line that stops the scroll in the first 2 seconds. script: the complete voiceover in short spoken sentences, written to FILL estimatedDurationSec at a natural pace (~2.3 words per second, so a 20-second ad needs ~40 words); estimatedDurationSec must not exceed the brief target.',
   'recommendedIndex: the concept most likely to achieve the brief goal; explain why in recommendationReason (Hebrew).',
+  'Written copy is separate from the spoken script: headline (3–7 words, readable in one second, not a transcript of the hook) and subheadline (optional, one short supporting line) are what static ads and title cards show. hookTechnique: the technique the hook uses, different in each concept. claimsUsed: the approved claims the concept relies on, quoted exactly (empty if none).',
+  'Use <strategy>: build on its value proposition and reasons to believe; treat inferred items as hypotheses; never assume anything listed under unknown.',
 ].join('\n');
+
+/** System prompt: the fixed rules plus only the expertise relevant to this goal and industry. */
+export function conceptsSystem(goal: CampaignGoal, industry: IndustryProfile): string {
+  return `${CONCEPTS_SYSTEM}\n${copywriterExpertise({ goal, industry })}`;
+}
 
 const STORYBOARD_SYSTEM = [
   "You are Kampora's Storyboard Director. Turn the approved concept into 4–6 scenes for a vertical Reels ad.",
@@ -187,6 +205,7 @@ const STORYBOARD_SYSTEM = [
 // ── Concepts ──────────────────────────────────────────────────────────
 
 function toConceptSet(output: ConceptSetLlm, target: number): ConceptSet {
+  const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
   return ConceptSetSchema.parse({
     concepts: output.concepts.map((c) => ({
       key: c.angle.toLowerCase().replace(/_/g, '-'),
@@ -210,6 +229,19 @@ function toConceptSet(output: ConceptSetLlm, target: number): ConceptSet {
         visualStyle: c.visualStyle,
         productionFormat: c.productionFormat,
         voiceStyle: c.voiceStyle,
+      },
+      copy: {
+        hookTechnique: c.hookTechnique,
+        headline: c.headline.trim(),
+        subheadline: c.subheadline?.trim() || undefined,
+        claimsUsed: c.claimsUsed.map((x) => x.trim()).filter(Boolean),
+        formats: ['VIDEO_9_16', 'STATIC_1_1', 'STATIC_4_5', 'STATIC_9_16'],
+        density: {
+          spokenWords: words(c.script),
+          estimatedSec: Math.round(estimateSpeechSec(c.script) * 10) / 10,
+          headlineWords: words(c.headline),
+        },
+        playbookVersion: playbookTag(COPYWRITING_PLAYBOOK),
       },
     })),
     recommendedKey: output.concepts[output.recommendedIndex]?.angle.toLowerCase().replace(/_/g, '-'),
@@ -235,19 +267,42 @@ function scriptProblems(
   return problems;
 }
 
+/** The strategic part of the professional brief, compact: what to build on and what not to assume. */
+export function strategyFacts(input: ConceptsStepInput) {
+  const pro = buildProfessionalBrief({ business: input.business, brief: input.brief, assets: input.assets });
+  const known = (f: { value: unknown; provenance: string }) =>
+    f.provenance === 'MISSING' ? null : { value: f.value, provenance: f.provenance };
+  return {
+    industry: pro.industry.label,
+    valueProposition: known(pro.strategy.valueProposition),
+    reasonsToBelieve: known(pro.strategy.reasonsToBelieve),
+    emotionalDirection: known(pro.strategy.emotionalDirection),
+    coreInsightHypothesis: known(pro.strategy.coreInsight),
+    restrictions: pro.strategy.restrictions.value ?? [],
+    realProductPhotos: pro.business.media.verifiedProductPhotos > 0,
+    unknown: pro.questions.map((q) => q.field),
+  };
+}
+
 export async function generateConcepts(
   input: ConceptsStepInput,
   ctx: StepContext,
 ): Promise<{ conceptSet: ConceptSet; claimFlags: ClaimFlag[] }> {
+  const { profile: industry } = industryFor(input.business);
   const { output } = await runReasoningStep({
     name: 'creative.concepts',
-    system: CONCEPTS_SYSTEM,
+    system: conceptsSystem(input.brief.goal, industry),
     input,
     inputSchema: ConceptsStepInputSchema,
     outputSchema: ConceptSetLlmSchema,
     schemaName: 'concept_set',
     buildPrompt: (i) =>
-      `Create three ad concepts.\n${dataBlock('business', businessFacts(i.business))}\n${dataBlock('brief', briefFacts(i.brief))}`,
+      [
+        'Create three ad concepts.',
+        dataBlock('business', businessFacts(i.business)),
+        dataBlock('brief', briefFacts(i.brief)),
+        dataBlock('strategy', strategyFacts(i)),
+      ].join('\n'),
     transform: (o, i) => toConceptSet(o, i.brief.targetDurationSec),
     postValidate: (set, i) => [
       ...checkFacts(
@@ -260,6 +315,7 @@ export async function generateConcepts(
         i.brief.targetDurationSec,
       ),
       ...set.concepts.flatMap((c) => qaErrors(conceptQa(c))),
+      ...qaErrors(conceptSetQa(set, { business: i.business, industry })),
     ],
     provider: ctx.provider,
     recorder: ctx.recorder,

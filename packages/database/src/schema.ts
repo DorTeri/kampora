@@ -19,6 +19,9 @@ import type {
   BrandColors,
   CampaignBrief,
   CreativeConcept,
+  CreativeFeedbackInput,
+  ProfessionalCreativeBrief,
+  ReviewHistory,
   NarrationState,
   PlannedGeneration,
   ProductionPlan,
@@ -232,6 +235,8 @@ export const campaignBriefs = pgTable(
       .references(() => businesses.id, { onDelete: 'cascade' }),
     status: campaignStatus('status').notNull().default('BRIEF_READY'),
     brief: jsonb('brief').$type<CampaignBrief>().notNull(),
+    /** Snapshot of the professional brief the concepts were written from (null: campaigns before it existed). */
+    professionalBrief: jsonb('professional_brief').$type<ProfessionalCreativeBrief>(),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -621,6 +626,58 @@ export const staticAds = pgTable(
     index('static_ads_project_idx').on(t.videoProjectId, t.format),
     uniqueIndex('static_ads_version_uq').on(t.videoProjectId, t.format, t.version),
   ],
+);
+
+/**
+ * Creative Critic results: one row per reviewed piece of work, with every critique-and-revision round. Kept
+ * for quality metrics and for comparing expertise versions.
+ */
+export const creativeReviews = pgTable(
+  'creative_reviews',
+  {
+    id: id(),
+    orgId: orgId(),
+    businessId: uuid('business_id')
+      .notNull()
+      .references(() => businesses.id, { onDelete: 'cascade' }),
+    videoProjectId: uuid('video_project_id').references(() => videoProjects.id, { onDelete: 'cascade' }),
+    campaignBriefId: uuid('campaign_brief_id').references(() => campaignBriefs.id, { onDelete: 'cascade' }),
+    subjectType: text('subject_type').notNull(),
+    subjectRef: text('subject_ref').notNull(),
+    rubricVersion: text('rubric_version').notNull(),
+    expertiseVersion: text('expertise_version').notNull(),
+    verdict: text('verdict').notNull(),
+    rounds: integer('rounds').notNull(),
+    history: jsonb('history').$type<ReviewHistory>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('creative_reviews_business_idx').on(t.orgId, t.businessId, t.createdAt),
+    index('creative_reviews_subject_idx').on(t.subjectType, t.subjectRef),
+  ],
+);
+
+/**
+ * Owner feedback on creative work (accept / reject / revise, with reasons): the learning signal. Scoped to one
+ * organization and business; never used to personalise another customer's work.
+ */
+export const creativeFeedback = pgTable(
+  'creative_feedback',
+  {
+    id: id(),
+    orgId: orgId(),
+    businessId: uuid('business_id')
+      .notNull()
+      .references(() => businesses.id, { onDelete: 'cascade' }),
+    subjectType: text('subject_type').$type<CreativeFeedbackInput['subjectType']>().notNull(),
+    subjectRef: text('subject_ref').notNull(),
+    decision: text('decision').$type<CreativeFeedbackInput['decision']>().notNull(),
+    reasons: jsonb('reasons').$type<CreativeFeedbackInput['reasons']>().notNull().default([]),
+    note: text('note'),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('creative_feedback_business_idx').on(t.orgId, t.businessId, t.createdAt)],
 );
 
 export const auditLog = pgTable(

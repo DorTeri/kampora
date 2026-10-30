@@ -2,7 +2,12 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { and, asc, desc, eq, isNull, max } from 'drizzle-orm';
 import { summarizeLedger, usdToMicro, type BudgetPolicy, type PriceCatalog } from '@kampora/cost-engine';
-import { buildCampaignBrief, generateConcepts, generateStoryboard } from '@kampora/creative-engine';
+import {
+  buildCampaignBrief,
+  buildProfessionalBrief,
+  generateConcepts,
+  generateStoryboard,
+} from '@kampora/creative-engine';
 import {
   approvals,
   auditLog,
@@ -98,9 +103,16 @@ export class StudioService {
         targetDurationSec: TARGET_DURATION_SEC,
       },
     });
+    // The professional brief is kept with the campaign: the concepts can always be traced to what was known.
+    const professionalBrief = buildProfessionalBrief({
+      business: profile,
+      brief,
+      assets: toAvailableAssets(await this.businesses.assets(ctx, businessId)),
+      notes: request.notes,
+    });
     const [row] = await this.db
       .insert(campaignBriefs)
-      .values({ orgId: ctx.orgId, businessId, brief, createdBy: ctx.userId })
+      .values({ orgId: ctx.orgId, businessId, brief, professionalBrief, createdBy: ctx.userId })
       .returning();
     if (quote.paid && aiApprovalUsd !== undefined) {
       await this.paid.recordCreativeApproval(ctx, row!.id, aiApprovalUsd);
@@ -134,10 +146,11 @@ export class StudioService {
       );
     }
     const profile = await this.businesses.loadProfile(ctx, brief.businessId);
+    const assets = toAvailableAssets(await this.businesses.assets(ctx, brief.businessId));
     const { provider, recorder } = this.paid.creativeProviderFor(ctx, briefId);
     let result: Awaited<ReturnType<typeof generateConcepts>>;
     try {
-      result = await generateConcepts({ business: profile, brief: brief.brief }, { provider, recorder });
+      result = await generateConcepts({ business: profile, brief: brief.brief, assets }, { provider, recorder });
     } finally {
       // Spend is recorded even when the step fails.
       await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: briefId });
@@ -200,11 +213,20 @@ export class StudioService {
       .select({ id: videoProjects.id, status: videoProjects.status })
       .from(videoProjects)
       .where(and(eq(videoProjects.briefId, briefId), eq(videoProjects.orgId, ctx.orgId)));
+    // Campaigns created before the professional brief get one built now (deterministic, no model call).
+    const professionalBrief =
+      brief.professionalBrief ??
+      buildProfessionalBrief({
+        business: await this.businesses.loadProfile(ctx, brief.businessId),
+        brief: brief.brief,
+        assets: toAvailableAssets(await this.businesses.assets(ctx, brief.businessId)),
+      });
     return {
       id: brief.id,
       businessId: brief.businessId,
       status: brief.status,
       brief: brief.brief,
+      professionalBrief,
       createdAt: brief.createdAt,
       concepts: all
         .filter((c) => c.batch === latestBatch || c.selectedAt)

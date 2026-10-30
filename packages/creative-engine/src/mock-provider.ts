@@ -4,7 +4,8 @@ import type {
   StructuredGenerationRequest,
   StructuredGenerationResult,
 } from '@kampora/media-providers';
-import type { ConceptAngle } from '@kampora/shared';
+import type { CampaignGoal, ConceptAngle } from '@kampora/shared';
+import { industryFor } from '@kampora/agent-expertise';
 import { CONCEPT_TYPES } from './concept-types';
 import type { ConceptLlm, ConceptSetLlm, StoryboardLlm } from './llm-schemas';
 
@@ -20,6 +21,34 @@ const typeDefaults = (angle: ConceptAngle) => {
   };
 };
 import { ConceptsStepInputSchema, StoryboardStepInputSchema } from './steps';
+
+/** Cuts to whole words (the mock's copy must respect the same length rules as the model's). */
+const clip = (text: string, maxWords: number) => text.trim().split(/\s+/).slice(0, maxWords).join(' ');
+
+/** Goal-consistent CTA variants, so three concepts do not end with the same phrase. */
+const CTA_VARIANTS: Record<CampaignGoal, string[]> = {
+  OFFER: ['בואו לנצל את המבצע', 'קפצו אלינו', 'שמרו את המבצע ובואו'],
+  SALES: ['הזמינו עכשיו', 'הזמינו באתר', 'בדקו את הפרטים'],
+  LEADS: ['השאירו פרטים ונחזור אליכם', 'שלחו לנו הודעה', 'קבעו שיחת היכרות'],
+  PRODUCT_PROMO: ['בואו לטעום', 'בואו לנסות', 'בואו לראות מקרוב'],
+  AWARENESS: ['בואו להכיר', 'קפצו להגיד שלום', 'עקבו אחרינו'],
+};
+
+/** The audience's own question, per industry (hook technique QUESTION). */
+const PROBLEM_HOOK: Record<string, string> = {
+  'cafe-restaurant': 'גם לכם הקפה של הבוקר מאכזב?',
+  fitness: 'רוצים להתחיל להתאמן ולא יודעים איפה?',
+  'beauty-wellness': 'מתי בפעם האחרונה עשיתם משהו רק בשבילכם?',
+  'local-services': 'תקלה בבית ואין למי להתקשר?',
+  ecommerce: 'מחפשים מתנה שלא תיגמר במגירה?',
+};
+
+/** An everyday moment, per industry (hook technique PATTERN_INTERRUPT for awareness). */
+const LIFESTYLE_HOOK: Record<string, string> = {
+  'cafe-restaurant': 'ככה נראה בוקר טוב בשכונה',
+  fitness: 'שבע בבוקר, והאנרגיה כבר כאן',
+  'beauty-wellness': 'שעה אחת של שקט באמצע השבוע',
+};
 
 const MOCK_PRICE = DEFAULT_PRICE_CATALOG.find(
   (e) => e.provider === 'mock' && e.operation === 'LLM_COMPLETION',
@@ -54,114 +83,175 @@ export class MockCreativeLlmProvider implements LlmProvider {
 
   private concepts(raw: unknown): ConceptSetLlm {
     const { business, brief } = ConceptsStepInputSchema.parse(raw);
-    const claimA = business.approvedClaims[0] ?? brief.keyMessage;
-    const claimB = business.approvedClaims[1] ?? '';
-    const offerLine = brief.offer ? `${brief.offer}.` : '';
-    const recommendedIndex = brief.goal === 'OFFER' || brief.goal === 'SALES' ? 0 : 1;
-    return {
-      concepts: [
-        {
-          ...typeDefaults('OFFER_DRIVEN'),
-          title: 'המבצע במרכז',
-          audience: brief.audience,
-          hook: brief.offer ? `רגע, ראיתם את המבצע ב-${business.name}?` : `${brief.productName} כמו שצריך`,
-          script: [`ב-${business.name} ${claimA}.`, offerLine, `${brief.cta}!`].filter(Boolean).join(' '),
-          mainMessage: brief.offer ?? brief.keyMessage,
-          visualDirection:
-            'פתיחה בקלוז-אפ חם על המוצר, מעבר מהיר לכרטיס מבצע בצבעי המותג, סיום עם לוגו וכתובת.',
-          cta: brief.cta,
-          rationale: 'מטרת הקמפיין היא מבצע: מחיר ברור בשניות הראשונות מגדיל הקלקות ומבקרים.',
-          complexity: 'LOW',
-          estimatedDurationSec: 18,
-          objective: brief.offer ? 'להביא מבקרים לנצל את המבצע' : `לגרום לקהל לנסות את ${brief.productName}`,
-          insight: 'כשההצעה ברורה מהשנייה הראשונה, קל להחליט לבוא',
-          hypothesis: 'אם נפתח במבצע עצמו, יותר אנשים יעצרו ויגיעו, כי הערך ברור מיד',
-          storyStructure: ['פתיחה: המבצע', 'מה מקבלים', 'המחיר והתנאים', 'קריאה לפעולה'],
-        },
-        {
-          ...typeDefaults('PROBLEM_SOLUTION'),
-          title: 'הבוקר שמגיע לך',
-          audience: brief.audience,
-          hook: `נמאס מ${brief.productName} סתמי בדרך לעבודה?`,
-          script: `נמאס מ${brief.productName} סתמי? ב-${business.name} ${claimA}${claimB ? `, ו${claimB}` : ''}.`,
-          mainMessage: claimA,
-          visualDirection: 'ניגוד בין בוקר אפור לפינה חמימה ומוארת; תנועת מצלמה איטית על המוצר.',
-          cta: brief.cta,
-          rationale: 'מזהה כאב יומיומי של קהל היעד ומציג את העסק כפתרון פשוט וקרוב.',
-          complexity: 'MEDIUM',
-          estimatedDurationSec: 20,
-          objective: `לבנות העדפה ל-${business.name} כפתרון לבוקר רגיל`,
-          insight: `${brief.productName} סתמי בדרך לעבודה הוא פשרה שכולם מכירים`,
-          hypothesis: 'אם נזכיר תסכול מוכר ונציג פתרון קרוב, הקהל יזדהה ויגיע',
-          storyStructure: ['פתיחה: התסכול', 'למה זה קורה', `הפתרון: ${business.name}`, 'קריאה לפעולה'],
-        },
-        this.thirdConcept(business, brief, claimA),
-      ],
-      recommendedIndex,
-      recommendationReason:
-        recommendedIndex === 0
-          ? 'המטרה היא מבצע, וכשהמחיר ברור כבר בפתיחה התגובה בדרך כלל גבוהה יותר.'
-          : 'פתיחה שמזהה בעיה מוכרת עוצרת גלילה ומובילה בטבעיות למסר של העסק.',
-    };
-  }
-
-  /** A third, different idea: a demo for product promotions, lifestyle for awareness, otherwise emotional. */
-  private thirdConcept(
-    business: ReturnType<typeof ConceptsStepInputSchema.parse>['business'],
-    brief: ReturnType<typeof ConceptsStepInputSchema.parse>['brief'],
-    claimA: string,
-  ): ConceptLlm {
-    const common = {
+    const { profile: industry } = industryFor(business);
+    const claimA = business.approvedClaims[0];
+    const claimB = business.approvedClaims[1];
+    const offer = brief.offer?.replace(/\s+עד\s.+$/, '').trim();
+    const ctas = [brief.cta, ...CTA_VARIANTS[brief.goal].filter((c) => c !== brief.cta)];
+    const said = (claim?: string) => (claim ? ` ${claim}.` : '');
+    const base = {
       audience: brief.audience,
-      cta: brief.cta,
       complexity: 'MEDIUM' as const,
       estimatedDurationSec: 20,
     };
-    if (brief.goal === 'PRODUCT_PROMO') {
+
+    // A: the offer itself (offer goals), otherwise the audience's own question.
+    const offerConcept: ConceptLlm | undefined = offer
+      ? {
+          ...typeDefaults('OFFER_DRIVEN'),
+          ...base,
+          complexity: 'LOW',
+          estimatedDurationSec: 18,
+          title: 'המבצע במרכז',
+          hookTechnique: 'OFFER_FIRST',
+          hook: clip(`${offer} ב-${business.name}`, 8),
+          headline: clip(`${brief.productName}, במחיר מבצע`, 7),
+          subheadline: claimA ?? null,
+          script: `${offer}, ב-${business.name}.${said(claimA)} ${ctas[0]}!`,
+          mainMessage: offer,
+          visualDirection: 'מה שמקבלים במבצע, יחד בפריים אחד; המחיר ברור על המסך מהשנייה הראשונה.',
+          cta: ctas[0]!,
+          rationale: 'כשהמטרה היא מבצע, הערך צריך להיות ברור לפני שהצופה ממשיך לגלול.',
+          objective: 'להביא מבקרים לנצל את המבצע',
+          insight: 'כשההצעה ברורה מהשנייה הראשונה, קל להחליט לבוא',
+          hypothesis: 'אם נפתח במחיר עצמו, יותר אנשים יעצרו ויגיעו, כי הערך ברור מיד',
+          storyStructure: ['פתיחה: המבצע', 'מה מקבלים', 'המחיר והתנאים', 'קריאה לפעולה'],
+          claimsUsed: claimA ? [claimA] : [],
+        }
+      : undefined;
+
+    const question: ConceptLlm = {
+      ...typeDefaults('PROBLEM_SOLUTION'),
+      ...base,
+      title: 'השאלה של הקהל',
+      hookTechnique: 'QUESTION',
+      hook: PROBLEM_HOOK[industry.id] ?? `מחפשים ${clip(brief.productName, 4)} שאפשר לסמוך עליו?`,
+      headline: clip(claimA ?? `${brief.productName} ב-${business.name}`, 7),
+      subheadline: offer ?? null,
+      script: `${PROBLEM_HOOK[industry.id] ?? `מחפשים ${brief.productName}?`} ב-${business.name}${claimA ? ` ${claimA}` : ` יש ${brief.productName}`}${claimB ? `, ו${claimB}` : ''}. ${ctas[1]}.`,
+      mainMessage: claimA ?? brief.keyMessage,
+      visualDirection: 'פתיחה ברגע המוכר של הבעיה, מעבר לפתרון אצל העסק; תנועת מצלמה רגועה.',
+      cta: ctas[1]!,
+      rationale: 'פותח בשאלה שהקהל כבר שואל את עצמו, ומציג את העסק כתשובה פשוטה וקרובה.',
+      objective: `לבנות העדפה ל-${business.name} כפתרון`,
+      insight: `השערה: ${industry.motivations[0]}`,
+      hypothesis: 'אם נשאל את השאלה שהקהל כבר שואל, הוא יזדהה ויקשיב לתשובה',
+      storyStructure: ['פתיחה: השאלה', 'למה זה מתסכל', `הפתרון: ${business.name}`, 'קריאה לפעולה'],
+      claimsUsed: [claimA, claimB].filter((c): c is string => Boolean(c)),
+    };
+
+    const third = this.thirdConcept(business.name, brief, industry.id, claimA, ctas[2]!);
+    const concepts = offerConcept
+      ? [offerConcept, question, third]
+      : [question, third, this.firstPerson(business.name, brief, claimB ?? claimA, ctas[0]!)];
+    const recommendedIndex = 0;
+    return {
+      concepts,
+      recommendedIndex,
+      recommendationReason: offerConcept
+        ? 'המטרה היא מבצע, וכשהמחיר ברור כבר בפתיחה התגובה בדרך כלל גבוהה יותר.'
+        : 'פתיחה שמזהה צורך מוכר עוצרת גלילה ומובילה בטבעיות למסר של העסק.',
+    };
+  }
+
+  /** The third idea differs by goal: product moment, lifestyle, or a useful tip. */
+  private thirdConcept(
+    name: string,
+    brief: ReturnType<typeof ConceptsStepInputSchema.parse>['brief'],
+    industryId: string,
+    claim: string | undefined,
+    cta: string,
+  ): ConceptLlm {
+    const common = { audience: brief.audience, cta, complexity: 'MEDIUM' as const, estimatedDurationSec: 20 };
+    if (brief.goal === 'LEADS') {
       return {
-        ...typeDefaults('PRODUCT_DEMO'),
+        ...typeDefaults('EDUCATIONAL'),
         ...common,
-        title: `${brief.productName} מקרוב`,
-        hook: `ככה נראה ${brief.productName} אמיתי`,
-        script: `ככה נראה ${brief.productName} אמיתי. ב-${business.name} ${claimA}.`,
-        mainMessage: claimA,
-        visualDirection: 'קלוז-אפים חדים על המוצר, פרטים ומרקמים, תנועות מצלמה קצרות.',
-        rationale: 'מראה את המוצר עצמו ומאפשר לקהל להחליט לפי מה שהוא רואה.',
-        objective: `לעורר רצון לנסות את ${brief.productName}`,
-        insight: 'אנשים סומכים על מה שהם רואים יותר מאשר על תיאורים',
-        hypothesis: 'אם נראה את המוצר מקרוב, הרצון לנסות יעלה',
-        storyStructure: ['פתיחה: רגע המוצר', 'הדגמה: מה מקבלים', 'היתרון', 'קריאה לפעולה'],
+        title: 'טיפ אחד שימושי',
+        hookTechnique: 'HOW_TO',
+        hook: `טיפ קטן לפני שבוחרים ${clip(brief.productName, 3)}`,
+        headline: clip(`הטיפ שלנו: ${brief.productName}`, 7),
+        subheadline: null,
+        script: `טיפ קטן לפני שבוחרים ${brief.productName}: תשאלו מה בדיוק כלול. ב-${name}${claim ? ` ${claim}` : ' עונים על כל שאלה'}. ${cta}.`,
+        mainMessage: 'בחירה נכונה מתחילה בשאלה הנכונה',
+        visualDirection: 'צילום ישיר ופשוט של בעל המקצוע מסביר, כתוביות ברורות.',
+        rationale: 'נותן ערך לפני שמבקש פרטים, ובונה אמון במומחיות.',
+        objective: 'להשאיר פרטים אחרי שקיבלו ערך',
+        insight: 'אנשים סומכים על מי שעזר להם לפני שביקש משהו',
+        hypothesis: 'אם ניתן טיפ אמיתי, יותר אנשים ישאירו פרטים',
+        storyStructure: ['פתיחה: הטיפ', 'למה זה חשוב', `${name} עוזרים`, 'קריאה לפעולה'],
+        claimsUsed: claim ? [claim] : [],
       };
     }
     if (brief.goal === 'AWARENESS') {
       return {
         ...typeDefaults('LIFESTYLE'),
         ...common,
-        title: `הבוקר עם ${business.name}`,
-        hook: 'ככה נראה בוקר טוב בשכונה',
-        script: `ככה נראה בוקר טוב בשכונה. ב-${business.name} ${claimA}.`,
-        mainMessage: `${business.name} הוא חלק מהבוקר הטוב`,
-        visualDirection: 'אווירת בוקר בשכונה, אור טבעי, המוצר כחלק מהשגרה.',
-        rationale: 'בונה מודעות דרך שגרה שהקהל רוצה להיות חלק ממנה.',
-        objective: `להכיר את ${business.name} לתושבי האזור`,
-        insight: 'בוקר טוב מתחיל ממקום קבוע וקרוב',
-        hypothesis: 'אם נראה את העסק כחלק מבוקר רצוי, הקהל יזכור אותו',
-        storyStructure: ['פתיחה: בוקר בשכונה', 'המוצר בתוך השגרה', 'המותג', 'קריאה לפעולה'],
+        title: `רגע עם ${name}`,
+        hookTechnique: 'PATTERN_INTERRUPT',
+        hook: LIFESTYLE_HOOK[industryId] ?? 'ככה נראה יום טוב בשכונה',
+        headline: clip(`${name}. חלק מהשגרה`, 7),
+        subheadline: claim ?? null,
+        script: `${LIFESTYLE_HOOK[industryId] ?? 'ככה נראה יום טוב בשכונה'}. ${name}${claim ? `, ${claim}` : ''}. ${cta}.`,
+        mainMessage: `${name} הוא חלק מהשגרה הטובה`,
+        visualDirection: 'אור טבעי, אנשים אמיתיים, המוצר כחלק מהיום.',
+        rationale: 'בונה מודעות דרך רגע שהקהל רוצה להיות חלק ממנו.',
+        objective: `להכיר את ${name} לתושבי האזור`,
+        insight: 'אנשים זוכרים מקומות שקשורים לרגע טוב בשבוע שלהם',
+        hypothesis: 'אם נראה את העסק כחלק מרגע רצוי, הקהל יזכור אותו',
+        storyStructure: ['פתיחה: הרגע', 'המוצר בתוך השגרה', 'המותג', 'קריאה לפעולה'],
+        claimsUsed: claim ? [claim] : [],
       };
     }
     return {
-      ...typeDefaults('EMOTIONAL'),
+      ...typeDefaults(
+        brief.goal === 'PRODUCT_PROMO' || brief.goal === 'SALES' ? 'PRODUCT_DEMO' : 'EMOTIONAL',
+      ),
       ...common,
-      title: 'הרגע הקטן שלך',
-      hook: 'יש רגעים קטנים שעושים את כל היום',
-      script: `יש רגעים קטנים שעושים את כל היום. ב-${business.name} ${claimA}.`,
-      mainMessage: `${business.name} – המקום לרגע הקטן שלך`,
-      visualDirection: 'צילומי אווירה רכים, אור בוקר, קצב רגוע ומוזיקה חמה.',
-      rationale: 'בונה זיכרון מותג וחיבור רגשי; מתאים לקהל מקומי וחוזר.',
-      objective: `לבנות חיבור רגשי ל-${business.name}`,
-      insight: 'רגע קטן ונעים בבוקר משפיע על כל היום',
-      hypothesis: 'אם נתחבר לרגע מוכר ונעים, המותג ייזכר לטובה',
-      storyStructure: ['פתיחה: הרגע', 'מה הופך אותו למיוחד', 'איפה זה קורה', 'קריאה לפעולה'],
+      title: `${clip(brief.productName, 3)} מקרוב`,
+      hookTechnique: 'SENSORY_DETAIL',
+      hook: `ככה נראה ${clip(brief.productName, 4)} מקרוב`,
+      headline: clip(`${brief.productName}, מקרוב`, 7),
+      subheadline: claim ?? null,
+      script: `ככה נראה ${brief.productName} מקרוב.${claim ? ` ב-${name} ${claim}.` : ''} ${cta}.`,
+      mainMessage: claim ?? `${brief.productName} ב-${name}`,
+      visualDirection: 'קלוז-אפים על המוצר האמיתי, מרקם ופרטים, תנועות מצלמה קצרות.',
+      rationale: 'מראה את המוצר עצמו ונותן לקהל להחליט לפי מה שהוא רואה.',
+      objective: `לעורר רצון לנסות את ${brief.productName}`,
+      insight: 'אנשים סומכים על מה שהם רואים יותר מאשר על תיאורים',
+      hypothesis: 'אם נראה את המוצר מקרוב, הרצון לנסות יעלה',
+      storyStructure: ['פתיחה: רגע המוצר', 'הפרטים', 'היתרון', 'קריאה לפעולה'],
+      claimsUsed: claim ? [claim] : [],
+    };
+  }
+
+  /** First-person discovery (never a fake customer: the brand tells its own story). */
+  private firstPerson(
+    name: string,
+    brief: ReturnType<typeof ConceptsStepInputSchema.parse>['brief'],
+    claim: string | undefined,
+    cta: string,
+  ): ConceptLlm {
+    return {
+      ...typeDefaults('UGC'),
+      audience: brief.audience,
+      cta,
+      complexity: 'LOW',
+      estimatedDurationSec: 20,
+      title: 'מאחורי הקלעים',
+      hookTechnique: 'FIRST_PERSON',
+      hook: `תנו לנו להראות לכם את ${name}`,
+      headline: clip(`ככה עובדים ב-${name}`, 7),
+      subheadline: claim ?? null,
+      script: `תנו לנו להראות לכם את ${name}.${claim ? ` ${claim}.` : ''} ${cta}.`,
+      mainMessage: claim ?? brief.keyMessage,
+      visualDirection: 'צילום ידני בגובה העיניים, אנשי הצוות האמיתיים בעבודה.',
+      rationale: 'מראה את האנשים שמאחורי העסק; אמון נבנה כשרואים מי עושה את העבודה.',
+      objective: `לבנות אמון ב-${name}`,
+      insight: 'קל יותר לפנות לעסק כשמכירים את האנשים שבו',
+      hypothesis: 'אם נראה את הצוות האמיתי, יותר אנשים ירגישו בנוח לפנות',
+      storyStructure: ['פתיחה: היכרות', 'איך עובדים', 'מה מקבלים', 'קריאה לפעולה'],
+      claimsUsed: claim ? [claim] : [],
     };
   }
 
@@ -184,7 +274,9 @@ export class MockCreativeLlmProvider implements LlmProvider {
           visual: `קלוז-אפ קולנועי על ${brief.productName}, אור בוקר חם`,
           visualKind: 'PHOTO',
           voiceover: concept.hook,
-          onScreenText: brief.offer ? `מבצע החודש ב-${business.name}` : concept.title,
+          // The Copywriter's written headline is the on-screen hook (not the spoken line).
+          onScreenText:
+            concept.copy?.headline ?? (brief.offer ? `מבצע החודש ב-${business.name}` : concept.title),
           assetTags: ['hero'],
           motionPreset: 'cinematic-zoom',
           ...flags,

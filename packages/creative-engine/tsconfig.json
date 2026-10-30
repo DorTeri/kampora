@@ -23,6 +23,12 @@
     },
     {
       "path": "../hebrew-voice"
+    },
+    {
+      "path": "../agent-expertise"
+    },
+    {
+      "path": "../production-engine"
     }
   ]
 }

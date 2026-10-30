@@ -10,3 +10,7 @@ export * from './narration';
 export * from './visual';
 export * from './authenticity';
 export * from './static-ad';
+export * from './professional-brief';
+export * from './art-direction';
+export * from './critique';
+export * from './agents';
