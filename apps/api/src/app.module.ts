@@ -10,6 +10,7 @@ import { InfraModule } from './infra/infra.module';
 import { DATABASE } from './infra/tokens';
 import { MediaController } from './media/media.controller';
 import { ArtDirectionService } from './studio/art-direction.service';
+import { CriticService } from './studio/critic.service';
 import { BusinessService } from './studio/business.service';
 import {
   AiController,
@@ -64,6 +65,7 @@ class HealthController {
     SceneImagesService,
     StaticAdsService,
     ArtDirectionService,
+    CriticService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: DevAuthGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { Badge, ButtonLink, Card, PageHeader, cn } from '@/components/ui';
 import { he } from '@/i18n/he';
 import { ApiRequestError, api, type CampaignDetail } from '@/lib/api';
+import { CriticReview } from '../../critic-review';
 import { SelectConceptButton } from './select-button';
 
 const k = he.knowledge;
@@ -118,6 +119,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
           <p className="mt-4 text-sm text-muted">{k.ready}</p>
         )}
       </Card>
+
+      {campaign.reviews?.find((r) => r.subjectType === 'CONCEPT_SET') && (
+        <CriticReview review={campaign.reviews.find((r) => r.subjectType === 'CONCEPT_SET')!} />
+      )}
 
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         {concepts.map(

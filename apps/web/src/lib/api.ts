@@ -89,6 +89,42 @@ export interface ConceptItem {
   selected: boolean;
 }
 
+/** The Creative Critic's latest review of one piece of work (measured checks, not a quality verdict). */
+export interface CriticReviewDto {
+  id: string;
+  subjectType: 'CONCEPT_SET' | 'STATIC_AD' | 'STORYBOARD' | 'VIDEO';
+  subjectRef: string;
+  verdict: 'PASS' | 'REVISE' | 'HUMAN_REVIEW';
+  rounds: number;
+  stoppedBecause: 'PASSED' | 'MAX_ROUNDS' | 'NO_AUTOMATIC_FIX' | 'NO_IMPROVEMENT';
+  rubricVersion: string;
+  applied: CriticRevision[];
+  pending: CriticRevision[];
+  results: Array<{
+    criterion: string;
+    dimension: 'MARKETING' | 'VISUAL' | 'PRODUCTION';
+    score: number | null;
+    method: 'DETERMINISTIC' | 'LLM_OPINION';
+    severity: 'OK' | 'MINOR' | 'MAJOR' | 'CRITICAL';
+    explanation: string;
+    evidence: string[];
+    recommendedCorrection: string | null;
+    component: string;
+    target: string | null;
+  }>;
+  createdAt: string;
+}
+
+export interface CriticRevision {
+  component: string;
+  criteria: string[];
+  instruction: string;
+  target?: string;
+  cost: 'FREE' | 'PAID';
+  status: 'APPLIED' | 'PENDING_APPROVAL' | 'NEEDS_OWNER' | 'NOT_POSSIBLE';
+  change?: string;
+}
+
 export interface CampaignDetail {
   id: string;
   businessId: string;
@@ -98,6 +134,7 @@ export interface CampaignDetail {
   professionalBrief: ProfessionalCreativeBrief;
   concepts: ConceptItem[];
   project: { id: string; status: ProjectStatus } | null;
+  reviews: CriticReviewDto[];
 }
 
 export interface RenderDto {
@@ -334,6 +371,8 @@ export interface StaticAdsResponse {
     playbookVersion: string;
   } | null;
   ads: StaticAdDto[];
+  /** The Critic's latest review per format (subjectRef is the format). */
+  reviews: CriticReviewDto[];
   /** Pictures the owner may put behind the text: their own photos and approved AI images. */
   pictures: Array<{ assetId: string; source: 'AI' | 'BUSINESS'; authenticity: string; url: string }>;
 }

@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { and, asc, eq, max } from 'drizzle-orm';
+import { industryFor } from '@kampora/agent-expertise';
+import { reviewStaticAd } from '@kampora/creative-engine';
 import {
   auditLog,
   campaignBriefs,
@@ -36,6 +38,7 @@ import { ApiError, notFound } from '../common/errors';
 import { DATABASE, RENDER_QUEUE, STORAGE } from '../infra/tokens';
 import { ArtDirectionService } from './art-direction.service';
 import { BusinessService, toMediaAssets } from './business.service';
+import { CriticService } from './critic.service';
 import { approvedSceneImages } from './scene-image-assets';
 
 export const MAX_STATIC_AD_VERSIONS = 20;
@@ -61,6 +64,7 @@ export class StaticAdsService {
     @Inject(RENDER_QUEUE) private readonly queue: Queue,
     private readonly businesses: BusinessService,
     private readonly artDirection: ArtDirectionService,
+    private readonly critic: CriticService,
   ) {}
 
   private async context(ctx: AuthContext, projectId: string) {
@@ -194,6 +198,10 @@ export class StaticAdsService {
         : null,
       maxVersions: MAX_STATIC_AD_VERSIONS,
       ads: ads.filter((a) => a !== null),
+      // The Creative Critic's latest review of each format (measured checks; people judge the rest).
+      reviews: (await this.critic.latest(ctx, { videoProjectId: projectId })).filter(
+        (r) => r.subjectType === 'STATIC_AD',
+      ),
       pictures: await Promise.all(
         c.pictures.map(async (p) => ({
           assetId: p.id,
@@ -245,9 +253,15 @@ export class StaticAdsService {
         : null,
     );
     const copy = c.concept?.copy;
+    const industry = industryFor({
+      category: c.profile.category,
+      description: c.profile.description,
+    }).profile;
+    const previousLayout = await this.artDirection.previousLayout(ctx, projectId, c.project.businessId);
+    const alternatives = [...art.alternatives].sort((a, b) => b.score - a.score).map((a) => a.layoutFamily);
     for (const format of [...new Set(formats)]) {
       // A background the owner picked survives the rebuild (the builder drops it if the picture is gone).
-      const ad = buildStaticAd({
+      const built = buildStaticAd({
         ...base,
         id: `${projectId}:${format}`,
         format,
@@ -255,7 +269,25 @@ export class StaticAdsService {
         copy: copy ? { headline: copy.headline, subheadline: copy.subheadline } : undefined,
         design: art.formats[format],
       });
+      // The Critic checks the ad; free layout fixes are applied (at most two rounds), the rest waits for people.
+      const shown = c.candidates.find((x) => x.asset.id === built.background.assetId);
+      const { ad, history } = reviewStaticAd(built, {
+        plan: art,
+        previousLayout,
+        pictureComposition: shown?.composition,
+        offer: c.brief.offer,
+        business: c.profile,
+        industry,
+        alternatives,
+      });
       await this.saveVersion(ctx, projectId, ad);
+      await this.critic.record(ctx, {
+        businessId: c.project.businessId,
+        videoProjectId: projectId,
+        subject: { type: 'STATIC_AD', ref: format },
+        history,
+        industry,
+      });
     }
     return this.list(ctx, projectId);
   }

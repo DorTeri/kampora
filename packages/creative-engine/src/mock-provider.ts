@@ -21,6 +21,7 @@ const typeDefaults = (angle: ConceptAngle) => {
   };
 };
 import { ConceptsStepInputSchema, StoryboardStepInputSchema } from './steps';
+import { CritiqueOpinionInputSchema, type CritiqueOpinionLlm } from './critic/opinion';
 
 /** Cuts to whole words (the mock's copy must respect the same length rules as the model's). */
 const clip = (text: string, maxWords: number) => text.trim().split(/\s+/).slice(0, maxWords).join(' ');
@@ -76,9 +77,25 @@ export class MockCreativeLlmProvider implements LlmProvider {
         return { data: this.concepts(request.input), usage };
       case 'creative.storyboard':
         return { data: this.storyboard(request.input), usage };
+      case 'creative.critique':
+        return { data: this.critique(request.input), usage };
       default:
         throw new Error(`MockCreativeLlmProvider does not support task "${request.task}"`);
     }
+  }
+
+  /** The mock does not judge creative work: it says so, and leaves the score empty. */
+  private critique(raw: unknown): CritiqueOpinionLlm {
+    const { criteria } = CritiqueOpinionInputSchema.parse(raw);
+    return {
+      opinions: criteria.map((criterion) => ({
+        criterion,
+        score: null,
+        explanation:
+          'Simulation only: the mock provider does not judge creative work. A person should review this.',
+        evidence: [],
+      })),
+    };
   }
 
   private concepts(raw: unknown): ConceptSetLlm {

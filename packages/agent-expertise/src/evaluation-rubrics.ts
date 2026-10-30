@@ -255,3 +255,20 @@ export function rubricCriterion(id: string): RubricCriterion {
 }
 
 export const rubricTag = () => `${CREATIVE_RUBRIC.id}@${CREATIVE_RUBRIC.version}`;
+
+/**
+ * How far the Critic may go on its own. Free fixes (a different layout family, a re-derived palette) are applied
+ * automatically within `maxRevisionRounds`; anything that costs money (new copy, a new picture) waits for approval,
+ * and anything only the owner knows goes back to the owner.
+ */
+export const CRITIC_POLICY = {
+  version: '1.0.0',
+  maxRevisionRounds: 2,
+  freeComponents: ['ART_DIRECTOR', 'LAYOUT_ENGINE'],
+  paidComponents: ['COPYWRITER', 'VISUAL_PLANNER', 'VOICE_ENGINE'],
+} as const satisfies {
+  version: string;
+  maxRevisionRounds: number;
+  freeComponents: readonly CreativeComponent[];
+  paidComponents: readonly CreativeComponent[];
+};

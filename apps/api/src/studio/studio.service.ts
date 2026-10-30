@@ -2,11 +2,17 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { and, asc, desc, eq, isNull, max } from 'drizzle-orm';
 import { summarizeLedger, usdToMicro, type BudgetPolicy, type PriceCatalog } from '@kampora/cost-engine';
+import { industryById, industryFor } from '@kampora/agent-expertise';
 import {
   buildCampaignBrief,
   buildProfessionalBrief,
+  critiqueConceptSet,
+  critiqueOpinion,
+  critiqueVideo,
   generateConcepts,
   generateStoryboard,
+  reviewOnce,
+  withOpinions,
 } from '@kampora/creative-engine';
 import {
   approvals,
@@ -46,6 +52,7 @@ import { BusinessService, toAvailableAssets, toMediaAssets } from './business.se
 import { NarrationService } from './narration.service';
 import { PaidOperationsService } from './paid.service';
 import { ArtDirectionService } from './art-direction.service';
+import { CriticService } from './critic.service';
 import { approvedSceneImages, imagePriceEntry } from './scene-image-assets';
 
 const TARGET_DURATION_SEC = 20;
@@ -68,6 +75,7 @@ export class StudioService {
     private readonly paid: PaidOperationsService,
     private readonly narration: NarrationService,
     private readonly artDirection: ArtDirectionService,
+    private readonly critic: CriticService,
   ) {}
 
   private audit(
@@ -185,6 +193,47 @@ export class StudioService {
       .update(campaignBriefs)
       .set({ status: 'CONCEPTS_READY' })
       .where(eq(campaignBriefs.id, briefId));
+
+    // The Critic reviews the set. Copy fixes cost a model call, so they wait for the owner instead of running here.
+    const industry = brief.professionalBrief
+      ? industryById(brief.professionalBrief.industry.id)
+      : industryFor({ category: profile.category, description: profile.description }).profile;
+    let results = critiqueConceptSet(conceptSet, {
+      business: profile,
+      brief: brief.brief,
+      industry,
+      claimFlags,
+    });
+    // The opinion pass on the subjective criteria runs only on a free provider (critiqueOpinion checks).
+    try {
+      results = withOpinions(
+        results,
+        await critiqueOpinion(
+          {
+            kind: 'CONCEPT_SET',
+            criteria: ['AUDIENCE_RELEVANCE'],
+            work: {
+              audience: brief.brief.audience,
+              concepts: conceptSet.concepts.map((c) => ({
+                key: c.key,
+                hook: c.hook,
+                message: c.mainMessage,
+              })),
+            },
+          },
+          { provider, recorder },
+        ),
+      );
+    } finally {
+      await recorder.flush(this.db, { orgId: ctx.orgId, campaignBriefId: briefId });
+    }
+    await this.critic.record(ctx, {
+      businessId: brief.businessId,
+      campaignBriefId: briefId,
+      subject: { type: 'CONCEPT_SET', ref: `batch:${batch}` },
+      history: reviewOnce({ type: 'CONCEPT_SET', ref: `batch:${batch}` }, results),
+      industry,
+    });
     return this.getCampaign(ctx, briefId);
   }
 
@@ -245,6 +294,8 @@ export class StudioService {
           selected: Boolean(c.selectedAt),
         })),
       project: project ?? null,
+      // The Critic's latest review of the concepts (measured checks; people judge the rest).
+      reviews: await this.critic.latest(ctx, { campaignBriefId: briefId }),
     };
   }
 
@@ -448,6 +499,8 @@ export class StudioService {
       versions,
       renders,
       costs: await this.projectCosts(ctx, projectId),
+      /** The Critic's latest reviews (video, static ads): measured checks, not a quality verdict. */
+      reviews: await this.critic.latest(ctx, { videoProjectId: projectId }),
     };
   }
 
@@ -599,6 +652,13 @@ export class StudioService {
     });
     await this.audit(ctx, 'plan.approved', 'video_project', projectId, {
       estimateUsd: plan.totalEstimatedCostUsd,
+    });
+    // The Critic reviews the approved timeline. Video fixes need a new plan or narration, so none is automatic.
+    await this.critic.record(ctx, {
+      businessId: project.businessId,
+      videoProjectId: projectId,
+      subject: { type: 'VIDEO', ref: reason },
+      history: reviewOnce({ type: 'VIDEO', ref: reason }, critiqueVideo(timeline)),
     });
     return this.getProject(ctx, projectId);
   }

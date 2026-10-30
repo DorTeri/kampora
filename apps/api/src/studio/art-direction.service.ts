@@ -72,20 +72,6 @@ export class ArtDirectionService {
       brief!.professionalBrief?.industry.id ??
       industryFor({ category: profile.category, description: profile.description }).profile.id;
 
-    // The variety rule: the family this business's last ad (another project) used.
-    const [previous] = await this.db
-      .select({ ad: staticAds.ad })
-      .from(staticAds)
-      .innerJoin(videoProjects, eq(videoProjects.id, staticAds.videoProjectId))
-      .where(
-        and(
-          eq(staticAds.orgId, ctx.orgId),
-          eq(videoProjects.businessId, project.businessId),
-          ne(staticAds.videoProjectId, projectId),
-        ),
-      )
-      .orderBy(desc(staticAds.createdAt))
-      .limit(1);
     // The owner's layout choice on this project survives a rebuild.
     const [own] = await this.db
       .select({ ad: staticAds.ad })
@@ -112,9 +98,31 @@ export class ArtDirectionService {
         : undefined,
       brandColors: profile.brandColors,
       picture: picture === undefined ? await this.expectedPicture(ctx, projectId) : (picture ?? undefined),
-      previousLayout: design(previous)?.layoutFamily as LayoutFamily | undefined,
+      previousLayout: await this.previousLayout(ctx, projectId, project.businessId),
       layoutOverride: owned?.chosenBy === 'OWNER' ? owned.layoutFamily : undefined,
     };
+  }
+
+  /** The variety rule: the family this business's last ad (another project) used. */
+  async previousLayout(
+    ctx: AuthContext,
+    projectId: string,
+    businessId: string,
+  ): Promise<LayoutFamily | undefined> {
+    const [previous] = await this.db
+      .select({ ad: staticAds.ad })
+      .from(staticAds)
+      .innerJoin(videoProjects, eq(videoProjects.id, staticAds.videoProjectId))
+      .where(
+        and(
+          eq(staticAds.orgId, ctx.orgId),
+          eq(videoProjects.businessId, businessId),
+          ne(staticAds.videoProjectId, projectId),
+        ),
+      )
+      .orderBy(desc(staticAds.createdAt))
+      .limit(1);
+    return previous ? StaticAdSchema.safeParse(previous.ad).data?.design?.layoutFamily : undefined;
   }
 
   /**

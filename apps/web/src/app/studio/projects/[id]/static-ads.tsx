@@ -4,8 +4,9 @@ import { useEffect, useState, useTransition, type FormEvent } from 'react';
 import type { LayoutFamily, StaticAdEdit } from '@kampora/shared';
 import { Button, Card, CardTitle, ErrorNote, cn } from '@/components/ui';
 import { errorMessage, he } from '@/i18n/he';
-import type { StaticAdDto, StaticAdsResponse } from '@/lib/api';
+import type { CriticReviewDto, StaticAdDto, StaticAdsResponse } from '@/lib/api';
 import { createStaticAdsAction, editStaticAdAction } from '../../actions';
+import { CriticReview } from '../../critic-review';
 
 const t = he.staticAds;
 const FAMILIES = Object.keys(t.art.families) as LayoutFamily[];
@@ -124,6 +125,7 @@ export function StaticAdsPanel({ projectId, initial }: { projectId: string; init
                 <li key={ad.format}>
                   <StaticAdCard
                     ad={ad}
+                    review={data.reviews?.find((r) => r.subjectRef === ad.format)}
                     pictures={data.pictures}
                     atLimit={ad.versions >= data.maxVersions}
                     disabled={pending}
@@ -142,12 +144,14 @@ export function StaticAdsPanel({ projectId, initial }: { projectId: string; init
 
 function StaticAdCard({
   ad,
+  review,
   pictures,
   atLimit,
   disabled,
   onSave,
 }: {
   ad: StaticAdDto;
+  review?: CriticReviewDto;
   pictures: StaticAdsResponse['pictures'];
   atLimit: boolean;
   disabled: boolean;
@@ -209,6 +213,8 @@ function StaticAdCard({
           )}
         </div>
       )}
+
+      {review && <CriticReview review={review} />}
 
       {ad.qa.length > 0 && (
         <ul className="space-y-1">
