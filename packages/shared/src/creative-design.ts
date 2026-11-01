@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { HexColorSchema } from './common';
 import { FONTS, FontFamilySchema, TypeSystemIdSchema } from './typography';
-import { SafeAreaSchema } from './video-project';
+import { SafeAreaSchema } from './safe-area';
 
 /**
  * Design moves: the professional vocabulary the reference library is analysed in and the Art Director composes

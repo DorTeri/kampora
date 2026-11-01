@@ -9,3 +9,4 @@ export * from './timeline-qa';
 export * from './static-ad';
 export * from './static-ad-background';
 export * from './composer';
+export * from './motion-direction';

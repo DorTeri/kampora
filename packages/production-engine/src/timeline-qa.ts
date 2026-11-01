@@ -1,4 +1,4 @@
-import { projectDurationInFrames, type VideoProject } from '@kampora/shared';
+import { projectDurationInFrames, visualAssetIds, type VideoProject } from '@kampora/shared';
 
 export interface TimelineIssue {
   code:
@@ -140,7 +140,7 @@ export function timelineQa(project: VideoProject): TimelineIssue[] {
 export interface TimelineSceneSummary {
   sceneKey: string;
   seconds: number;
-  visual: 'image-motion' | 'video' | 'motion-graphics';
+  visual: 'image-motion' | 'video' | 'motion-graphics' | 'composed';
   /** Camera move on a still picture; real subject motion would need video. */
   motion?: string;
   /** Where the picture came from (AI_GENERATED, BUSINESS_UPLOAD, …), when the scene shows one. */
@@ -168,7 +168,7 @@ export function describeTimeline(project: VideoProject): {
         seconds: Math.round((scene.durationInFrames / fps) * 100) / 100,
         visual: v.type,
         motion: v.type === 'image-motion' ? v.motion.preset : undefined,
-        pictureSource: source(v.type === 'motion-graphics' ? v.backgroundAssetId : v.assetId),
+        pictureSource: source(visualAssetIds(v)[0]),
         transition: scene.transition.type,
         overlays: scene.overlays.map((o) => o.type),
         captionCues: scene.caption?.cues?.length ?? 0,

@@ -199,9 +199,14 @@ function pickMoves(approach: DirectionApproach, method: CompositionMethod, votes
 function chooseMethod(approach: DirectionApproach, votes: Map<DesignMove, MoveVote>, input: DirectionInput, used: Set<CompositionMethod>): { method: CompositionMethod; because: string } {
   // An AI stand-in must never be framed as "this is the product".
   const realProduct = input.picture && ['VERIFIED_PRODUCT_PHOTO', 'REFERENCE_GUIDED_AI'].includes(input.picture.authenticity);
-  const candidates = APPROACH_METHODS[approach].filter(
+  // Without a picture the image-led direction becomes shape-led: an asymmetric grid of colour fields, never a
+  // half-empty split waiting for a photo.
+  const pool = approach === 'IMAGE_LED' && !input.picture ? (used.has('ASYMMETRIC') ? ['SPLIT'] : ['ASYMMETRIC']) as CompositionMethod[] : APPROACH_METHODS[approach];
+  const allowed = pool.filter(
     (m) => (input.picture ? true : !PICTURE_METHODS.includes(m)) && !used.has(m) && (m !== 'PRODUCT_LED' || realProduct),
   );
+  // A split with nothing to split is a flat page: without a picture it is the last resort.
+  const candidates = input.picture || allowed.length === 1 ? allowed : allowed.filter((m) => m !== 'SPLIT');
   const scored = candidates.map((method) => {
     let s = 0;
     for (const [move, w] of Object.entries(METHOD_AFFINITY[method])) s += (votes.get(move as DesignMove)?.weight ?? 0) * w!;
@@ -263,6 +268,7 @@ function idea(approach: DirectionApproach, method: CompositionMethod, input: Dir
   const subject = input.picture ? 'התמונה' : 'הטיפוגרפיה';
   switch (approach) {
     case 'IMAGE_LED':
+      if (!input.picture) return 'שדות צבע וצורות בגריד לא סימטרי מחליפים את התמונה; הכותרת יושבת בשדה הרגוע.';
       return method === 'PRODUCT_LED' ? 'המוצר במרכז, על רקע שקט, והמחיר צמוד אליו.' : `${subject} מספרת את הסיפור; הטקסט יושב באזור השקט שלה ולא מסתיר את הנושא.`;
     case 'EDITORIAL_TYPE':
       return method === 'ASYMMETRIC' ? 'גריד לא סימטרי: עמודת טקסט מיושרת לימין מול שטח צבע או תמונה הגולשת מהקצה.' : 'מבנה עריכתי רגוע: כותרת סריפית, שורת פתיח קטנה, קווים דקים ופעולה כשורת טקסט.';
@@ -354,7 +360,7 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
     return {
       key: keys[i]!,
       approach,
-      name: APPROACH_NAMES[approach],
+      name: approach === 'IMAGE_LED' && !input.picture ? 'צורה וצבע מובילים' : APPROACH_NAMES[approach],
       idea: idea(approach, method, input),
       method,
       moves,

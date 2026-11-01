@@ -4,6 +4,7 @@ import {
   VideoProjectSchema,
   type CriterionResult,
   type VideoProject,
+  visualAssetIds,
 } from '@kampora/shared';
 import { timelineQa, type TimelineIssue } from '@kampora/production-engine';
 import { measured, type Finding } from './report';
@@ -96,7 +97,7 @@ export function critiqueVideo(project: VideoProject): CriterionResult[] {
     (a) =>
       a.provenance.source === 'AI_GENERATED' &&
       project.scenes.some(
-        (s) => (s.visual.type === 'motion-graphics' ? s.visual.backgroundAssetId : s.visual.assetId) === a.id,
+        (s) => visualAssetIds(s.visual).includes(a.id),
       ),
   );
   const parsed = VideoProjectSchema.safeParse(project);

@@ -31,3 +31,4 @@ Thumbs.db
 
 # Local tool settings
 .claude/settings.local.json
+apps/web/public/demo-media/

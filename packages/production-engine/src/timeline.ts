@@ -15,6 +15,7 @@ import {
   type TimelineScene,
   type SpeechCue,
   type VideoProject,
+  visualAssetIds,
 } from '@kampora/shared';
 import { chooseMotion, chooseTransition } from './motion-router';
 
@@ -254,9 +255,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
   // Only ship assets the timeline actually references.
   const referenced = new Set<string>();
   for (const s of scenes) {
-    if (s.visual.type === 'motion-graphics') {
-      if (s.visual.backgroundAssetId) referenced.add(s.visual.backgroundAssetId);
-    } else referenced.add(s.visual.assetId);
+    for (const id of visualAssetIds(s.visual)) referenced.add(id);
     if (s.voiceover) referenced.add(s.voiceover.assetId);
     for (const o of s.overlays) if (o.type === 'logo' && o.assetId) referenced.add(o.assetId);
   }

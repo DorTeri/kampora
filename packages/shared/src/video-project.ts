@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { CreativeDesignSpecSchema } from './creative-design';
+import { TypeSystemIdSchema } from './typography';
 import { BrandColorsSchema, LocaleSchema } from './common';
 import { MotionPresetSchema } from './storyboard';
 
@@ -51,6 +53,15 @@ export type MotionSpec = z.infer<typeof MotionSpecSchema>;
 export const SceneVisualSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('image-motion'), assetId: z.string(), motion: MotionSpecSchema }),
   z.object({ type: z.literal('video'), assetId: z.string(), trimStartSec: z.number().min(0).default(0) }),
+  /**
+   * An art-directed composition (Art Director 2.0) shown as a scene: its layers enter in reading order. Used for
+   * the end card so the video closes on the same design as the static ad.
+   */
+  z.object({
+    type: z.literal('composed'),
+    spec: CreativeDesignSpecSchema,
+    animation: z.enum(['READING_ORDER', 'STAGGER_FADE', 'HOLD']).default('READING_ORDER'),
+  }),
   z.object({
     type: z.literal('motion-graphics'),
     template: z.enum(['brand-gradient', 'offer-card']),
@@ -59,6 +70,19 @@ export const SceneVisualSchema = z.discriminatedUnion('type', [
   }),
 ]);
 export type SceneVisual = z.infer<typeof SceneVisualSchema>;
+
+/** The picture/video assets a scene visual shows (a composed end card can show several, a graphic none). */
+export function visualAssetIds(visual: SceneVisual): string[] {
+  switch (visual.type) {
+    case 'image-motion':
+    case 'video':
+      return [visual.assetId];
+    case 'motion-graphics':
+      return visual.backgroundAssetId ? [visual.backgroundAssetId] : [];
+    case 'composed':
+      return visual.spec.layers.flatMap((l) => ((l.kind === 'image' || l.kind === 'logo') && l.assetId ? [l.assetId] : []));
+  }
+}
 
 export const OverlaySchema = z.discriminatedUnion('type', [
   z.object({
@@ -121,12 +145,8 @@ export const TimelineSceneSchema = z.object({
 });
 export type TimelineScene = z.infer<typeof TimelineSceneSchema>;
 
-export const SafeAreaSchema = z.object({
-  topPx: z.number().int().nonnegative(),
-  bottomPx: z.number().int().nonnegative(),
-  sidePx: z.number().int().nonnegative(),
-});
-export type SafeArea = z.infer<typeof SafeAreaSchema>;
+export { SafeAreaSchema, type SafeArea } from './safe-area';
+import { SafeAreaSchema, type SafeArea } from './safe-area';
 
 /**
  * Default Reels safe zone for 1080×1920, following Meta's published guidance (~14% top, ~35% bottom, ~6% sides
@@ -155,6 +175,17 @@ export const VideoProjectSchema = z
       fontFamily: z.enum(['Heebo']),
       logoAssetId: z.string().optional(),
     }),
+    /** The chosen design direction carried into motion: title typefaces and colours. Absent: Heebo house style. */
+    artDirection: z
+      .object({
+        typeSystem: TypeSystemIdSchema,
+        accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+        ink: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+        surface: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+        /** How titles enter. */
+        textAnimation: z.enum(['RISE', 'WIPE', 'FADE']),
+      })
+      .optional(),
     assets: z.array(MediaAssetSchema),
     scenes: z.array(TimelineSceneSchema).min(1),
     audio: z.object({
@@ -186,6 +217,13 @@ export const VideoProjectSchema = z
     project.scenes.forEach((scene, i) => {
       if (scene.visual.type === 'motion-graphics') {
         check(scene.visual.backgroundAssetId, ['scenes', i, 'visual', 'backgroundAssetId']);
+      } else if (scene.visual.type === 'composed') {
+        const spec = scene.visual.spec;
+        if (spec.width !== project.output.width || spec.height !== project.output.height)
+          ctx.addIssue({ code: 'custom', message: 'Composed scene is for another frame size', path: ['scenes', i, 'visual', 'spec'] });
+        spec.layers.forEach((l, j) => {
+          if ((l.kind === 'image' || l.kind === 'logo') && l.assetId) check(l.assetId, ['scenes', i, 'visual', 'spec', 'layers', j, 'assetId']);
+        });
       } else {
         check(scene.visual.assetId, ['scenes', i, 'visual', 'assetId']);
       }

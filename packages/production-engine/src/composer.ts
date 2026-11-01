@@ -451,7 +451,8 @@ const EDITORIAL: Method = (c) => {
   const { F, W, H, pal } = c;
   const hasPic = Boolean(c.input.picture);
   const share = hasPic ? (c.tall ? 0.5 : c.square ? 0.46 : 0.54) - (c.relax >= 1 ? 0.08 : 0) : 0;
-  let textTop = F.y;
+  // Without a picture the type is the page: the column starts a fifth of the way down and the headline fills it.
+  let textTop = hasPic ? F.y : F.y + F.h * (c.tall ? 0.16 : 0.12);
   if (hasPic) {
     const inset = c.has('IMAGE_INSET_FRAME') || c.has('FRAME_BORDER');
     const rect = inset ? { x: F.x, y: F.y, w: F.w, h: (H * share) - F.y } : { x: 0, y: 0, w: W, h: H * share };
@@ -461,7 +462,7 @@ const EDITORIAL: Method = (c) => {
   const ink = pal.ink;
   const region = { x: F.x, y: textTop, w: F.w, h: F.y + F.h - textTop };
   // Eyebrow and a short rule, then the headline: an editorial reading start.
-  const top = c.stack({ ...region, h: region.h * 0.68 }, [...c.eyebrow(pal.accent), c.headline(ink, 'START', { scale: hasPic ? 0.84 : 1.05, gap: c.input.copy.eyebrow ? c.gap(30) : 0 }), ...c.sub(pal.muted, 'START')], 'TOP');
+  const top = c.stack({ ...region, h: region.h * 0.68 }, [...c.eyebrow(pal.accent), c.headline(ink, 'START', hasPic ? { scale: 0.84, gap: c.input.copy.eyebrow ? c.gap(30) : 0 } : { fill: { min: c.B.headline, max: c.B.headline * (c.tall ? 1.9 : 1.6) }, maxLines: 4, gap: c.input.copy.eyebrow ? c.gap(30) : 0 }), ...c.sub(pal.muted, 'START')], 'TOP');
   if (c.has('RULE_LINES') && c.input.copy.eyebrow) {
     const eb = c.layers.find((l) => l.id === top.ids[0]);
     if (eb) c.shape({ shape: 'LINE', rect: { x: F.x + F.w - 120, y: eb.rect.y + eb.rect.h + c.gap(12), w: 120, h: 3 }, fill: pal.accent });
@@ -515,6 +516,11 @@ const ASYMMETRIC: Method = (c) => {
   if (c.tall) {
     const picH = H * (c.relax >= 1 ? 0.4 : 0.46);
     if (hasPic) c.image({ x: 0, y: H - picH, w: W, h: picH }, { mask: 'SLANT_START' });
+    else {
+      // No picture: a tonal field takes its place, cut by an accent rule; the grid stays asymmetric.
+      c.shape({ shape: 'RECT', rect: { x: W * 0.18, y: H - picH, w: W * 0.82, h: picH }, fill: mixHex(pal.background, pal.ink, 0.14) });
+      c.shape({ shape: 'RECT', rect: { x: W * 0.18, y: H - picH, w: W * 0.3, h: 16 }, fill: pal.accent });
+    }
     c.logo({ x: F.x, y: F.y, w: F.w, h: c.B.brand * 1.3 }, 'WORDMARK', ink);
     const region = { x: F.x, y: F.y + c.B.brand * 1.3 + c.gap(40), w: F.w * 0.92, h: H - picH - F.y - c.B.brand * 1.3 - c.gap(60) };
     const s = c.stack(region, [...c.eyebrow(pal.accent), c.headline(ink, 'START', { scale: 1.05, gap: c.input.copy.eyebrow ? c.gap(18) : 0 }), ...c.sub(pal.muted, 'START'), ...c.price(ink, 'START', pal.muted)], 'TOP');

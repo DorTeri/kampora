@@ -1,6 +1,7 @@
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment, useMemo, type CSSProperties } from 'react';
 import { AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { chunkCaption, stripNiqqud, type CaptionCue, type Overlay } from '@kampora/shared';
+import { TYPE_SYSTEMS, chunkCaption, stripNiqqud, type CaptionCue, type Overlay } from '@kampora/shared';
+import { loadFamily } from './StaticAdComposed';
 import { FONT_FAMILY, alpha, useAsset, useRenderContext } from './context';
 
 /**
@@ -32,6 +33,10 @@ export function HeadlineOverlay({ text, position }: { text: string; position: 't
   const words = keepPricesTogether(stripNiqqud(text))
     .trim()
     .split(/[ \t\r\n]+/);
+  // The chosen design direction's display face and entrance; without one, the Heebo house style.
+  const art = project.artDirection;
+  const display = art ? TYPE_SYSTEMS[art.typeSystem].display : undefined;
+  const family = useMemo(() => (display ? loadFamily(display.family, [display.weight]) : undefined), [display]);
   return (
     <AbsoluteFill
       style={{
@@ -47,11 +52,12 @@ export function HeadlineOverlay({ text, position }: { text: string; position: 't
         style={{
           ...textBase,
           fontSize: 84,
-          fontWeight: 900,
+          fontWeight: display?.weight ?? 900,
           lineHeight: 1.12,
           color: '#fff',
           textShadow: '0 6px 28px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.5)',
-          letterSpacing: -0.5,
+          letterSpacing: display ? `${display.letterSpacing}em` : -0.5,
+          ...(family ? { fontFamily: family } : {}),
         }}
       >
         {/* Words stay plain inline text joined by real spaces, so the browser applies the same Unicode bidi
@@ -59,10 +65,16 @@ export function HeadlineOverlay({ text, position }: { text: string; position: 't
             atomic boxes that bidi cannot reorder. The rise uses relative offset, which works on inline boxes. */}
         {words.map((word, i) => {
           const p = spring({ frame: frame - 4 - i * 3, fps, config: { damping: 16, stiffness: 160 } });
+          const motion: CSSProperties =
+            art?.textAnimation === 'FADE'
+              ? { opacity: p }
+              : art?.textAnimation === 'WIPE'
+                ? { opacity: Math.min(1, p * 1.5), clipPath: `inset(0 0 0 ${interpolate(p, [0, 1], [100, 0])}%)` }
+                : { top: interpolate(p, [0, 1], [30, 0]), opacity: p };
           return (
             <Fragment key={i}>
               {i > 0 && ' '}
-              <span style={{ position: 'relative', top: interpolate(p, [0, 1], [30, 0]), opacity: p }}>
+              <span style={{ position: 'relative', ...motion }}>
                 {word}
               </span>
             </Fragment>

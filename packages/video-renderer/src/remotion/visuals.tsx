@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { AbsoluteFill, Img, OffthreadVideo, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
-import type { MediaAsset, MotionSpec, SceneVisual } from '@kampora/shared';
+import type { CreativeDesignSpec, MediaAsset, MotionSpec, SceneVisual } from '@kampora/shared';
+import { ComposedStaticAd } from './StaticAdComposed';
 import { alpha, useAsset, useRenderContext } from './context';
 import { cameraMotion, parallaxBackground, transformCss } from './motion';
 
@@ -169,6 +170,8 @@ export function SceneVisualView({ visual, duration }: { visual: SceneVisual; dur
       return <ImageMotionScene assetId={visual.assetId} motion={visual.motion} duration={duration} />;
     case 'video':
       return <VideoScene assetId={visual.assetId} trimStartSec={visual.trimStartSec} />;
+    case 'composed':
+      return <ComposedScene spec={visual.spec} animation={visual.animation} />;
     case 'motion-graphics':
       return (
         <MotionGraphicsScene
@@ -178,4 +181,12 @@ export function SceneVisualView({ visual, duration }: { visual: SceneVisual; dur
         />
       );
   }
+}
+
+/** An art-directed composition as a scene; its layers enter in reading order. */
+function ComposedScene({ spec, animation }: { spec: CreativeDesignSpec; animation: 'READING_ORDER' | 'STAGGER_FADE' | 'HOLD' }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { assetUrls } = useRenderContext();
+  return <ComposedStaticAd spec={spec} assetUrls={assetUrls} reveal={{ frame, fps, mode: animation }} />;
 }

@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useState } from 'react';
-import { AbsoluteFill, Img } from 'remotion';
+import { AbsoluteFill, Img, interpolate, spring } from 'remotion';
 import { loadFont as loadAmatic } from '@remotion/google-fonts/AmaticSC';
 import { loadFont as loadAssistant } from '@remotion/google-fonts/Assistant';
 import { loadFont as loadBellefair } from '@remotion/google-fonts/Bellefair';
@@ -14,7 +14,7 @@ import { loadFont as loadSecular } from '@remotion/google-fonts/SecularOne';
 import { loadFont as loadSuez } from '@remotion/google-fonts/SuezOne';
 import { loadFont as loadVarela } from '@remotion/google-fonts/VarelaRound';
 import { stripNiqqud, type CreativeDesignSpec, type DesignLayer, type FontFamily } from '@kampora/shared';
-import { alpha } from './context';
+import { FONT_FAMILY, alpha } from './context';
 
 /* Every loader takes (style, { weights, subsets }); the typed signatures differ per font, so they are called loosely. */
 type Loader = (style: 'normal', options: { weights: string[]; subsets: string[] }) => { fontFamily: string };
@@ -32,6 +32,12 @@ const LOADERS: Record<FontFamily, Loader> = {
   'Amatic SC': loadAmatic as unknown as Loader,
   'Varela Round': loadVarela as unknown as Loader,
 };
+
+/** Loads one family at the given weights (Hebrew + Latin); returns the CSS family stack. */
+export function loadFamily(family: FontFamily, weights: readonly number[]): string {
+  const loaded = LOADERS[family]('normal', { weights: weights.map(String), subsets: ['hebrew', 'latin'] });
+  return `${loaded.fontFamily}, Heebo, Arial, sans-serif`;
+}
 
 /** Loads exactly the families and weights the spec uses (Hebrew + Latin subsets); returns CSS family names. */
 function useFonts(spec: CreativeDesignSpec): Record<string, string> {
@@ -151,7 +157,9 @@ function PriceLine({ text }: { text: string }) {
   const parts = text.split(/([₪$%])/);
   return (
     <>
-      {parts.map((p, i) => (/^[₪$%]$/.test(p) ? <span key={i} style={{ fontSize: '0.5em' }}>{p}</span> : <span key={i}>{p}</span>))}
+      {/* The sign is always drawn in the neutral text face: some display faces (Suez One) stylise ₪ until it
+          reads as the letters ש״ח. */}
+      {parts.map((p, i) => (/^[₪$%]$/.test(p) ? <span key={i} style={{ fontSize: '0.5em', fontFamily: FONT_FAMILY, fontWeight: 700 }}>{p}</span> : <span key={i}>{p}</span>))}
     </>
   );
 }
@@ -236,7 +244,33 @@ const GRAIN =
  * Draws a CreativeDesignSpec. Each layer kind has one fixed component; the spec only supplies validated numbers,
  * colours, enums and the approved words. All text stays live RTL text.
  */
-export function ComposedStaticAd({ spec, assetUrls }: { spec: CreativeDesignSpec; assetUrls: Record<string, string> }) {
+/** Reveal of a composition in motion: layers enter in the spec's reading order. */
+export interface ComposedReveal {
+  frame: number;
+  fps: number;
+  mode: 'READING_ORDER' | 'STAGGER_FADE' | 'HOLD';
+}
+
+function revealStyle(l: DesignLayer, spec: CreativeDesignSpec, reveal: ComposedReveal | undefined): CSSProperties | undefined {
+  if (!reveal || reveal.mode === 'HOLD') return undefined;
+  const order = spec.readingPath.indexOf(l.id);
+  // Pictures and shapes set the stage first; then the reading path, one element every ~0.2 s.
+  const delay = order < 0 ? (l.kind === 'image' ? 0 : 3) : 8 + order * Math.round(reveal.fps * 0.2);
+  const p = spring({ frame: reveal.frame - delay, fps: reveal.fps, config: { damping: 18, stiffness: 140, mass: 0.8 } });
+  if (l.kind === 'image') {
+    // A slow push on the picture keeps the end card alive without moving the type.
+    const push = interpolate(reveal.frame, [0, reveal.fps * 6], [1.06, 1], { extrapolateRight: 'clamp' });
+    return { position: 'absolute', inset: 0, opacity: interpolate(p, [0, 1], [0, 1]), transform: `scale(${push})`, transformOrigin: `${l.rect.x + l.rect.w / 2}px ${l.rect.y + l.rect.h / 2}px` };
+  }
+  if (reveal.mode === 'STAGGER_FADE' || l.kind === 'shape') return { position: 'absolute', inset: 0, opacity: p };
+  if (l.kind === 'text' && l.role === 'HEADLINE') {
+    // Headlines wipe in from the reading edge (right, in Hebrew).
+    return { position: 'absolute', inset: 0, opacity: Math.min(1, p * 1.6), clipPath: `inset(0 0 0 ${interpolate(p, [0, 1], [100, 0])}%)` };
+  }
+  return { position: 'absolute', inset: 0, opacity: p, transform: `translateY(${interpolate(p, [0, 1], [26, 0])}px)` };
+}
+
+export function ComposedStaticAd({ spec, assetUrls, reveal }: { spec: CreativeDesignSpec; assetUrls: Record<string, string>; reveal?: ComposedReveal }) {
   const fonts = useFonts(spec);
   const bg = spec.background;
   const url = (id: string) => {
@@ -253,18 +287,22 @@ export function ComposedStaticAd({ spec, assetUrls }: { spec: CreativeDesignSpec
       }}
     >
       {spec.layers.map((l) => {
-        switch (l.kind) {
-          case 'image':
-            return <ImageLayerView key={l.id} l={l} url={url(l.assetId)} />;
-          case 'shape':
-            return <ShapeView key={l.id} l={l} />;
-          case 'text':
-            return <TextView key={l.id} l={l} family={fonts[l.font.family]!} />;
-          case 'logo':
-            return <LogoView key={l.id} l={l} family={fonts[l.font.family]!} url={l.assetId ? url(l.assetId) : undefined} />;
-          default:
-            return null;
-        }
+        const view = (() => {
+          switch (l.kind) {
+            case 'image':
+              return <ImageLayerView key={l.id} l={l} url={url(l.assetId)} />;
+            case 'shape':
+              return <ShapeView key={l.id} l={l} />;
+            case 'text':
+              return <TextView key={l.id} l={l} family={fonts[l.font.family]!} />;
+            case 'logo':
+              return <LogoView key={l.id} l={l} family={fonts[l.font.family]!} url={l.assetId ? url(l.assetId) : undefined} />;
+            default:
+              return null;
+          }
+        })();
+        const style = revealStyle(l, spec, reveal);
+        return style ? <div key={l.id} style={style}>{view}</div> : view;
       })}
       {bg.grain > 0 ? <AbsoluteFill style={{ backgroundImage: GRAIN, opacity: bg.grain, mixBlendMode: 'multiply', pointerEvents: 'none' }} /> : null}
     </AbsoluteFill>
