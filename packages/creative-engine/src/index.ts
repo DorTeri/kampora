@@ -18,3 +18,4 @@ export * from './critic/static-ad';
 export * from './critic/video';
 export * from './critic/revisions';
 export * from './critic/opinion';
+export * from './art-director-v2';

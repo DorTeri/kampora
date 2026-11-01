@@ -489,7 +489,7 @@ const BOLD_TYPE: Method = (c) => {
     c.shape({ shape: 'RING', rect: { x: -d * 0.3, y: c.H - d * 0.7, w: d, h: d }, stroke: { color: pal.accent, width: 18 }, radius: d / 2, opacity: 0.9 });
   }
   const hasPic = Boolean(c.input.picture);
-  const picD = hasPic ? Math.round(W * (c.tall ? 0.5 : 0.4) * (c.relax >= 1 ? 0.85 : 1)) : 0;
+  const picD = hasPic ? Math.round(W * (c.tall ? 0.5 : 0.4) * (c.relax >= 3 ? 0.6 : c.relax >= 2 ? 0.72 : c.relax >= 1 ? 0.85 : 1)) : 0;
   c.logo({ x: F.x, y: F.y, w: F.w, h: c.B.brand * 1.3 }, 'WORDMARK', ink);
   const topY = F.y + c.B.brand * 1.3 + c.gap(36);
   const bottomBlocks = [...c.price(ink, 'START', pal.accent), ...c.cta(c.has('CTA_AS_TEXT_LINE') ? 'TEXT_LINE' : 'BUTTON', 'START', ink)];
@@ -613,12 +613,12 @@ const PROMO_PRICE: Method = (c) => {
   const { F, W, H, pal } = c;
   const ink = readableOn(pal.background, [pal.ink, '#ffffff', '#111111']);
   const hasPic = Boolean(c.input.picture);
-  const picH = hasPic ? H * (c.tall ? 0.34 : 0.4) * (c.relax >= 1 ? 0.82 : 1) : 0;
+  const picH = hasPic ? H * (c.tall ? 0.34 : 0.4) * (c.relax >= 3 ? 0.62 : c.relax >= 2 ? 0.72 : c.relax >= 1 ? 0.82 : 1) : 0;
   if (hasPic) c.image({ x: 0, y: H - picH, w: W, h: picH }, c.has('ASYMMETRIC_GRID') ? { mask: 'SLANT_START' } : {});
   c.logo({ x: F.x, y: F.y, w: F.w, h: c.B.brand * 1.2 }, 'WORDMARK', ink);
   const region = { x: F.x, y: F.y + c.B.brand * 1.2 + c.gap(36), w: F.w, h: H - picH - (F.y + c.B.brand * 1.2 + c.gap(36)) - c.gap(40) };
   const p = c.input.copy.price;
-  const blocks: Block[] = [c.headline(ink, 'START', { scale: 0.78, gap: 0, maxLines: 3 }), ...c.sub(mixHex(ink, pal.background, 0.3), 'START', 0.9)];
+  const blocks: Block[] = [...c.eyebrow(pal.accent), c.headline(ink, 'START', { scale: 0.78, gap: c.input.copy.eyebrow ? c.gap(14) : 0, maxLines: 3 }), ...c.sub(mixHex(ink, pal.background, 0.3), 'START', 0.9)];
   if (p) {
     if (p.label) blocks.push({ role: 'PRICE_LABEL', text: p.label, font: c.accent(c.B.label), color: pal.accent, align: 'START', gap: c.gap(40), maxLines: 1 });
     blocks.push({ role: 'PRICE', text: p.price, font: c.display(c.B.price * 1.4, { lineHeight: 0.95 }), color: ink, align: 'START', gap: c.gap(p.label ? 4 : 40), maxLines: 1, fill: { min: c.B.price, max: c.B.price * (c.tall ? 2.1 : 1.8) } });
@@ -645,7 +645,8 @@ const LOCAL_MODERN: Method = (c) => {
   const picH = hasPic ? H * (c.tall ? 0.3 : 0.34) * (c.relax >= 1 ? 0.8 : 1) : 0;
   if (hasPic) c.image({ x: F.x, y: picTop, w: F.w, h: picH }, { mask: 'ROUNDED', radius: 18 });
   const region = { x: F.x, y: picTop + picH + c.gap(36), w: F.w, h: F.y + F.h - (picTop + picH + c.gap(36)) };
-  const s = c.stack(region, [c.headline(pal.ink, 'START', { scale: 0.82, gap: 0 }), ...c.sub(pal.muted, 'START', 0.92), ...c.price(pal.ink, 'START', pal.muted), ...c.cta('BUTTON', 'START', pal.ink)], 'TOP');
+  // The place line (eyebrow) sits on the band under the name: name and neighbourhood read together.
+  const s = c.stack(region, [...c.eyebrow(pal.muted), c.headline(pal.ink, 'START', { scale: 0.82, gap: c.input.copy.eyebrow ? c.gap(12) : 0 }), ...c.sub(pal.muted, 'START', 0.92), ...c.price(pal.ink, 'START', pal.muted), ...c.cta('BUTTON', 'START', pal.ink)], 'TOP');
   c.path.push(...brand.ids, ...s.ids);
   c.decide('composition', 'The business name leads on a brand band; the place is framed', 'Locals choose who they know: the name and the place must be recognisable first.');
 };
@@ -699,6 +700,7 @@ export function composeDesign(input: ComposeInput): CreativeDesignSpec {
   const required: TextRole[] = ['HEADLINE', 'CTA'];
   if (input.copy.price) required.push('PRICE');
   if (input.copy.ctaSub) required.push('CTA_SUB');
+  if (input.copy.eyebrow) required.push('EYEBROW');
   const subCarriesPrice = input.copy.price && input.copy.subheadline?.includes(input.copy.price.price);
   if (input.copy.subheadline && !(effective.moves.includes('MINIMAL_COPY') && subCarriesPrice)) required.push('SUBHEADLINE');
   const missing = required.filter((r) => !roles.has(r));

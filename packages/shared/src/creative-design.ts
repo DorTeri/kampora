@@ -287,3 +287,41 @@ export const CreativeDesignSpecSchema = z
       if (!ids.has(id)) ctx.addIssue({ code: 'custom', path: ['readingPath'], message: `Unknown layer ${id}` });
   });
 export type CreativeDesignSpec = z.infer<typeof CreativeDesignSpecSchema>;
+
+/** The three kinds of direction Art Director 2.0 explores for every concept. */
+export const DirectionApproachSchema = z.enum(['IMAGE_LED', 'EDITORIAL_TYPE', 'BOLD_GRAPHIC']);
+export type DirectionApproach = z.infer<typeof DirectionApproachSchema>;
+
+/**
+ * One design direction for a concept: a distinct way of making the same idea, with the decisions, the
+ * references that shaped it and a composed spec per format.
+ */
+export const CreativeDirectionSchema = z.object({
+  key: z.enum(['A', 'B', 'C']),
+  approach: DirectionApproachSchema,
+  /** Short Hebrew name for the owner, e.g. "טיפוגרפיה עריכתית". */
+  name: z.string(),
+  /** One sentence: the visual idea of this direction (Hebrew). */
+  idea: z.string(),
+  method: CompositionMethodSchema,
+  moves: z.array(DesignMoveSchema),
+  typeSystem: TypeSystemIdSchema,
+  emphasis: z.enum(['HEADLINE', 'PRICE', 'IMAGE', 'BRAND']),
+  rationale: z.array(z.object({ topic: z.string(), decision: z.string(), because: z.string() })),
+  references: z.array(ReferenceInfluenceSchema),
+  specs: z.record(z.string().regex(/^(1:1|4:5|9:16)$/), CreativeDesignSpecSchema).refine((s) => Object.keys(s).length > 0, 'at least one format'),
+  /** Copy changes the composition would like the Copywriter to consider (never applied automatically). */
+  copyRequests: z.array(z.object({ role: TextRoleSchema, maxChars: z.number().int().positive(), reason: z.string() })),
+});
+export type CreativeDirection = z.infer<typeof CreativeDirectionSchema>;
+
+export const CreativeDirectionSetSchema = z.object({
+  version: z.literal(1),
+  conceptKey: z.string(),
+  /** References retrieved for this task, with the reasons they were retrieved (the moodboard). */
+  moodboard: z.array(z.object({ referenceId: z.string(), score: z.number(), reasons: z.array(z.string()) })),
+  directions: z.array(CreativeDirectionSchema).length(3),
+  recommended: z.enum(['A', 'B', 'C']),
+  recommendedBecause: z.string(),
+});
+export type CreativeDirectionSet = z.infer<typeof CreativeDirectionSetSchema>;
