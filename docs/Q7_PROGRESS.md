@@ -51,8 +51,12 @@ Durable state so work can resume without rediscovery. Updated at each checkpoint
       (committed data) + `apps/web/public/demo-media/` (gitignored renders) + `out/q7/demo/*-sheet.jpg`.
 - [x] Verification (2026-11-01): lint clean, typecheck (packages, api, worker, web), 438 tests pass
       (22 DB-integration tests skip without Docker/Postgres), `next build` passes, renders checked.
-- [ ] Vercel: project `kampora-studio` (CLI upload from the repo root, root dir `apps/web`, Vercel
-      Authentication on, not git-connected, demo mode, no secrets). Protected Preview first.
+- [x] Vercel (2026-11-01): project `kampora-studio` (CLI upload from the repo root, root dir `apps/web`, not
+      git-connected, no environment variables, demo mode). Vercel Authentication on **all** deployments.
+      Preview: https://kampora-studio-4fo3nfv9r-dorteris-projects.vercel.app/studio/review
+      Note: the very first CLI deploy was marked production by Vercel and its alias was public for ~3 minutes
+      until protection was raised to all deployments; that older build stays behind SSO. Demo media is
+      gitignored, so a git-connected deploy would lack it: deploy with the CLI.
 
 ## Honest limits
 - No reference is IMAGES_VIEWED (text-grounded analyses only); typography is rarely described in sources;
