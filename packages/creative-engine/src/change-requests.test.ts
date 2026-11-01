@@ -24,6 +24,25 @@ const luz: DirectionInput = {
   references: retrieveProfessionalReferences({ industryId: 'cafe-restaurant', goal: 'OFFER', tone: 'warm', format: 'STATIC' }),
 };
 const set = directCreative(luz);
+// A studio with no picture at all, and a subheadline that repeats the price (the real Q6 pilot copy).
+const pilates: DirectionInput = {
+  conceptKey: 'leads',
+  goal: 'LEADS',
+  tone: 'friendly',
+  industryId: 'fitness',
+  brand: { name: 'נשימה', colors: { primary: '#1F3A3D', secondary: '#7FB7A4', accent: '#F4B860', background: '#F6F3EE', text: '#14211F' } },
+  concept: { title: 'מתחילות בקבוצה קטנה', angle: 'PROBLEM_SOLUTION', hookTechnique: 'QUESTION' },
+  copy: {
+    eyebrow: 'נשימה · חיפה',
+    headline: 'מתחילות פילאטיס בקבוצה קטנה',
+    subheadline: 'שיעור ניסיון ב-49 ₪',
+    price: { price: '49 ₪', label: 'שיעור ניסיון' },
+    cta: 'נשימה | השאירו פרטים',
+    ctaSub: 'מוריה 40, חיפה',
+    brandName: 'נשימה',
+  },
+  references: retrieveProfessionalReferences({ industryId: 'fitness', goal: 'LEADS', tone: 'friendly', format: 'STATIC' }),
+};
 
 describe('Hebrew change requests: recognition', () => {
   it.each([
@@ -65,6 +84,7 @@ describe('Hebrew change requests: validated changes', () => {
     expect(out.direction.typeSystem).toBe('LUXURY_SERIF');
     expect(out.direction.moves).toContain('GENEROUS_NEGATIVE_SPACE');
     expect(out.direction.moves).not.toContain('VIBRANT_COMPLEMENTARY');
+    expect(out.direction.moves.some((m) => ['DARK_MOODY', 'MUTED_NATURAL_PALETTE'].includes(m))).toBe(true);
     expect(words(out.direction)).toEqual(words(before));
     expect(out.direction.rationale.at(-1)!.topic).toBe('owner change');
     expect(out.changes.every((c) => c.cost === 'FREE')).toBe(true);
@@ -113,11 +133,18 @@ describe('Hebrew change requests: validated changes', () => {
     for (const t of words(out.direction)) expect(words(set.directions[0]!)).toContain(t);
   });
 
-  it('every revised direction is re-checked by technical QA', () => {
-    for (const text of ['יותר יוקרתי', 'תבליט את המחיר', 'הטיפוגרפיה פשוטה מדי', 'נסה כיוון אחר', 'יותר נועז', 'יותר רגוע']) {
+  it.each([
+    ['Luz (picture)', luz],
+    ['Pilates (no picture)', pilates],
+  ])('%s: every free change is applied, fits at full size and passes technical QA', (_name, input) => {
+    const directions = directCreative(input);
+    for (const text of ['אני רוצה עיצוב יותר יוקרתי', 'תבליט יותר את המחיר', 'הטיפוגרפיה פשוטה מדי', 'נסה כיוון עיצובי אחר', 'יותר נועז', 'יותר רגוע', 'התמונה לא מתאימה למוצר']) {
       for (const key of ['A', 'B', 'C'] as const) {
-        const out = applyCreativeChange(luz, set, key, text);
+        const out = applyCreativeChange(input, directions, key, text);
+        const where = `${key} "${text}"`;
+        expect(out.changes.some((c) => c.status === 'NOT_POSSIBLE'), where).toBe(false);
         expect(Object.keys(out.technical).sort()).toEqual(['4:5', '9:16']);
+        for (const [f, t] of Object.entries(out.technical)) expect(t, `${where} ${f}`).toEqual({ verdict: 'PASS', problems: [] });
         for (const s of Object.values(out.direction.specs)) expect(s.fit.status).not.toBe('UNRESOLVED');
       }
     }

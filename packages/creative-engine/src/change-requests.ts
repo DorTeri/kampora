@@ -162,6 +162,7 @@ interface Draft {
 }
 
 const PALETTE_GROUP = MOVE_GROUPS[0]!;
+const PICTURE_ONLY: readonly CompositionMethod[] = ['IMAGE_FIRST', 'LIFESTYLE', 'LAYERED', 'PRODUCT_LED'];
 
 /** Moves that cost the most space, in the order they are given up when the approved copy does not fit. */
 const HEAVY_MOVES: readonly DesignMove[] = ['STACKED_HEADLINE', 'OVERSIZED_HEADLINE', 'GENEROUS_NEGATIVE_SPACE', 'GEOMETRIC_SHAPES', 'OVERLAPPING_ELEMENTS'];
@@ -175,9 +176,10 @@ function editMoves(moves: readonly DesignMove[], add: readonly DesignMove[], rem
     if (group) next = next.filter((x) => !group.includes(x));
     next.push(m);
   }
-  // Keep the newest decisions: drop the oldest of the moves that were not just asked for.
+  // Keep the newest decisions: drop the oldest of the moves that were not just asked for. MINIMAL_COPY stays: it is
+  // what keeps a subheadline from repeating the price.
   while (next.length > 6) {
-    const i = next.findIndex((m) => !add.includes(m));
+    const i = next.findIndex((m) => !add.includes(m) && m !== 'MINIMAL_COPY');
     if (i < 0) break;
     next.splice(i, 1);
   }
@@ -220,7 +222,7 @@ export function applyCreativeChange(input: DirectionInput, set: CreativeDirectio
     switch (intent) {
       case 'ANOTHER_DIRECTION': {
         const used = new Set(set.directions.map((x) => x.method));
-        const pool = APPROACH_METHODS[approach].filter((m) => !used.has(m) && (hasPicture() || !['IMAGE_FIRST', 'LIFESTYLE', 'LAYERED', 'PRODUCT_LED'].includes(m)) && (m !== 'PRODUCT_LED' || ['VERIFIED_PRODUCT_PHOTO', 'REFERENCE_GUIDED_AI'].includes(input.picture?.authenticity ?? '')));
+        const pool = APPROACH_METHODS[approach].filter((m) => !used.has(m) && (hasPicture() || !PICTURE_ONLY.includes(m)) && (m !== 'PRODUCT_LED' || ['VERIFIED_PRODUCT_PHOTO', 'REFERENCE_GUIDED_AI'].includes(input.picture?.authenticity ?? '')));
         if (!pool.length) {
           changes.push(request('ART_DIRECTOR', ['DIFFERENTIATION'], 'אין סידור נוסף בגישה הזו שלא נוסה כבר; אפשר לבחור אחד משני הכיוונים האחרים', 'FREE', 'NOT_POSSIBLE'));
           break;
@@ -255,7 +257,7 @@ export function applyCreativeChange(input: DirectionInput, set: CreativeDirectio
         const before = d.typeSystem;
         d.moves = editMoves(
           d.moves,
-          ['GENEROUS_NEGATIVE_SPACE', hasPicture() ? 'DARK_MOODY' : 'MUTED_NATURAL_PALETTE', 'CTA_AS_TEXT_LINE', ...(d.emphasis === 'PRICE' ? [] : (['PRICE_UNDERSTATED'] as DesignMove[]))],
+          ['GENEROUS_NEGATIVE_SPACE', hasPicture() && !excluded.includes('DARK_MOODY') ? 'DARK_MOODY' : 'MUTED_NATURAL_PALETTE', 'CTA_AS_TEXT_LINE', ...(d.emphasis === 'PRICE' ? [] : (['PRICE_UNDERSTATED'] as DesignMove[]))],
           ['VIBRANT_COMPLEMENTARY', 'BADGE_STAMP', 'GEOMETRIC_SHAPES', 'BRAND_COLOR_FLOOD', 'STACKED_HEADLINE', 'HANDWRITTEN_ACCENT', 'ILLUSTRATIVE_ELEMENTS'],
           excluded.filter((m) => m !== 'GENEROUS_NEGATIVE_SPACE' && m !== 'MUTED_NATURAL_PALETTE'),
         );
@@ -316,7 +318,7 @@ export function applyCreativeChange(input: DirectionInput, set: CreativeDirectio
         // Meanwhile the direction works without the picture, so the owner is not stuck with an image they rejected.
         d.withoutPicture = true;
         d.moves = d.moves.filter((m) => !['FULL_BLEED_IMAGE', 'LAYERED_TYPE_OVER_IMAGE', 'CUTOUT_PRODUCT_ON_COLOR', 'DETAIL_MACRO_CROP', 'HIGH_CONTRAST_DUOTONE', 'IMAGE_INSET_FRAME', 'PEOPLE_AS_HERO', 'PRODUCT_AS_HERO'].includes(m));
-        if (['IMAGE_FIRST', 'LIFESTYLE', 'LAYERED', 'PRODUCT_LED', 'SPLIT'].includes(d.method)) {
+        if ([...PICTURE_ONLY, 'SPLIT'].includes(d.method)) {
           const taken = new Set(set.directions.filter((x) => x.key !== key).map((x) => x.method));
           d.method = taken.has('ASYMMETRIC') ? 'BOLD_TYPE' : 'ASYMMETRIC';
           d.name = 'צורה וצבע מובילים';
@@ -353,6 +355,26 @@ export function applyCreativeChange(input: DirectionInput, set: CreativeDirectio
       d.moves = d.moves.filter((m) => m !== heavy);
       specs = compose();
       changes.push(request('LAYOUT_ENGINE', ['TYPOGRAPHY'], `הוסר ${heavy} כדי שהטקסט ייכנס`, 'FREE', 'APPLIED', `${heavy} הוסר: הטקסט המאושר לא נכנס איתו, ו-Kampora לא מכווצת כותרות`));
+    }
+    if (unresolved(specs)) {
+      // Another arrangement of the same approach, before giving up: a different composition beats shrinking type.
+      const taken = new Set(set.directions.filter((x) => x.key !== key).map((x) => x.method));
+      const realProduct = ['VERIFIED_PRODUCT_PHOTO', 'REFERENCE_GUIDED_AI'].includes(input.picture?.authenticity ?? '');
+      for (const m of APPROACH_METHODS[approach]) {
+        if (m === d.method || taken.has(m) || (!hasPicture() && PICTURE_ONLY.includes(m)) || (m === 'PRODUCT_LED' && !realProduct)) continue;
+        const trial = composeDirectionSpecs(designInput, approach, m, d.moves, d.typeSystem, formats, d.emphasis);
+        if (unresolved(trial)) continue;
+        changes.push(request('LAYOUT_ENGINE', ['TYPOGRAPHY'], `הסידור הוחלף ל-${m} כדי שהטקסט ייכנס`, 'FREE', 'APPLIED', `הסידור הוחלף מ-${d.method} ל-${m}: הטקסט המאושר נכנס בו בגודל המלא`));
+        d.method = m;
+        specs = trial;
+        break;
+      }
+    }
+    // A change must not bring back a price said twice: the composition stops repeating it (no word changes).
+    if (!unresolved(specs) && !d.moves.includes('MINIMAL_COPY') && Object.values(specs).some((sp) => technicalChecks(sp).some((r) => r.criterion === 'OFFER_COMMUNICATION' && r.severity === 'MAJOR'))) {
+      d.moves = [...d.moves, 'MINIMAL_COPY'];
+      specs = compose();
+      changes.push(request('LAYOUT_ENGINE', ['OFFER_COMMUNICATION'], 'המחיר לא נאמר פעמיים', 'FREE', 'APPLIED', 'כותרת המשנה שחוזרת על המחיר מושמטת; שום מילה לא נכתבה מחדש'));
     }
     if (unresolved(specs)) {
       for (const c of changes) if (c.status === 'APPLIED') Object.assign(c, { status: 'NOT_POSSIBLE', change: undefined });

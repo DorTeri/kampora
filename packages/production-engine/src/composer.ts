@@ -515,17 +515,19 @@ const ASYMMETRIC: Method = (c) => {
   const hasPic = Boolean(c.input.picture);
   if (c.tall) {
     const picH = H * (c.relax >= 1 ? 0.4 : 0.46);
-    if (hasPic) c.image({ x: 0, y: H - picH, w: W, h: picH }, { mask: 'SLANT_START' });
+    const field = mixHex(pal.background, pal.ink, 0.14);
+    // The address sits on the picture's top band: darken that band so white type reads on any photo.
+    if (hasPic) c.image({ x: 0, y: H - picH, w: W, h: picH }, { mask: 'SLANT_START', overlay: { direction: 'TOP', color: '#000000', from: 0.62, to: 0 } });
     else {
       // No picture: a tonal field takes its place, cut by an accent rule; the grid stays asymmetric.
-      c.shape({ shape: 'RECT', rect: { x: W * 0.18, y: H - picH, w: W * 0.82, h: picH }, fill: mixHex(pal.background, pal.ink, 0.14) });
+      c.shape({ shape: 'RECT', rect: { x: W * 0.18, y: H - picH, w: W * 0.82, h: picH }, fill: field });
       c.shape({ shape: 'RECT', rect: { x: W * 0.18, y: H - picH, w: W * 0.3, h: 16 }, fill: pal.accent });
     }
     c.logo({ x: F.x, y: F.y, w: F.w, h: c.B.brand * 1.3 }, 'WORDMARK', ink);
     const region = { x: F.x, y: F.y + c.B.brand * 1.3 + c.gap(40), w: F.w * 0.92, h: H - picH - F.y - c.B.brand * 1.3 - c.gap(60) };
     const s = c.stack(region, [...c.eyebrow(pal.accent), c.headline(ink, 'START', { scale: 1.05, gap: c.input.copy.eyebrow ? c.gap(18) : 0 }), ...c.sub(pal.muted, 'START'), ...c.price(ink, 'START', pal.muted)], 'TOP');
     // The action sits on the picture's slanted edge; the address goes under it, on the picture's calm band.
-    const ctaBlocks = c.cta('BUTTON', 'START', '#ffffff').map((b, i) => (i === 0 ? { ...b, gap: 0 } : b));
+    const ctaBlocks = c.cta('BUTTON', 'START', hasPic ? '#ffffff' : readableOn(field, [pal.ink, '#ffffff', '#111111'])).map((b, i) => (i === 0 ? { ...b, gap: 0 } : b));
     const ctaH = c.measure(F.w, ctaBlocks);
     const cta = c.stack({ x: F.x, y: Math.min(H - picH - c.B.cta, F.y + F.h - ctaH), w: F.w, h: ctaH }, ctaBlocks, 'TOP');
     c.path.push(...s.ids, ...cta.ids);
@@ -604,13 +606,20 @@ const SPLIT: Method = (c) => {
 
 const LAYERED: Method = (c) => {
   const { F, W, H, pal } = c;
-  c.image({ x: 0, y: 0, w: W, h: H }, { treatment: 'DARKEN', overlay: { color: mixHex(pal.background, '#000000', 0.5), from: 0.55, to: 0.2, direction: 'START' } });
+  // A near-black overlay tinted by the brand: a pale brand background would only grey the photo, not protect the type.
+  c.image({ x: 0, y: 0, w: W, h: H }, { treatment: 'DARKEN', overlay: { color: mixHex(pal.background, '#000000', 0.85), from: 0.62, to: 0.25, direction: 'START' } });
   const ink = '#ffffff';
   c.logo({ x: F.x, y: F.y, w: F.w * 0.5, h: c.B.brand * 1.3 }, 'WORDMARK', ink);
-  const head = c.stack({ x: F.x, y: F.y + F.h * (c.tall ? 0.2 : 0.14), w: F.w, h: F.h * 0.5 }, [...c.eyebrow(pal.accent), { ...c.headline(ink, 'START', { fill: { min: c.B.headline * 0.95, max: c.B.headline * 1.9 }, maxLines: 3 }), gap: c.input.copy.eyebrow ? c.gap(16) : 0 }], 'TOP');
   const sub = c.input.copy.subheadline;
   const subBlocks: Block[] = sub ? [{ role: 'SUBHEADLINE', text: sub, font: c.text(c.B.sub, true), color: pal.ink, align: 'START', gap: 0, maxLines: 3, tight: true, maxWidth: F.w * 0.86, box: { fill: pal.surface, radius: 0, padX: 26, padY: 16 } }] : [];
-  const bottom = c.stack({ x: F.x, y: F.y + F.h * 0.58, w: F.w, h: F.h * 0.42 }, [...subBlocks, ...c.price(ink, 'START', ink), ...c.cta(c.has('CTA_AS_TEXT_LINE') ? 'TEXT_LINE' : 'BUTTON', 'START', ink)], 'BOTTOM');
+  const bottomBlocks = [...subBlocks, ...c.price(ink, 'START', ink), ...c.cta(c.has('CTA_AS_TEXT_LINE') ? 'TEXT_LINE' : 'BUTTON', 'START', ink)];
+  // The headline gets what the bottom group leaves: a big price grows the group upwards, never into the headline.
+  const bottomH = Math.max(F.h * 0.42, c.measure(F.w, bottomBlocks));
+  const headTop = F.y + F.h * (c.tall ? 0.2 : 0.14);
+  const headH = Math.min(F.h * 0.5, F.y + F.h - bottomH - c.gap(30) - headTop);
+  const head = c.stack({ x: F.x, y: headTop, w: F.w, h: headH }, [...c.eyebrow(pal.accent), { ...c.headline(ink, 'START', { fill: { min: c.B.headline * 0.95, max: c.B.headline * 1.9 }, maxLines: 3 }), gap: c.input.copy.eyebrow ? c.gap(16) : 0 }], 'TOP');
+  if (head.used > headH) c.overflow += head.used - headH;
+  const bottom = c.stack({ x: F.x, y: F.y + F.h - bottomH, w: F.w, h: bottomH }, bottomBlocks, 'BOTTOM');
   c.path.push(...head.ids, ...bottom.ids);
   c.decide('composition', 'Large type layered over the photograph', 'Type and picture read as one image; controlled darkening keeps it legible.');
 };
@@ -723,6 +732,8 @@ export function composeDesign(input: ComposeInput): CreativeDesignSpec {
   if (c.overflow > 1) notes.push(`Text is ${Math.round(c.overflow)}px taller than the space; shorten the copy or choose another direction`);
   const fmt = STATIC_AD_FORMATS[input.format];
   const pal = input.palette;
+  const flood = input.moves.includes('BRAND_COLOR_FLOOD') || !input.picture;
+  ensureReadable(c.layers, flood ? [pal.background, mixHex(pal.background, '#000000', 0.12)] : [pal.background], pal);
   const spec: CreativeDesignSpec = {
     version: 1,
     format: input.format,
@@ -733,7 +744,7 @@ export function composeDesign(input: ComposeInput): CreativeDesignSpec {
     moves: [...effective.moves],
     typeSystem: input.typeSystem,
     palette: pal,
-    background: input.moves.includes('BRAND_COLOR_FLOOD') || !input.picture
+    background: flood
       ? { kind: 'GRADIENT', color: pal.background, to: mixHex(pal.background, '#000000', 0.12), angle: 160, grain: input.moves.includes('TEXTURE_GRAIN') ? 0.08 : 0 }
       : { kind: 'SOLID', color: pal.background, grain: input.moves.includes('TEXTURE_GRAIN') ? 0.08 : 0 },
     layers: c.layers,
@@ -745,6 +756,39 @@ export function composeDesign(input: ComposeInput): CreativeDesignSpec {
   };
   if (spec.readingPath.length < 2) spec.readingPath = spec.layers.filter((l) => l.kind === 'text').map((l) => l.id).slice(0, 3);
   return CreativeDesignSpecSchema.parse(spec);
+}
+
+/**
+ * Every text layer must meet contrast against what is behind it: 3:1 for large type, 4.5:1 otherwise. Behind means
+ * the topmost layer covering at least half of it (the Critic's rule): a solid shape, a protected photo (modelled as
+ * mid-grey under its overlay, as the Critic models it) or the page. A colour that misses (an accent eyebrow on a pale
+ * page) takes the most readable ink instead. Unprotected photos are left to the Critic, which flags them.
+ */
+function ensureReadable(layers: DesignLayer[], page: readonly string[], pal: SpecPalette): void {
+  const shared = (a: Rect, b: Rect) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  layers.forEach((l, i) => {
+    if (l.kind !== 'text' || l.box?.fill) return;
+    let behind: readonly string[] = page;
+    for (let j = i - 1; j >= 0; j--) {
+      const u = layers[j]!;
+      if (shared(u.rect, l.rect) < l.rect.w * l.rect.h * 0.5) continue;
+      if (u.kind === 'shape' && u.fill && u.opacity >= 0.85 && u.shape !== 'LINE' && u.shape !== 'RING') {
+        behind = [u.fill];
+        break;
+      }
+      if (u.kind === 'image') {
+        const o = u.overlay;
+        const strength = Math.max(o?.from ?? 0, o?.to ?? 0);
+        if (u.treatment !== 'DARKEN' && strength < 0.35) return;
+        behind = [o ? mixHex('#808080', o.color, strength) : '#808080'];
+        break;
+      }
+    }
+    const min = l.font.size >= 40 ? 3 : 4.5;
+    if (behind.every((b) => contrastRatio(l.color, b) >= min)) return;
+    const worst = [...behind].sort((a, b) => contrastRatio(l.color, a) - contrastRatio(l.color, b))[0]!;
+    l.color = readableOn(worst, [pal.ink, '#ffffff', '#111111']);
+  });
 }
 
 /* ------------------------------------------------------------------------------------------------------------ */

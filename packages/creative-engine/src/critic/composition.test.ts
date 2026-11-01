@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { retrieveProfessionalReferences } from '@kampora/agent-expertise';
-import type { BrandColors, CreativeDesignSpec } from '@kampora/shared';
+import { composeDesign, derivePalette } from '@kampora/production-engine';
+import type { BrandColors, CompositionMethod, CreativeDesignSpec } from '@kampora/shared';
 import { directCreative, type DirectionInput } from '../art-director-v2';
 import { creativeAnalysis, creativeReview, reviewDirection, reviewDirectionSet, technicalChecks } from './composition';
 
@@ -108,5 +109,35 @@ describe('Critic 2.0: targeted, bounded revisions', () => {
     expect(revised.directions).toHaveLength(3);
     for (const byFormat of Object.values(reviews))
       for (const r of Object.values(byFormat)) expect(r.history!.rounds.length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('Critic 2.0: the layout engine composes readable, collision-free text everywhere', () => {
+  const NESIMA: BrandColors = { primary: '#1F3A3D', secondary: '#7FB7A4', accent: '#F4B860', background: '#F6F3EE', text: '#14211F' };
+  const methods: CompositionMethod[] = ['IMAGE_FIRST', 'LIFESTYLE', 'LAYERED', 'PRODUCT_LED', 'SPLIT', 'EDITORIAL', 'ASYMMETRIC', 'BOLD_TYPE', 'PROMO_PRICE', 'LOCAL_MODERN'];
+  it.each([
+    ['Luz', LUZ],
+    ['Nesima', NESIMA],
+  ])('%s: every method × format × picture/no picture × emphasis', (_n, colors) => {
+    for (const method of methods)
+      for (const format of ['4:5', '9:16'] as const)
+        for (const picture of [true, false])
+          for (const emphasis of ['HEADLINE', 'PRICE'] as const) {
+            const s = composeDesign({
+              format,
+              method,
+              moves: emphasis === 'PRICE' ? ['PRICE_AS_GRAPHIC'] : [],
+              typeSystem: 'MODERN_SANS',
+              palette: derivePalette(colors, []),
+              copy: { ...input.copy, subheadline: 'קולים את הפולים בעצמנו' },
+              ...(picture ? { picture: { assetId: 'pic', focal: { x: 0.5, y: 0.5 } } } : {}),
+              emphasis,
+            });
+            if (s.fit.status === 'UNRESOLVED') continue;
+            for (const criterion of ['READABILITY', 'LAYOUT_BALANCE']) {
+              const r = technicalChecks(s).find((x) => x.criterion === criterion)!;
+              expect(r.severity, `${method} ${format} picture=${picture} ${emphasis}: ${r.explanation}`).not.toBe('MAJOR');
+            }
+          }
   });
 });
