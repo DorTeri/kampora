@@ -21,3 +21,4 @@ export * from './critic/opinion';
 export * from './art-director-v2';
 export * from './creative-direction';
 export * from './critic/composition';
+export * from './change-requests';
