@@ -31,6 +31,23 @@ export interface ReviewReference {
   principle: string;
   moves: string[];
   analysisBasis: string;
+  /** What was seen when the work itself was viewed (IMAGES_VIEWED only). */
+  seen?: { whatWasSeen: string; confidence: string; composition: string; typography: string } | null;
+  /** Where viewing the work corrected the earlier text-only analysis. */
+  corrections?: { field: string; wasClaimed: string; actuallySeen: string }[];
+}
+
+/** How the moodboard shaped one direction (from traceReferenceInfluence). */
+export interface ReviewTrace {
+  key: string;
+  method: string;
+  moves: string[];
+  moveSources: Record<string, string[]>;
+  referenceOnlyMoves: string[];
+  withoutReferenceMoves: Record<string, { change: string }[]>;
+  withoutAnyReference: { method: string; moves: string[]; typeSystem: string; changed: string[] };
+  originality: { maxOverlap: number; closestReference: string | null; referencesCombined: number; ownAssetsOnly: boolean };
+  effects: { referenceId: string; brand: string; analysisBasis: string; moves: string[]; withoutReference: string[] }[];
 }
 
 export interface ReviewConcept {
@@ -53,11 +70,15 @@ export interface ReviewCase {
   moodboard: ReviewReference[];
   directions: (Pick<CreativeDirection, 'key' | 'name'> & {
     renders: Record<string, string>;
+    /** The 4:5 render of this direction without its reference-only moves. */
+    withoutReferences?: string | null;
     reviews: Record<string, CreativeReview>;
     pictureBrief: { guidance: string } | null;
   })[];
+  copyRevision?: { q6: Partial<StaticAdText>; q7: Partial<StaticAdText>; why: string[] };
+  trace?: ReviewTrace[];
   storyboard: { key: string; role: string; durationSec: number; voiceover: string; visual: string; onScreenText?: string }[];
-  video: { file: string; seconds: number; titleFace: string; entrance: string; silent: boolean } | null;
+  video: { file: string; seconds: number; titleFace: string; entrance: string; silent: boolean; endCard?: string } | null;
   q6: { render: string; adText: StaticAdText };
   pictures: string;
   review: {

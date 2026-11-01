@@ -188,6 +188,7 @@ export function ReviewBoard({
             ['directions', 'כיוונים'],
             ['review', 'סקירה ושינויים'],
             ['motion', 'סטוריבורד ווידאו'],
+            ['trace', 'השפעת ההשראות'],
             ['compare', 'השוואה'],
           ].map(([id, label]) => (
             <a key={id} href={`#${id}`} className="rounded-full border border-line bg-surface px-3 py-1 font-semibold text-ink-soft hover:border-ink/30">
@@ -244,8 +245,9 @@ export function ReviewBoard({
       <section id="moodboard">
         <h2 className="mb-1 text-xl font-bold">השראות (מודבורד)</h2>
         <p className="mb-3 text-sm text-muted">
-          ניתוח כתוב של עבודות מקצועיות ממקורות ציבוריים, עם קישור למקור. התמונות עצמן לא הועתקו ולא נצפו על ידי המערכת; ההשפעה על כל כיוון
-          מתועדת למטה.
+          ניתוח של עבודות מקצועיות ממקורות ציבוריים, עם קישור למקור. התמונות לא הועתקו ולא נשמרו. עבודה שסומנה &quot;נצפתה&quot; נבדקה
+          בעיניים מול המקור והניתוח שלה תוקן לפי מה שנראה; עבודה שסומנה &quot;ניתוח כתוב&quot; נותחה רק מתיאורים, ומשקלה בבחירות העיצוב נמוך יותר.
+          ההשפעה על כל כיוון מתועדת למטה.
         </p>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {data.moodboard.map((r) => (
@@ -260,11 +262,31 @@ export function ReviewBoard({
                     {r.title}
                   </h3>
                 </div>
-                <Badge>{r.score.toFixed(1)}</Badge>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Badge>{r.score.toFixed(1)}</Badge>
+                  {r.analysisBasis === 'IMAGES_VIEWED' ? <Badge tone="success">נצפתה</Badge> : <Badge tone="warn">ניתוח כתוב</Badge>}
+                </div>
               </div>
               <p className="mt-2 text-sm text-ink-soft" dir="ltr">
                 {r.principle}
               </p>
+              {r.seen ? (
+                <p className="mt-2 text-xs text-muted" dir="ltr">
+                  Seen ({r.seen.confidence.toLowerCase()} confidence): {r.seen.whatWasSeen}
+                </p>
+              ) : null}
+              {r.corrections?.length ? (
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer font-bold text-ink-soft">{r.corrections.length} תיקונים אחרי הצפייה</summary>
+                  <ul className="mt-1 space-y-1" dir="ltr">
+                    {r.corrections.map((c) => (
+                      <li key={c.field + c.wasClaimed} className="text-muted">
+                        <span className="font-semibold">{c.field}:</span> <s>{c.wasClaimed}</s> → {c.actuallySeen}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-1">
                 {r.moves.map((m) => (
                   <span key={m} className="rounded-full bg-ink/5 px-2 py-0.5 text-[11px] font-semibold text-ink-soft" dir="ltr">
@@ -601,7 +623,12 @@ export function ReviewBoard({
             ))}
             <li className="grid grid-cols-[auto_1fr] gap-3 rounded-2xl border border-dashed border-line p-3">
               <span className="grid size-8 place-items-center rounded-full bg-primary text-sm font-black text-white">★</span>
-              <p className="text-sm">כרטיס סיום: הקומפוזיציה של הכיוון המומלץ (<bdi>9:16</bdi>), השכבות נכנסות לפי סדר הקריאה.</p>
+              <p className="text-sm">
+                {data.video && data.video.endCard !== 'composed'
+                  ? 'אין צילום לעסק הזה, ולכן כל התצוגה היא הקומפוזיציה של הכיוון המומלץ '
+                  : 'כרטיס סיום: הקומפוזיציה של הכיוון המומלץ '}
+                (<bdi>9:16</bdi>), השכבות נכנסות לפי סדר הקריאה.
+              </p>
             </li>
           </ol>
         </Card>
@@ -627,9 +654,20 @@ export function ReviewBoard({
 
       ) : null}
 
+      {data.trace?.length ? <TraceSection data={data} /> : null}
+
       {data.q6.render ? (
       <Card id="compare">
-        <CardTitle hint="אותו טקסט מאושר. משמאל: מודעת Q6 (תבנית אחת). מימין: הכיוון המומלץ של Q7.">השוואה ל-Q6</CardTitle>
+        <CardTitle
+          hint={
+            data.copyRevision
+              ? 'משמאל: מודעת Q6 (תבנית אחת, הטקסט של Q6). מימין: הכיוון המומלץ של Q7 עם הטקסט המתוקן.'
+              : 'אותו טקסט מאושר. משמאל: מודעת Q6 (תבנית אחת). מימין: הכיוון המומלץ של Q7.'
+          }
+        >
+          השוואה ל-Q6
+        </CardTitle>
+        {data.copyRevision ? <CopyRevision revision={data.copyRevision} /> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <figure>
             <SpecPreview spec={directions[original.recommended].specs['4:5']!} assetUrls={assetUrls} />
@@ -643,6 +681,119 @@ export function ReviewBoard({
       </Card>
       ) : null}
     </div>
+  );
+}
+
+const COPY_FIELDS: [string, string][] = [
+  ['headline', 'כותרת'],
+  ['subheadline', 'כותרת משנה'],
+  ['cta', 'קריאה לפעולה'],
+  ['ctaSubtext', 'שורה מתחת'],
+];
+
+function CopyRevision({ revision }: { revision: NonNullable<ReviewCase['copyRevision']> }) {
+  const read = (t: Record<string, unknown>, k: string) => (typeof t[k] === 'string' ? (t[k] as string) : '');
+  return (
+    <div className="mb-5 rounded-2xl bg-canvas p-4">
+      <h3 className="mb-2 font-bold">הטקסט: מה השתנה מ-Q6 ולמה</h3>
+      <dl className="grid gap-2 text-sm">
+        {COPY_FIELDS.filter(([k]) => read(revision.q6, k) || read(revision.q7, k)).map(([k, label]) => (
+          <div key={k} className="grid gap-1 sm:grid-cols-[8rem_1fr_1fr]">
+            <dt className="text-xs font-bold text-muted">{label}</dt>
+            <dd className="text-muted">
+              <s>{read(revision.q6, k)}</s>
+            </dd>
+            <dd className="font-semibold">{read(revision.q7, k)}</dd>
+          </div>
+        ))}
+      </dl>
+      <ul className="mt-3 list-disc space-y-1 ps-5 text-xs text-ink-soft">
+        {revision.why.map((w) => (
+          <li key={w}>{w}</li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-muted">נכתב בלי קריאה למודל, מתוך הטענות המאושרות בלבד. ממתין לאישור בעל העסק.</p>
+    </div>
+  );
+}
+
+function TraceSection({ data }: { data: ReviewCase }) {
+  const byId = new Map(data.moodboard.map((r) => [r.id, r]));
+  return (
+    <section id="trace">
+      <h2 className="mb-1 text-xl font-bold">איך ההשראות שינו את העיצוב</h2>
+      <p className="mb-3 text-sm text-muted">
+        לכל כיוון הרצנו את אותו מנוע פעמיים: פעם עם ההחלטות שרק ההשראות הביאו, ופעם בלעדיהן. ההבדל בשכבות הוא מה שההשראות ציירו בפועל. ההשראות
+        לא מכילות תמונות או טקסט, ולכן בעמוד מופיעים רק הטקסט המאושר והתמונות של העסק.
+      </p>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {data.trace!.map((t) => {
+          const d = data.directions.find((x) => x.key === t.key);
+          const changes = t.withoutReferenceMoves['4:5'] ?? [];
+          return (
+            <Card key={t.key} className="p-5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="font-bold">
+                  כיוון {t.key}
+                  {d ? ` · ${d.name}` : ''}
+                </h3>
+                <span className="text-xs font-semibold text-muted" dir="ltr">
+                  {t.method}
+                </span>
+              </div>
+              {d?.withoutReferences ? (
+                <div className="mb-3 grid grid-cols-2 gap-2">
+                  <figure>
+                    <img src={`/demo-media/${d.withoutReferences}`} alt={`כיוון ${t.key} בלי ההחלטות של ההשראות`} className="w-full rounded-lg bg-canvas" />
+                    <figcaption className="mt-1 text-center text-[11px] text-muted">בלי ההשראות</figcaption>
+                  </figure>
+                  <figure>
+                    <img src={`/demo-media/${d.renders['4:5']}`} alt={`כיוון ${t.key} כפי שהוצע`} className="w-full rounded-lg bg-canvas" />
+                    <figcaption className="mt-1 text-center text-[11px] text-muted">עם ההשראות</figcaption>
+                  </figure>
+                </div>
+              ) : null}
+              {t.referenceOnlyMoves.length ? (
+                <p className="text-xs text-ink-soft">
+                  החלטות שרק ההשראות הביאו: <span dir="ltr">{t.referenceOnlyMoves.join(', ')}</span>
+                </p>
+              ) : (
+                <p className="text-xs text-muted">כל ההחלטות בכיוון הזה הגיעו גם מהקונספט או מברירת המחדל של הגישה.</p>
+              )}
+              {t.referenceOnlyMoves.length && !changes.length ? (
+                <p className="mt-2 text-xs font-semibold text-ink-soft">
+                  ההחלטות האלה נרשמו, אבל שיטת הקומפוזיציה הזו לא מציירת אותן: אין הבדל בעמוד.
+                </p>
+              ) : null}
+              {changes.length ? (
+                <ul className="mt-2 space-y-0.5 text-[11px] text-muted" dir="ltr">
+                  {changes.slice(0, 6).map((c) => (
+                    <li key={c.change}>{c.change}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <ul className="mt-3 space-y-1 text-xs">
+                {t.effects.map((e) => (
+                  <li key={e.referenceId}>
+                    <span className="font-semibold" dir="ltr">
+                      {e.brand}
+                    </span>{' '}
+                    {byId.get(e.referenceId)?.analysisBasis === 'IMAGES_VIEWED' ? <Badge tone="success">נצפתה</Badge> : <Badge tone="warn">ניתוח כתוב</Badge>}
+                    <span className="block text-muted" dir="ltr">
+                      {e.withoutReference.length ? `without it: ${e.withoutReference.join('; ')}` : 'without it: the same direction'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-muted">
+                מקוריות: חפיפה מרבית של <bdi>{Math.round(t.originality.maxOverlap * 100)}%</bdi> עם השראה אחת, שילוב של{' '}
+                <bdi>{t.originality.referencesCombined}</bdi> השראות{t.originality.ownAssetsOnly ? ', רק תמונות של העסק' : ''}.
+              </p>
+            </Card>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
