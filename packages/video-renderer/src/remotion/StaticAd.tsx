@@ -4,6 +4,7 @@ import { STATIC_AD_LINE_HEIGHT as LH, fitStaticAdType, type StaticAdRenderInput 
 import { FONT_FAMILY, alpha } from './context';
 import { displayText } from './display-text';
 import { textBase } from './overlays';
+import { ComposedStaticAd } from './StaticAdComposed';
 import { DesignedStaticAd } from './StaticAdDesigned';
 
 export { displayText } from './display-text';
@@ -32,6 +33,7 @@ export function KamporaStaticAd({ ad, assetUrls }: StaticAdRenderInput) {
   const logo = ad.branding.logoAssetId ? assetUrls[ad.branding.logoAssetId] : undefined;
   if (ad.background.assetId && !background)
     throw new Error(`Asset "${ad.background.assetId}" has no resolved URL`);
+  if (ad.composition) return <ComposedStaticAd spec={ad.composition} assetUrls={assetUrls} />;
   if (ad.design) return <DesignedStaticAd ad={ad} design={ad.design} background={background} logo={logo} />;
 
   return (

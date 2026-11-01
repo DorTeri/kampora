@@ -1,0 +1,36 @@
+# Q7 Creative Excellence Upgrade — running progress
+
+Durable state so work can resume without rediscovery. Updated at each checkpoint.
+
+## Constraints in force
+- No paid AI calls (OpenAI text/images, ElevenLabs). Mock providers + cached media only.
+- Never commit `.env`, keys or media. Never force-push. `main` is the working branch.
+- References: URL + authored analysis only; no third-party images stored.
+- C: drive is nearly full (~2–3 GB): clean `%LOCALAPPDATA%/Temp/remotion-webpack-bundle-*` after renders.
+
+## Checklist
+- [x] Audit (rendering = 8 fixed layout recipes, one font (Heebo), type estimated at 0.6em/char and scaled down
+      as one system; Art Director scores families; references were 12 Kampora-written patterns).
+- [x] Hebrew typography system: `packages/shared/src/typography/` — 12 OFL Google families, real glyph metrics
+      (`scripts/font-metrics.mjs` → `font-metrics.generated.ts`), measured line breaking (partition search,
+      no lone words / dangling function words), `fitText` (never below 88% silently), `fillText`.
+- [x] `CreativeDesignSpec` (`packages/shared/src/creative-design.ts`): layered, validated spec (image/shape/text/
+      logo layers, masks, treatments, fit report, rationale with reference influences). `StaticAd.composition`.
+- [x] Layout engine `packages/production-engine/src/composer.ts`: 10 composition methods × 42 design moves,
+      measured stacking, fitting ladder (reflow → rearrange → suggest shorter copy → UNRESOLVED), completeness
+      guard (approved copy can never be dropped), `derivePalette` with WCAG contrast.
+- [x] Renderer `packages/video-renderer/src/remotion/StaticAdComposed.tsx` (fixed components per layer kind).
+- [x] Reference research: 30 verified references in `out/q7/refs/*.json` (all URL + text-grounded analysis).
+- [ ] Reference library in code + retrieval engine + tests.
+- [ ] Art Director 2.0 (reference-informed directions → specs) + tests that references change decisions.
+- [ ] Copywriter/strategist upgrade (concept → visual idea, design intent); mock upgrade.
+- [ ] Visual planner fed by the spec (image region aspect, negative space, crop).
+- [ ] Critic 2.0: technical QA vs creative analysis vs human approval; Q6 gaps; targeted revisions.
+- [ ] Video: art direction into storyboard/motion; typography animation.
+- [ ] Studio: creative review page, moodboard, 3 directions, NL revisions (Hebrew) → validated changes. API.
+- [ ] E2E demo Luz + Pilates (4:5, 9:16, storyboard, motion preview, critique, contact sheets, Q6 comparison).
+- [ ] Verification: lint, typecheck, tests, web build, renders.
+- [ ] Vercel deployment (CLI is logged in; web app only; API/worker/DB/Redis are local → demo mode).
+
+## Scripts (gitignored `out/scripts/`)
+- `q7-smoke.mjs` renders a few specs → `out/q7/smoke/`; `q7-sweep.mjs` composes 2,700 combinations (no render).

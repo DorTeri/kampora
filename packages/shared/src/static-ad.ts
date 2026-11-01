@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MediaAuthenticitySchema } from './authenticity';
 import { BrandColorsSchema, LocaleSchema } from './common';
+import { CreativeDesignSpecSchema } from './creative-design';
 import { MediaAssetSchema, SafeAreaSchema, type SafeArea } from './video-project';
 
 /** Static image ad formats: square and portrait feed posts, and full-screen Stories/Reels. */
@@ -424,6 +425,11 @@ export const StaticAdSchema = z
     text: StaticAdTextSchema,
     /** The Art Director's layout. Absent: the original fixed template (ads built before art direction). */
     design: StaticAdDesignSchema.optional(),
+    /**
+     * Art Director 2.0: the full layered composition. When present the renderer draws it instead of `design`
+     * (which stays for compatibility with ads and tools built on layout families).
+     */
+    composition: CreativeDesignSpecSchema.optional(),
     assets: z.array(MediaAssetSchema),
   })
   .superRefine((ad, ctx) => {
@@ -435,10 +441,16 @@ export const StaticAdSchema = z
         message: `${ad.format} must be ${size.width}x${size.height}`,
       });
     const byId = new Map(ad.assets.map((a) => [a.id, a]));
+    if (ad.composition && (ad.composition.format !== ad.format || ad.composition.width !== ad.width || ad.composition.height !== ad.height))
+      ctx.addIssue({ code: 'custom', path: ['composition'], message: 'Composition is for another format' });
+    const composed = (ad.composition?.layers ?? []).flatMap((l, i) =>
+      (l.kind === 'image' || l.kind === 'logo') && l.assetId ? [[['composition', 'layers', i, 'assetId'], l.assetId] as const] : [],
+    );
     for (const [path, id] of [
-      [['background', 'assetId'], ad.background.assetId],
-      [['branding', 'logoAssetId'], ad.branding.logoAssetId],
-    ] as const) {
+      [['background', 'assetId'], ad.background.assetId] as const,
+      [['branding', 'logoAssetId'], ad.branding.logoAssetId] as const,
+      ...composed,
+    ]) {
       if (!id) continue;
       const asset = byId.get(id);
       if (!asset || asset.kind !== 'image')
