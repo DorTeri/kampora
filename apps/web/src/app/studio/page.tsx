@@ -1,7 +1,9 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Badge, ButtonLink, Card, CardTitle, EmptyState, PageHeader } from '@/components/ui';
 import { he } from '@/i18n/he';
 import { api, type BusinessSummary, type CampaignListItem, type RenderDto } from '@/lib/api';
+import { DEMO_MODE } from '@/lib/review';
 
 const PROJECT_STATUS: Record<
   string,
@@ -15,6 +17,7 @@ const PROJECT_STATUS: Record<
 };
 
 export default async function StudioHome() {
+  if (DEMO_MODE) redirect('/studio/review');
   const [businesses, campaigns, videos] = await Promise.all([
     api<BusinessSummary[]>('/v1/businesses'),
     api<CampaignListItem[]>('/v1/campaigns'),

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { SidebarNav, type NavItem } from '@/components/nav';
 import { he } from '@/i18n/he';
 import { api, type CampaignListItem } from '@/lib/api';
+import { DEMO_MODE } from '@/lib/review';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,8 @@ function Logo() {
 }
 
 export default async function StudioLayout({ children }: { children: React.ReactNode }) {
-  const campaigns = await api<CampaignListItem[]>('/v1/campaigns').catch(() => []);
+  // Demo mode has no backend: only the recorded review is available, and nothing paid can run.
+  const campaigns = DEMO_MODE ? [] : await api<CampaignListItem[]>('/v1/campaigns').catch(() => []);
   const latest = campaigns[0];
   const latestProject = campaigns.find((c) => c.projectId);
 
@@ -53,7 +55,11 @@ export default async function StudioLayout({ children }: { children: React.React
       match: '/studio/production',
     },
     { href: '/studio/videos', label: he.nav.videos, icon: '▣', match: '/studio/videos' },
+    { href: '/studio/review', label: he.nav.review, icon: '◇', match: '/studio/review' },
   ];
+  const shown = DEMO_MODE
+    ? items.map((i) => (i.match === '/studio/review' || i.match === '/studio' ? i : { ...i, href: null }))
+    : items;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-[1440px] flex-col lg:flex-row">
@@ -61,7 +67,7 @@ export default async function StudioLayout({ children }: { children: React.React
         <div className="mb-3 lg:mb-10">
           <Logo />
         </div>
-        <SidebarNav items={items} />
+        <SidebarNav items={shown} />
       </aside>
       <main className="min-w-0 flex-1 px-4 py-8 sm:px-8 lg:px-12 lg:py-12">{children}</main>
     </div>

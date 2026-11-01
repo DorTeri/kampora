@@ -14,6 +14,7 @@ export const he = {
     planning: 'תכנון הסרטון',
     production: 'הפקת הסרטון',
     videos: 'הסרטונים שלי',
+    review: 'סקירת קריאייטיב',
   },
   home: {
     greeting: (name: string) => `שלום, ${name}`,
