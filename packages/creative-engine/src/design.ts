@@ -6,3 +6,4 @@ export * from './art-director-v2';
 export * from './change-requests';
 export * from './critic/composition';
 export * from './creative-direction';
+export * from './reference-trace';

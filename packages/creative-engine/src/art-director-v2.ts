@@ -136,6 +136,16 @@ interface MoveVote {
   from: Map<string, number>;
 }
 
+/**
+ * How much a reference's design moves count, by what its analysis rests on: moves someone saw in the actual work
+ * carry full weight; moves inferred from writing about the work count for less.
+ */
+const EVIDENCE_WEIGHT: Record<RetrievedReference['reference']['analysisBasis'], number> = {
+  IMAGES_VIEWED: 1,
+  SOURCE_TEXT_AND_IMAGE_DESCRIPTIONS: 0.6,
+  SOURCE_TEXT: 0.4,
+};
+
 function voteMoves(input: DirectionInput): Map<DesignMove, MoveVote> {
   const votes = new Map<DesignMove, MoveVote>();
   const vote = (move: DesignMove, w: number, ref?: string) => {
@@ -145,7 +155,8 @@ function voteMoves(input: DirectionInput): Map<DesignMove, MoveVote> {
     votes.set(move, v);
   };
   const top = Math.max(1, ...input.references.map((r) => r.score));
-  for (const r of input.references) for (const move of r.reference.designMoves) vote(move, (r.score / top) * 1.5, r.reference.id);
+  for (const r of input.references)
+    for (const move of r.reference.designMoves) vote(move, (r.score / top) * 1.5 * EVIDENCE_WEIGHT[r.reference.analysisBasis], r.reference.id);
   for (const [move, w] of Object.entries(conceptMoves(input))) vote(move as DesignMove, w!);
   return votes;
 }

@@ -6,6 +6,25 @@ import { DesignMoveSchema } from '@kampora/shared';
  * design deconstruction authored by Kampora. The analysis teaches principles; the image itself is never stored
  * (public visibility is not a licence), and nothing here may be reproduced as a composition or asset.
  */
+const VisualAnalysisSchema = z.object({
+  viewedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  /** Pages where the work was seen. */
+  viewedUrls: z.array(z.string().url()).min(1),
+  /** Which pieces were seen and how clearly. */
+  whatWasSeen: z.string().min(5),
+  confidence: z.enum(['HIGH', 'MEDIUM', 'LOW']),
+  composition: z.string(),
+  hierarchy: z.string(),
+  typography: z.string(),
+  gridAndSpacing: z.string(),
+  photography: z.string(),
+  colorRelationships: z.string(),
+  productPlacement: z.string(),
+  negativeSpace: z.string(),
+  brandExpression: z.string(),
+  distinctiveDecisions: z.string(),
+});
+
 export const ProfessionalReferenceSchema = z.object({
   id: z.string().regex(/^ref-[a-z0-9-]+$/),
   title: z.string().min(3),
@@ -47,11 +66,20 @@ export const ProfessionalReferenceSchema = z.object({
   avoidWhen: z.array(z.string()),
   designMoves: z.array(DesignMoveSchema).min(1),
   /**
-   * What the analysis rests on. Only SOURCE_TEXT_AND_IMAGE_DESCRIPTIONS and SOURCE_TEXT occur today: the
-   * research tools could not view the images themselves, so visual statements come from published text.
+   * What the analysis rests on. IMAGES_VIEWED: the advertising work itself was looked at (in a browser, on the
+   * source page; nothing downloaded) and `visualAnalysis` records what was seen. The other two rest on published
+   * text, so their visual statements are second-hand.
    */
   analysisBasis: z.enum(['IMAGES_VIEWED', 'SOURCE_TEXT_AND_IMAGE_DESCRIPTIONS', 'SOURCE_TEXT']),
+  /** Present only when the work was viewed: a design reading of the actual pieces, in Kampora's own words. */
+  visualAnalysis: VisualAnalysisSchema.optional(),
+  /** Where looking at the work showed the earlier text-only analysis to be wrong. */
+  corrections: z.array(z.object({ field: z.string(), wasClaimed: z.string(), actuallySeen: z.string() })).default([]),
+  /** A visual check was attempted and could not be done (why), so the analysis stays text-only. */
+  visualCheck: z.object({ attemptedAt: z.string(), outcome: z.string() }).optional(),
   rights: z.object({ status: z.literal('URL_AND_AUTHORED_ANALYSIS_ONLY'), note: z.string() }),
+}).refine((r) => (r.analysisBasis === 'IMAGES_VIEWED') === Boolean(r.visualAnalysis), {
+  message: 'IMAGES_VIEWED requires a visualAnalysis, and only a viewed reference may carry one',
 });
 export type ProfessionalReference = z.infer<typeof ProfessionalReferenceSchema>;
 export type ProfessionalReferenceInput = z.input<typeof ProfessionalReferenceSchema>;

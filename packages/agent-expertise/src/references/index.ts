@@ -8,7 +8,7 @@ export * from './schema';
 export const PROFESSIONAL_REFERENCES: readonly ProfessionalReference[] = PROFESSIONAL_REFERENCE_DATA.map((r) =>
   ProfessionalReferenceSchema.parse(r),
 );
-export const PROFESSIONAL_LIBRARY_VERSION = '2026-11-01';
+export const PROFESSIONAL_LIBRARY_VERSION = '2026-11-01.2';
 
 /** Industries whose design lessons transfer (a bakery can learn from premium food; a studio from beauty). */
 const RELATED: Record<string, readonly string[]> = {
@@ -111,10 +111,16 @@ export function retrieveProfessionalReferences(query: ReferenceQuery): Retrieved
     const formatFit = query.format === 'STATIC' ? r.formats.some((f) => STATIC_FORMATS.has(f)) : r.formats.includes('VIDEO');
     if (formatFit) score += 0.5;
     else reasons.push(`format differs (${r.formats.join('/')})`);
-    // Analyses resting on the written description alone are less certain about visual detail.
-    if (r.analysisBasis === 'SOURCE_TEXT') {
+    // What the analysis rests on: work that was actually looked at outranks work known only from writing.
+    if (r.analysisBasis === 'IMAGES_VIEWED') {
+      score *= 1.15;
+      reasons.push('the work itself was viewed (visual analysis)');
+    } else if (r.analysisBasis === 'SOURCE_TEXT') {
       score *= 0.85;
       reasons.push('analysis from source text only');
+    } else {
+      score *= 0.92;
+      reasons.push('analysis from written descriptions; the work was not viewed');
     }
     return { reference: r, score: Math.round(score * 100) / 100, reasons };
   }).filter((x) => x.score >= 3);
@@ -144,7 +150,7 @@ export function retrieveProfessionalReferences(query: ReferenceQuery): Retrieved
   const objectives = GOAL_OBJECTIVES[query.goal];
   if (picked.length && !picked.some((p) => objectives.includes(p.reference.objective))) {
     const best = PROFESSIONAL_REFERENCES.filter((r) => objectives.includes(r.objective) && !picked.some((p) => p.reference.id === r.id))
-      .map((r) => ({ r, s: (r.objective === objectives[0] ? 2 : 1) + r.brandPersonality.filter((p) => toneWords.has(p.toLowerCase())).length + (r.analysisBasis === 'SOURCE_TEXT' ? 0 : 0.5) }))
+      .map((r) => ({ r, s: (r.objective === objectives[0] ? 2 : 1) + r.brandPersonality.filter((p) => toneWords.has(p.toLowerCase())).length + (r.analysisBasis === 'IMAGES_VIEWED' ? 1 : r.analysisBasis === 'SOURCE_TEXT' ? 0 : 0.5) }))
       .sort((a, b) => b.s - a.s || a.r.id.localeCompare(b.r.id))[0];
     if (best) {
       const entry = { reference: best.r, score: Math.round(best.s * 100) / 100, reasons: [`brings the craft of a ${best.r.objective} campaign (cross-industry: ${best.r.industry})`] };

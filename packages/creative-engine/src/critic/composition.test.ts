@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { retrieveProfessionalReferences } from '@kampora/agent-expertise';
 import { composeDesign, derivePalette } from '@kampora/production-engine';
 import type { BrandColors, CompositionMethod, CreativeDesignSpec } from '@kampora/shared';
-import { directCreative, type DirectionInput } from '../art-director-v2';
+import { composeDirectionSpecs, directCreative, type DirectionInput } from '../art-director-v2';
 import { creativeAnalysis, creativeReview, reviewDirection, reviewDirectionSet, technicalChecks } from './composition';
 
 const LUZ: BrandColors = { primary: '#2B1B12', secondary: '#C8743A', accent: '#F2C14E', background: '#FBF5EC', text: '#1C140F' };
@@ -27,7 +27,12 @@ const input: DirectionInput = {
   references: retrieveProfessionalReferences({ industryId: 'cafe-restaurant', goal: 'OFFER', tone: 'warm', format: 'STATIC' }),
 };
 const set = directCreative(input);
-const spec = (key = 'C', format = '4:5') => set.directions.find((d) => d.key === key)!.specs[format]!;
+// MINIMAL_COPY leaves out a subheadline that only repeats the price. The duplicate-price checks need it on the page,
+// so they review the bold direction composed without that move.
+const C = set.directions[2]!;
+const cMoves = C.moves.filter((m) => m !== 'MINIMAL_COPY');
+const verboseC = { ...C, moves: cMoves, specs: composeDirectionSpecs(input, C.approach, C.method, cMoves, C.typeSystem, ['4:5', '9:16'], C.emphasis) };
+const spec = (key = 'C', format = '4:5') => (key === 'C' ? verboseC : set.directions.find((d) => d.key === key)!).specs[format]!;
 const clone = (s: CreativeDesignSpec): CreativeDesignSpec => JSON.parse(JSON.stringify(s));
 
 describe('Critic 2.0: technical QA', () => {
@@ -35,6 +40,13 @@ describe('Critic 2.0: technical QA', () => {
     const r = technicalChecks(spec()).find((x) => x.criterion === 'OFFER_COMMUNICATION')!;
     expect(r.severity).toBe('MAJOR');
     expect(r.component).toBe('COPYWRITER');
+  });
+
+  it('with MINIMAL_COPY the repeated price line is left out, so nothing is said twice', () => {
+    if (!C.moves.includes('MINIMAL_COPY')) return;
+    const roles = C.specs['4:5']!.layers.flatMap((l) => (l.kind === 'text' ? [l.role] : []));
+    expect(roles).not.toContain('SUBHEADLINE');
+    expect(technicalChecks(C.specs['4:5']!).find((x) => x.criterion === 'OFFER_COMMUNICATION')!.severity).toBe('OK');
   });
 
   it('finds colliding text and text on an unprotected photo', () => {
@@ -85,7 +97,7 @@ describe('Critic 2.0: creative analysis is advisory', () => {
 
 describe('Critic 2.0: targeted, bounded revisions', () => {
   it('without approved replacement copy, the duplicated price waits for the Copywriter (paid, not applied)', () => {
-    const { history, copy } = reviewDirection(input, set.directions[2]!);
+    const { history, copy } = reviewDirection(input, verboseC);
     expect(copy).toEqual(input.copy);
     const req = history.rounds[0]!.revisions.find((r) => r.component === 'COPYWRITER')!;
     expect(req.cost).toBe('PAID');
@@ -94,7 +106,7 @@ describe('Critic 2.0: targeted, bounded revisions', () => {
   });
 
   it('with the brief key message, the subheadline is replaced, recorded, and the ad passes', () => {
-    const { history, copy, direction } = reviewDirection(input, set.directions[2]!, { approvedSubheadline: 'קולים את הפולים בעצמנו' });
+    const { history, copy, direction } = reviewDirection(input, verboseC, { approvedSubheadline: 'קולים את הפולים בעצמנו' });
     expect(copy.subheadline).toBe('קולים את הפולים בעצמנו');
     expect(copy.price).toEqual(input.copy.price);
     const applied = history.rounds[0]!.revisions.find((r) => r.component === 'COPYWRITER')!;
