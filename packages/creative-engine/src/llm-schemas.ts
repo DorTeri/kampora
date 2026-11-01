@@ -3,6 +3,7 @@ import {
   ComplexitySchema,
   CompositionTypeSchema,
   ConceptAngleSchema,
+  DesignMoveSchema,
   HookTechniqueSchema,
   MotionPresetSchema,
   ProductionFormatSchema,
@@ -53,6 +54,19 @@ export const ConceptLlmSchema = z.object({
     .array(z.string())
     .max(4)
     .describe('Approved claims this concept relies on, quoted exactly; empty if none'),
+  visualIdea: z
+    .string()
+    .describe('One Hebrew sentence: the picture or graphic idea that carries this message in a static ad'),
+  designMoves: z
+    .array(DesignMoveSchema)
+    .min(0)
+    .max(4)
+    .describe('Up to 4 design moves the visual idea implies; different concepts should lean on different moves'),
+  emphasis: z.enum(['HEADLINE', 'PRICE', 'IMAGE', 'BRAND']).describe('What the viewer must notice first'),
+  eyebrow: z
+    .string()
+    .nullable()
+    .describe('A 2–5 word line above the headline (place, category or occasion), or null'),
 });
 export type ConceptLlm = z.infer<typeof ConceptLlmSchema>;
 

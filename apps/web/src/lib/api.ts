@@ -104,7 +104,7 @@ export interface CriticReviewDto {
     criterion: string;
     dimension: 'MARKETING' | 'VISUAL' | 'PRODUCTION';
     score: number | null;
-    method: 'DETERMINISTIC' | 'LLM_OPINION';
+    method: 'DETERMINISTIC' | 'LLM_OPINION' | 'HEURISTIC';
     severity: 'OK' | 'MINOR' | 'MAJOR' | 'CRITICAL';
     explanation: string;
     evidence: string[];

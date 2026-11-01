@@ -150,20 +150,46 @@ function voteMoves(input: DirectionInput): Map<DesignMove, MoveVote> {
   return votes;
 }
 
-function pickMoves(approach: DirectionApproach, method: CompositionMethod, votes: Map<DesignMove, MoveVote>, hasPicture: boolean, taken: Set<DesignMove>): DesignMove[] {
+/** Moves that suit any approach (they say little about the arrangement). */
+const UNIVERSAL: readonly DesignMove[] = ['SINGLE_FOCAL_POINT', 'MINIMAL_COPY', 'LOGO_SMALL_CORNER', 'LOGO_AS_SIGNOFF', 'CTA_AS_TEXT_LINE', 'CTA_BUTTON', 'TEXTURE_GRAIN', ...GROUPS[0]!];
+
+/** Moves native to an approach: the ones its methods and defaults are built from. */
+const nativeMoves = (approach: DirectionApproach): Set<DesignMove> =>
+  new Set<DesignMove>([...APPROACH_METHODS[approach].flatMap((m) => Object.keys(METHOD_AFFINITY[m]) as DesignMove[]), ...(Object.keys(APPROACH_DEFAULTS[approach]) as DesignMove[]), ...UNIVERSAL]);
+
+/** Moves a tone of voice rules out (a premium brand does not shout in complementary colours). */
+const TONE_EXCLUDED: Record<ToneOfVoice, readonly DesignMove[]> = {
+  premium: ['VIBRANT_COMPLEMENTARY', 'BADGE_STAMP', 'ILLUSTRATIVE_ELEMENTS', 'HANDWRITTEN_ACCENT'],
+  professional: ['HANDWRITTEN_ACCENT', 'ILLUSTRATIVE_ELEMENTS'],
+  energetic: ['MUTED_NATURAL_PALETTE'],
+  friendly: [],
+  warm: ['HIGH_CONTRAST_DUOTONE'],
+  playful: ['MONOCHROME_PALETTE'],
+};
+
+const MAX_MOVES = 5;
+
+function pickMoves(approach: DirectionApproach, method: CompositionMethod, votes: Map<DesignMove, MoveVote>, hasPicture: boolean, taken: Set<DesignMove>, input?: DirectionInput): DesignMove[] {
   const scores = new Map<DesignMove, number>();
   for (const [move, v] of votes) scores.set(move, v.weight);
   for (const [move, w] of Object.entries(APPROACH_DEFAULTS[approach])) scores.set(move as DesignMove, (scores.get(move as DesignMove) ?? 0) + w!);
   for (const [move, w] of Object.entries(METHOD_AFFINITY[method])) if (scores.has(move as DesignMove)) scores.set(move as DesignMove, scores.get(move as DesignMove)! + w! * 0.3);
   const pictureMoves: DesignMove[] = ['FULL_BLEED_IMAGE', 'LAYERED_TYPE_OVER_IMAGE', 'CUTOUT_PRODUCT_ON_COLOR', 'DETAIL_MACRO_CROP', 'HIGH_CONTRAST_DUOTONE', 'IMAGE_INSET_FRAME', 'PEOPLE_AS_HERO', 'PRODUCT_AS_HERO'];
+  const native = nativeMoves(approach);
+  const realProduct = input?.picture && ['VERIFIED_PRODUCT_PHOTO', 'REFERENCE_GUIDED_AI'].includes(input.picture.authenticity);
   const ranked = [...scores.entries()]
     .filter(([m]) => !EXCLUDED[approach].includes(m) && (hasPicture || !pictureMoves.includes(m)))
-    // A palette another direction already uses scores lower: three directions, three moods.
-    .map(([m, s]) => [m, GROUPS[0]!.includes(m) && taken.has(m) ? s * 0.4 : s] as const)
+    .filter(([m]) => !input || !TONE_EXCLUDED[input.tone].includes(m))
+    // A stand-in picture is never presented as the product itself.
+    .filter(([m]) => realProduct || !['PRODUCT_AS_HERO', 'CUTOUT_PRODUCT_ON_COLOR'].includes(m) || !hasPicture)
+    // Foreign moves count for little: an editorial direction is not built from image-overlay moves.
+    .map(([m, s]) => [m, native.has(m) ? s : s * 0.35] as const)
+    // What another direction already uses scores lower: three directions, three ideas, three moods.
+    .map(([m, s]) => [m, taken.has(m) && !['SINGLE_FOCAL_POINT', 'MINIMAL_COPY'].includes(m) ? s * (GROUPS[0]!.includes(m) ? 0.3 : 0.5) : s] as const)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const chosen: DesignMove[] = [];
   for (const [m, s] of ranked) {
-    if (s < 0.45 || chosen.length >= 7) break;
+    if (s < 0.45 || chosen.length >= MAX_MOVES) break;
     if (GROUPS.some((g) => g.includes(m) && g.some((x) => chosen.includes(x)))) continue;
     chosen.push(m);
   }
@@ -226,7 +252,7 @@ function influences(moves: readonly DesignMove[], votes: Map<DesignMove, MoveVot
     .sort((a, b) => b.moves.length - a.moves.length || a.referenceId.localeCompare(b.referenceId));
 }
 
-function emphasisFor(approach: DirectionApproach, method: CompositionMethod, input: DirectionInput): CreativeDirection['emphasis'] {
+export function emphasisFor(approach: DirectionApproach, method: CompositionMethod, input: DirectionInput): CreativeDirection['emphasis'] {
   if (method === 'PROMO_PRICE' || (approach === 'BOLD_GRAPHIC' && input.copy.price && input.goal === 'OFFER')) return 'PRICE';
   if (method === 'LOCAL_MODERN') return 'BRAND';
   if (approach === 'IMAGE_LED' && input.picture) return 'IMAGE';
@@ -245,6 +271,36 @@ function idea(approach: DirectionApproach, method: CompositionMethod, input: Dir
   }
 }
 
+/** Composes one direction's decisions for each format with the deterministic layout engine. */
+export function composeDirectionSpecs(
+  input: DirectionInput,
+  approach: DirectionApproach,
+  method: CompositionMethod,
+  moves: readonly DesignMove[],
+  typeSystem: TypeSystemId,
+  formats: readonly StaticAdFormat[],
+  emphasis: CreativeDirection['emphasis'] = emphasisFor(approach, method, input),
+): Record<string, CreativeDesignSpec> {
+  return Object.fromEntries(
+    formats.map((format) => [
+      format,
+      composeDesign({
+        format,
+        method,
+        moves,
+        typeSystem,
+        palette: derivePalette(input.brand.colors, moves),
+        copy: input.copy,
+        ...(input.picture ? { picture: input.picture } : {}),
+        ...(input.logoAssetId ? { logoAssetId: input.logoAssetId } : {}),
+        emphasis,
+      }),
+    ]),
+  );
+}
+
+export { APPROACH_METHODS, GROUPS as MOVE_GROUPS, EXCLUDED as APPROACH_EXCLUDED_MOVES };
+
 /**
  * Three directions for one concept, each composed for every requested format. If a composition cannot fit the
  * copy (UNRESOLVED), the next method of the same approach is tried ("use another arrangement") before reporting.
@@ -253,6 +309,7 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
   const formats = input.formats ?? ['4:5', '9:16'];
   const votes = voteMoves(input);
   const usedMethods = new Set<CompositionMethod>();
+  /** Every move an earlier direction used: later directions lean elsewhere. */
   const usedPalettes = new Set<DesignMove>();
   const usedTypes = new Set<TypeSystemId>();
   const keys = ['A', 'B', 'C'] as const;
@@ -261,31 +318,15 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
     const decisions: CreativeDirection['rationale'] = [];
     let { method, because } = chooseMethod(approach, votes, input, usedMethods);
     if (approach === 'IMAGE_LED' && !input.picture) decisions.push({ topic: 'picture', decision: 'No usable picture: the image-led direction is built from shapes and type', because: 'Kampora never invents a product photo silently; a picture can be added later.' });
-    let moves = pickMoves(approach, method, votes, Boolean(input.picture), usedPalettes);
+    let moves = pickMoves(approach, method, votes, Boolean(input.picture), usedPalettes, input);
     let typeSystem = chooseTypeSystem(approach, moves, input.tone, usedTypes);
     const palette = derivePalette(input.brand.colors, moves);
-    const compose = (m: CompositionMethod, mv: DesignMove[]): Record<string, CreativeDesignSpec> =>
-      Object.fromEntries(
-        formats.map((format) => [
-          format,
-          composeDesign({
-            format,
-            method: m,
-            moves: mv,
-            typeSystem,
-            palette: derivePalette(input.brand.colors, mv),
-            copy: input.copy,
-            ...(input.picture ? { picture: input.picture } : {}),
-            ...(input.logoAssetId ? { logoAssetId: input.logoAssetId } : {}),
-            emphasis: emphasisFor(approach, m, input),
-          }),
-        ]),
-      );
+    const compose = (m: CompositionMethod, mv: DesignMove[]) => composeDirectionSpecs(input, approach, m, mv, typeSystem, formats);
     let specs = compose(method, moves);
     if (Object.values(specs).some((s) => s.fit.status === 'UNRESOLVED')) {
       const alt = chooseMethod(approach, votes, input, new Set([...usedMethods, method]));
       if (alt.method !== method) {
-        const altMoves = pickMoves(approach, alt.method, votes, Boolean(input.picture), usedPalettes);
+        const altMoves = pickMoves(approach, alt.method, votes, Boolean(input.picture), usedPalettes, input);
         const altSpecs = compose(alt.method, altMoves);
         const unresolved = (x: Record<string, CreativeDesignSpec>) => Object.values(x).filter((s) => s.fit.status === 'UNRESOLVED').length;
         if (unresolved(altSpecs) < unresolved(specs)) {
@@ -301,7 +342,7 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
     }
     usedMethods.add(method);
     usedTypes.add(typeSystem);
-    for (const m of moves) if (['BRAND_COLOR_FLOOD', 'MONOCHROME_PALETTE', 'MUTED_NATURAL_PALETTE', 'VIBRANT_COMPLEMENTARY', 'DARK_MOODY'].includes(m)) usedPalettes.add(m);
+    for (const m of moves) usedPalettes.add(m);
     const refs = influences(moves, votes, input);
     decisions.unshift(
       { topic: 'composition method', decision: method, because },

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { QualityTierSchema } from './common';
 import { VoiceStyleSchema } from './narration';
+import { DesignMoveSchema } from './creative-design';
 
 export const CampaignGoalSchema = z.enum(['LEADS', 'SALES', 'PRODUCT_PROMO', 'OFFER', 'AWARENESS']);
 export type CampaignGoal = z.infer<typeof CampaignGoalSchema>;
@@ -127,6 +128,22 @@ export const ConceptCopySchema = z.object({
 });
 export type ConceptCopy = z.infer<typeof ConceptCopySchema>;
 
+/**
+ * The concept's visual idea, written by the Copywriter/Strategist together with the words: what the ad should
+ * look like and why. The Art Director reads it as one vote among the references, never as layout code.
+ */
+export const ConceptDesignIntentSchema = z.object({
+  /** One Hebrew sentence: the picture or graphic idea that carries the message. */
+  visualIdea: z.string().min(1),
+  /** Up to four design moves the idea implies (vocabulary of the reference library). */
+  designMoves: z.array(DesignMoveSchema).max(4),
+  /** What the viewer must notice first. */
+  emphasis: z.enum(['HEADLINE', 'PRICE', 'IMAGE', 'BRAND']),
+  /** A short line above the headline (place, category, occasion), or absent. */
+  eyebrow: z.string().trim().min(1).max(40).optional(),
+});
+export type ConceptDesignIntent = z.infer<typeof ConceptDesignIntentSchema>;
+
 export const CreativeConceptSchema = z.object({
   key: z.string().min(1),
   title: z.string().min(1),
@@ -145,6 +162,8 @@ export const CreativeConceptSchema = z.object({
   strategy: ConceptStrategySchema.optional(),
   /** Written copy and copywriting metadata. Concepts stored before the Copywriter upgrade do not have it. */
   copy: ConceptCopySchema.optional(),
+  /** Visual idea and design intent (Q7). Concepts stored before it do not have it. */
+  design: ConceptDesignIntentSchema.optional(),
 });
 export type CreativeConcept = z.infer<typeof CreativeConceptSchema>;
 

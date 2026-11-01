@@ -26,7 +26,8 @@ export const CriterionResultSchema = z.object({
   /** 1 (weak) – 5 (strong). Null: not applicable to this piece of work. */
   score: z.number().int().min(1).max(5).nullable(),
   /** DETERMINISTIC: a measured check. LLM_OPINION: a model's judgement, never proof of quality. */
-  method: z.enum(['DETERMINISTIC', 'LLM_OPINION']),
+  /** HEURISTIC: a measured pattern that suggests a creative weakness; advisory, never a verdict. */
+  method: z.enum(['DETERMINISTIC', 'LLM_OPINION', 'HEURISTIC']),
   explanation: z.string(),
   evidence: z.array(z.string()),
   severity: CritiqueSeveritySchema,
@@ -111,3 +112,28 @@ export const CreativeFeedbackInputSchema = z.object({
   note: z.string().trim().max(1000).optional(),
 });
 export type CreativeFeedbackInput = z.infer<typeof CreativeFeedbackInputSchema>;
+
+/**
+ * Critic 2.0 keeps three things apart that must never be confused:
+ *  - technical QA: measured, blocking checks (fit, overlap, contrast, facts, duplicated price);
+ *  - creative analysis: heuristics and model opinions, advisory only, never proof of quality;
+ *  - human approval: only a person decides that the work is good.
+ * A technical PASS says the ad is correct, not that it is professional.
+ */
+export const HumanApprovalSchema = z.object({
+  status: z.enum(['PENDING', 'APPROVED', 'CHANGES_REQUESTED', 'REJECTED']),
+  decidedBy: z.string().optional(),
+  decidedAt: z.string().optional(),
+  note: z.string().max(1000).optional(),
+});
+export type HumanApproval = z.infer<typeof HumanApprovalSchema>;
+
+export const CreativeReviewSchema = z.object({
+  subject: CritiqueSubjectSchema,
+  technical: z.object({ verdict: z.enum(['PASS', 'REVISE']), results: z.array(CriterionResultSchema) }),
+  creative: z.object({ advisory: z.literal(true), results: z.array(CriterionResultSchema) }),
+  human: HumanApprovalSchema,
+  /** The bounded revision history that produced this version. */
+  history: ReviewHistorySchema.optional(),
+});
+export type CreativeReview = z.infer<typeof CreativeReviewSchema>;

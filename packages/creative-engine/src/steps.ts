@@ -184,6 +184,8 @@ const CONCEPTS_SYSTEM = [
   'recommendedIndex: the concept most likely to achieve the brief goal; explain why in recommendationReason (Hebrew).',
   'Written copy is separate from the spoken script: headline (3–7 words, readable in one second, not a transcript of the hook) and subheadline (optional, one short supporting line) are what static ads and title cards show. hookTechnique: the technique the hook uses, different in each concept. claimsUsed: the approved claims the concept relies on, quoted exactly (empty if none).',
   'Use <strategy>: build on its value proposition and reasons to believe; treat inferred items as hypotheses; never assume anything listed under unknown.',
+  'Words and picture are one idea. visualIdea: what a static ad of this concept looks like (one Hebrew sentence a designer can act on, e.g. "הספל מצולם מלמעלה על השיש, המחיר גדול בצד השקט"). designMoves: up to 4 moves that idea implies; the three concepts should not lean on the same moves. emphasis: PRICE only when the offer itself is the news, IMAGE when the picture carries the idea, BRAND for place/name-led local ads, otherwise HEADLINE. eyebrow: a 2–5 word line above the headline (place, category, occasion) or null.',
+  'Say the price ONCE per ad: the design sets the price as its own element, so do not repeat it in both headline and subheadline. The CTA is a specific action in the audience\'s words ("קבעי שיעור ניסיון", "קפצו לבוקר"), not "לפרטים נוספים". Avoid translated-English phrasing such as "בואו לגלות", "אנחנו כאן בשבילכם", "החוויה האולטימטיבית".',
 ].join('\n');
 
 /** System prompt: the fixed rules plus only the expertise relevant to this goal and industry. */
@@ -242,6 +244,12 @@ function toConceptSet(output: ConceptSetLlm, target: number): ConceptSet {
           headlineWords: words(c.headline),
         },
         playbookVersion: playbookTag(COPYWRITING_PLAYBOOK),
+      },
+      design: {
+        visualIdea: c.visualIdea.trim(),
+        designMoves: [...new Set(c.designMoves)].slice(0, 4),
+        emphasis: c.emphasis,
+        eyebrow: c.eyebrow?.trim() || undefined,
       },
     })),
     recommendedKey: output.concepts[output.recommendedIndex]?.angle.toLowerCase().replace(/_/g, '-'),

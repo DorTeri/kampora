@@ -51,6 +51,22 @@ const LIFESTYLE_HOOK: Record<string, string> = {
   'beauty-wellness': 'שעה אחת של שקט באמצע השבוע',
 };
 
+/** The mock writes the words first; the design intent is added per hook technique, as a copywriter would brief it. */
+type MockConcept = Omit<ConceptLlm, 'visualIdea' | 'designMoves' | 'emphasis' | 'eyebrow'>;
+
+const DESIGN_BY_HOOK: Record<ConceptLlm['hookTechnique'], Pick<ConceptLlm, 'visualIdea' | 'designMoves' | 'emphasis'>> = {
+  OFFER_FIRST: { visualIdea: 'מה שמקבלים, מצולם מקרוב על משטח שקט; המחיר גדול ככותרת בצד הריק.', designMoves: ['PRICE_AS_GRAPHIC', 'PRODUCT_AS_HERO', 'SINGLE_FOCAL_POINT'], emphasis: 'PRICE' },
+  QUESTION: { visualIdea: 'השאלה עצמה בגדול, כמעט כמו שלט; תמונה קטנה ושקטה של הרגע שהיא מתארת.', designMoves: ['OVERSIZED_HEADLINE', 'GENEROUS_NEGATIVE_SPACE', 'ASYMMETRIC_GRID'], emphasis: 'HEADLINE' },
+  BOLD_STATEMENT: { visualIdea: 'משפט אחד על שדה צבע של המותג, בלי תמונה שמתחרה בו.', designMoves: ['TYPE_AS_IMAGE', 'BRAND_COLOR_FLOOD', 'MINIMAL_COPY'], emphasis: 'HEADLINE' },
+  PATTERN_INTERRUPT: { visualIdea: 'תמונה של רגע יומיומי, חתוכה באופן לא צפוי; הטקסט נשען על הקצה השקט שלה.', designMoves: ['FULL_BLEED_IMAGE', 'SINGLE_FOCAL_POINT', 'MINIMAL_COPY'], emphasis: 'IMAGE' },
+  FIRST_PERSON: { visualIdea: 'אנשים אמיתיים במקום, בגובה העיניים; הכותרת כציטוט קצר.', designMoves: ['PEOPLE_AS_HERO', 'FULL_BLEED_IMAGE', 'CTA_AS_TEXT_LINE'], emphasis: 'IMAGE' },
+  SENSORY_DETAIL: { visualIdea: 'פרט אחד בתקריב (קצף, קרום, מרקם) ממלא את הפריים; מעט מילים.', designMoves: ['DETAIL_MACRO_CROP', 'FULL_BLEED_IMAGE', 'MINIMAL_COPY'], emphasis: 'IMAGE' },
+  CONTRAST: { visualIdea: 'שני חצאים: לפני ואחרי, או שתי אפשרויות, זו מול זו.', designMoves: ['SPLIT_PANEL', 'Z_READING_PATH'], emphasis: 'HEADLINE' },
+  HOW_TO: { visualIdea: 'מבנה עריכתי נקי: כותרת סריפית, שורת פתיח וקווים דקים, כמו עמוד במגזין.', designMoves: ['SERIF_EDITORIAL', 'RULE_LINES', 'GENEROUS_NEGATIVE_SPACE', 'CTA_AS_TEXT_LINE'], emphasis: 'HEADLINE' },
+};
+
+const withDesign = (c: MockConcept, eyebrow: string | null): ConceptLlm => ({ ...c, ...DESIGN_BY_HOOK[c.hookTechnique], eyebrow });
+
 const MOCK_PRICE = DEFAULT_PRICE_CATALOG.find(
   (e) => e.provider === 'mock' && e.operation === 'LLM_COMPLETION',
 )!;
@@ -113,7 +129,7 @@ export class MockCreativeLlmProvider implements LlmProvider {
     };
 
     // A: the offer itself (offer goals), otherwise the audience's own question.
-    const offerConcept: ConceptLlm | undefined = offer
+    const offerConcept: MockConcept | undefined = offer
       ? {
           ...typeDefaults('OFFER_DRIVEN'),
           ...base,
@@ -137,7 +153,7 @@ export class MockCreativeLlmProvider implements LlmProvider {
         }
       : undefined;
 
-    const question: ConceptLlm = {
+    const question: MockConcept = {
       ...typeDefaults('PROBLEM_SOLUTION'),
       ...base,
       title: 'השאלה של הקהל',
@@ -163,7 +179,7 @@ export class MockCreativeLlmProvider implements LlmProvider {
       : [question, third, this.firstPerson(business.name, brief, claimB ?? claimA, ctas[0]!)];
     const recommendedIndex = 0;
     return {
-      concepts,
+      concepts: concepts.map((c) => withDesign(c, business.city ? `${business.name} · ${business.city}` : null)),
       recommendedIndex,
       recommendationReason: offerConcept
         ? 'המטרה היא מבצע, וכשהמחיר ברור כבר בפתיחה התגובה בדרך כלל גבוהה יותר.'
@@ -178,7 +194,7 @@ export class MockCreativeLlmProvider implements LlmProvider {
     industryId: string,
     claim: string | undefined,
     cta: string,
-  ): ConceptLlm {
+  ): MockConcept {
     const common = { audience: brief.audience, cta, complexity: 'MEDIUM' as const, estimatedDurationSec: 20 };
     if (brief.goal === 'LEADS') {
       return {
@@ -248,7 +264,7 @@ export class MockCreativeLlmProvider implements LlmProvider {
     brief: ReturnType<typeof ConceptsStepInputSchema.parse>['brief'],
     claim: string | undefined,
     cta: string,
-  ): ConceptLlm {
+  ): MockConcept {
     return {
       ...typeDefaults('UGC'),
       audience: brief.audience,

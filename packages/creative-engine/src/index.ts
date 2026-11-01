@@ -19,3 +19,5 @@ export * from './critic/video';
 export * from './critic/revisions';
 export * from './critic/opinion';
 export * from './art-director-v2';
+export * from './creative-direction';
+export * from './critic/composition';
