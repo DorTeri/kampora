@@ -61,8 +61,8 @@ Durable state so work can resume without rediscovery. Updated at each checkpoint
 ## Honest limits
 - No reference is IMAGES_VIEWED (text-grounded analyses only); typography is rarely described in sources;
   only 1–2 Israeli references.
-- Demo copy is the Q6 real OpenAI pilot copy; pictures are cached AI stand-ins; Pilates has no photo, so its
-  video scenes are gradients (weak). The motion preview is silent. The storyboard is derived deterministically.
+- Demo copy is the Q6 real OpenAI pilot copy; pictures are cached AI stand-ins; Pilates had no photo at the time, so its
+  video scenes were gradients (since replaced by 3 approved AI demonstration photos, see below). The motion preview is silent. The storyboard is derived deterministically.
 - Technical PASS is not professional acceptance; that needs the owner's review.
 
 ## Scripts (gitignored `out/scripts/`)
@@ -83,4 +83,6 @@ Durable state so work can resume without rediscovery. Updated at each checkpoint
       renders, motion previews. Studio review page shows seen vs text-only references, corrections, the copy
       revision and the trace.
 - [ ] Owner review of the showcase and the revised copy (not claimed).
-- [ ] Pilates photography: priced (≈$0.12 medium / ≈$0.50 high for 3 images), awaiting approval.
+- [x] Pilates photography: 3 AI demonstration photos, approved by the owner in chat (gpt-image-2 medium, 3 calls,
+      ≈$0.123 estimated; exact charge on the OpenAI usage page). Script `out/scripts/q7-pilates-photos.mjs`
+      (gitignored, hard-capped at 3 calls, never regenerates). Not the real studio; labelled in the Studio.

@@ -22,13 +22,13 @@ For every direction the trace reruns the real Art Director and layout engine:
 | Luz A · IMAGE_FIRST | film grain 0.08 | loses MINIMAL_COPY, TEXTURE_GRAIN, LOGO_SMALL_CORNER | without Burger King: no full-bleed photo, generous negative space instead |
 | Luz B · EDITORIAL | grain; two rule lines | serif + text-line CTA + muted palette instead of grain, negative space | without Wim Bakery: no rule lines, a serif face and logo sign-off instead |
 | **Luz C · BOLD_TYPE** (recommended) | the whole colour system: dark brand flood instead of cream, white type, accent ring | **becomes PROMO_PRICE** with oversized headline and price-as-graphic | **without Wim Bakery alone: the method flips to PROMO_PRICE** and the type system changes |
-| Pilates A · ASYMMETRIC | **nothing drawn** (SPLIT_PANEL, COLLAGE_GRID are recorded but this method does not draw them) | gains OVERSIZED_HEADLINE instead | without Sweaty Betty: centred hero instead of a corner logo |
+| Pilates A · IMAGE_FIRST (with photos) | **nothing drawn** (PEOPLE_AS_HERO, SPLIT_PANEL, COLLAGE_GRID are recorded; the 4:5 page is identical without them) | gains FULL_BLEED_IMAGE, OVERSIZED_HEADLINE, SINGLE_FOCAL_POINT | without Bon Elliot: method becomes LIFESTYLE; without Equinox: SPLIT |
 | Pilates B · EDITORIAL (recommended) | **nothing drawn** (SERIF_EDITORIAL, SPLIT_PANEL are recorded, not drawn) | rule lines and a text-line CTA instead | without Coco: collage grid instead of an understated price |
 | **Pilates C · BOLD_TYPE** | brand-colour flood with light type | loses TYPE_AS_IMAGE, CONDENSED_DISPLAY | **without Not A Phase: the condensed face (Karantina) becomes a bold geometric sans** |
 
 Honest reading: for four of the six directions the references cause visible, attributable decisions. For Pilates
 A and B, the references' extra moves are not implemented by those two composition methods, so they change the
-record but not the page. That is a gap in the composer, not a hidden success. Closing it means adding
+record but not the page (for A, single references do decide the method, but the chosen method draws the same page). That is a gap in the composer, not a hidden success. Closing it means adding
 SPLIT_PANEL/COLLAGE_GRID behaviour to ASYMMETRIC and EDITORIAL. Not done in Q7.
 
 **Originality:** the highest overlap between a direction's set of moves and any single reference is 0.23–0.57
@@ -41,7 +41,13 @@ beyond abstract moves.
 Full resolution: `out/q7/showcase/{luz,pilates}/{A,B,C}-{4x5,9x16}.png` (1080×1350, 1080×1920).
 Sheets: `out/q7/showcase/{luz,pilates}-q6-vs-q7-4x5.jpg`, `…-q7-9x16.jpg`, `…-reference-effect.jpg`.
 Motion previews: `luz/motion-preview.mp4` (15.5 s, captions, composed end card), `pilates/motion-preview.mp4`
-(9 s, the composed design built up in reading order; no photo exists).
+(14.6 s, now with the approved photos).
+
+Pilates photos (owner-approved 2026-11-01): 3 × gpt-image-2 medium, 1024×1536, ≈$0.041 each, **≈$0.123 estimated**
+(the exact charge is on the OpenAI usage page). Hero, detail and group shots of a fictional Haifa reformer studio.
+They are **AI demonstration photos, not the real studio or its clients**, and are labelled so in the Studio. The
+ranker picked the group shot (score 28) for all three directions. With a photo, A switched from ASYMMETRIC to
+IMAGE_FIRST (people as hero) and C uses it in an arch mask; B (still recommended) puts it above an editorial text block.
 
 Copy was revised from Q6 offline, from the approved claims only, with no model call. It awaits owner approval.
 - Luz: "קפה ומאפה בדרך לעבודה" / "קולים את הפולים בעצמנו. מאפים טריים כל בוקר." / 29.90 ₪ "קפה + מאפה · עד סוף
@@ -65,9 +71,11 @@ Fixed during this inspection:
 
 Still open, for the reviewer:
 - **Luz photography is an AI stand-in** (cached Q6 picture), labelled in the Studio. It is not the café.
-- **Pilates has no photography.** A (asymmetric) is designed around a picture and is the weakest without one.
-  B and C are type-led directions that do not need a photo. A 3-photo set is priced at ≈$0.12 (medium) / ≈$0.50
-  (high) and is **not** generated: it needs your approval.
+- **Pilates photography is AI demonstration only** (3 approved photos), not the studio. Real photos should replace it.
+- Pilates A: the headline sits over the class (behind a scrim). It reads at full size, but it crosses the people.
+  Judge whether the type should move into the calm wall area instead.
+- Pilates B 9:16 leaves about a fifth of the frame empty under the CTA, and the price sits apart on the left.
+- Pilates C: the arch photo is small and leaves a wide empty field beside it; deliberate, but judge it.
 - Pilates B's small grey brand name next to the eyebrow is weak; the eyebrow already names the studio.
 - Luz C's accent ring is a stylistic decision that could read as decoration; judge it in context.
 - Luz C 9:16 reports SHORTER_COPY_SUGGESTED (the headline sits at full size; the engine suggests ≤12-character
