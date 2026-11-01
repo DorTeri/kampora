@@ -104,6 +104,12 @@ interface Block {
   tight?: boolean;
 }
 
+/** Hebrew has no capitals to space out: wide tracking breaks its words apart, so Hebrew lines keep it slight. */
+const HEBREW = /[֐-׿]/;
+const HEBREW_MAX_TRACKING = 0.03;
+const tracked = (b: Block): Block =>
+  HEBREW.test(b.text) && b.font.letterSpacing > HEBREW_MAX_TRACKING ? { ...b, font: { ...b.font, letterSpacing: HEBREW_MAX_TRACKING } } : b;
+
 class Ctx {
   readonly W: number;
   readonly H: number;
@@ -242,11 +248,15 @@ class Ctx {
   stack(region: Rect, blocks: Block[], vAlign: 'TOP' | 'BOTTOM' | 'CENTER' = 'TOP'): { used: number; ids: string[] } {
     const placed: { block: Block; lines: string[]; size: number; w: number; h: number; ratio: number }[] = [];
     let used = 0;
-    for (const b of blocks) {
+    for (const [i, raw] of blocks.entries()) {
+      const b = tracked(raw);
       const pad = b.box ? { x: b.box.padX, y: b.box.padY } : { x: 0, y: 0 };
       const arrowW = b.arrow ? b.font.size * 1.1 : 0;
       const maxWidth = Math.min(region.w, b.maxWidth ?? region.w) - 2 * pad.x - arrowW;
-      const remaining = Math.max(b.font.size * b.font.lineHeight, region.h - used - b.gap - 2 * pad.y);
+      // A block that grows to fill its space leaves room for the blocks after it (not measured inside measure()).
+      const next = blocks[i + 1];
+      const after = b.fill && next && region.h < 50000 ? this.measure(region.w, blocks.slice(i + 1)) + next.gap : 0;
+      const remaining = Math.max(b.font.size * b.font.lineHeight, region.h - used - b.gap - 2 * pad.y - after);
       const minRatio = Math.min(b.minRatio ?? (b.role === 'HEADLINE' ? 0.92 : 0.9), this.relax >= 3 ? 0.75 : this.relax >= 2 ? 0.82 : 1);
       const fitted = b.fill
         ? fillText({ text: b.text, font: b.font, maxWidth, maxHeight: remaining, maxLines: b.maxLines ?? 3, min: b.fill.min * (this.relax >= 3 ? 0.78 : this.relax >= 2 ? 0.85 : 1), max: b.fill.max * (this.relax >= 1 ? 0.92 : 1) })
@@ -258,7 +268,9 @@ class Ctx {
       const w = (b.tight ? fitted.width + arrowW : maxWidth + arrowW) + 2 * pad.x;
       const h = fitted.height + 2 * pad.y;
       used += (placed.length ? b.gap : 0) + h;
-      placed.push({ block: b, lines: fitted.lines, size: fitted.size, w, h, ratio });
+      // A separator dot belongs between two phrases on one line; where the line breaks, the break replaces it.
+      const lines = fitted.lines.length > 1 ? fitted.lines.map((l) => l.replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '')) : fitted.lines;
+      placed.push({ block: b, lines, size: fitted.size, w, h, ratio });
     }
     this.overflow += Math.max(0, used - region.h);
     let y = vAlign === 'TOP' ? region.y : vAlign === 'BOTTOM' ? region.y + region.h - used : region.y + (region.h - used) / 2;
@@ -308,10 +320,15 @@ class Ctx {
   headline(color: string, align: Block['align'], opts: { scale?: number; fill?: { min: number; max: number }; maxLines?: number; gap?: number; maxWidth?: number; box?: Block['box'] } = {}): Block {
     let text = this.input.copy.headline;
     const words = text.split(' ');
-    // Stacked: one word per line for up to three words, pairs for four.
-    if (this.has('STACKED_HEADLINE') && words.length <= 3) text = words.join('\n');
-    else if (this.has('STACKED_HEADLINE') && words.length === 4) text = `${words[0]} ${words[1]}\n${words[2]} ${words[3]}`;
-    const size = Math.round(this.B.headline * (opts.scale ?? 1) * (this.has('OVERSIZED_HEADLINE') ? 1.18 : 1));
+    // Stacked: one word per line for up to three words, pairs for four. Stacking is a style, not a size: it is the
+    // first thing given up when the copy needs room, before any type gets smaller.
+    const stacked = this.has('STACKED_HEADLINE') && this.relax === 0;
+    if (stacked && words.length <= 3) text = words.join('\n');
+    else if (stacked && words.length === 4) text = `${words[0]} ${words[1]}\n${words[2]} ${words[3]}`;
+    // When the price leads, the headline is planned to stop short of the price numeral: two heroes is no hero.
+    const cap = this.input.emphasis === 'PRICE' && this.input.copy.price && !this.has('BADGE_STAMP') ? this.B.price * 1.25 * 0.82 : Infinity;
+    const size = Math.round(Math.min(cap, this.B.headline * (opts.scale ?? 1) * (this.has('OVERSIZED_HEADLINE') ? 1.18 : 1)));
+    const fill = opts.fill && { min: Math.min(cap, opts.fill.min), max: Math.min(cap, opts.fill.max) };
     return {
       role: 'HEADLINE',
       text,
@@ -320,7 +337,7 @@ class Ctx {
       align,
       gap: opts.gap ?? this.gap(24),
       maxLines: opts.maxLines ?? 4,
-      ...(opts.fill ? { fill: opts.fill } : {}),
+      ...(fill ? { fill } : {}),
       ...(opts.maxWidth ? { maxWidth: opts.maxWidth } : {}),
       ...(opts.box ? { box: opts.box, tight: true } : {}),
     };
@@ -515,21 +532,25 @@ const ASYMMETRIC: Method = (c) => {
   const hasPic = Boolean(c.input.picture);
   if (c.tall) {
     const picH = H * (c.relax >= 1 ? 0.4 : 0.46);
-    const field = mixHex(pal.background, pal.ink, 0.14);
+    // A pale tonal field read as a missing photo; a deep block in the brand's ink reads as a decision.
+    const field = mixHex(pal.ink, pal.background, 0.12);
     // The address sits on the picture's top band: darken that band so white type reads on any photo.
     if (hasPic) c.image({ x: 0, y: H - picH, w: W, h: picH }, { mask: 'SLANT_START', overlay: { direction: 'TOP', color: '#000000', from: 0.62, to: 0 } });
     else {
-      // No picture: a tonal field takes its place, cut by an accent rule; the grid stays asymmetric.
+      // No picture: a deep colour block takes its place, cut by an accent rule; the grid stays asymmetric.
       c.shape({ shape: 'RECT', rect: { x: W * 0.18, y: H - picH, w: W * 0.82, h: picH }, fill: field });
       c.shape({ shape: 'RECT', rect: { x: W * 0.18, y: H - picH, w: W * 0.3, h: 16 }, fill: pal.accent });
     }
     c.logo({ x: F.x, y: F.y, w: F.w, h: c.B.brand * 1.3 }, 'WORDMARK', ink);
-    const region = { x: F.x, y: F.y + c.B.brand * 1.3 + c.gap(40), w: F.w * 0.92, h: H - picH - F.y - c.B.brand * 1.3 - c.gap(60) };
-    const s = c.stack(region, [...c.eyebrow(pal.accent), c.headline(ink, 'START', { scale: 1.05, gap: c.input.copy.eyebrow ? c.gap(18) : 0 }), ...c.sub(pal.muted, 'START'), ...c.price(ink, 'START', pal.muted)], 'TOP');
     // The action sits on the picture's slanted edge; the address goes under it, on the picture's calm band.
     const ctaBlocks = c.cta('BUTTON', 'START', hasPic ? '#ffffff' : readableOn(field, [pal.ink, '#ffffff', '#111111'])).map((b, i) => (i === 0 ? { ...b, gap: 0 } : b));
     const ctaH = c.measure(F.w, ctaBlocks);
-    const cta = c.stack({ x: F.x, y: Math.min(H - picH - c.B.cta, F.y + F.h - ctaH), w: F.w, h: ctaH }, ctaBlocks, 'TOP');
+    const ctaY = Math.min(H - picH - c.B.cta, F.y + F.h - ctaH);
+    // The copy ends above the action, so a large price numeral can never run into the button.
+    const regionY = F.y + c.B.brand * 1.3 + c.gap(40);
+    const region = { x: F.x, y: regionY, w: F.w * 0.92, h: Math.min(H - picH - F.y - c.B.brand * 1.3 - c.gap(60), ctaY - c.gap(24) - regionY) };
+    const s = c.stack(region, [...c.eyebrow(pal.accent), c.headline(ink, 'START', { scale: 1.05, gap: c.input.copy.eyebrow ? c.gap(18) : 0 }), ...c.sub(pal.muted, 'START'), ...c.price(ink, 'START', pal.muted)], 'TOP');
+    const cta = c.stack({ x: F.x, y: ctaY, w: F.w, h: ctaH }, ctaBlocks, 'TOP');
     c.path.push(...s.ids, ...cta.ids);
   } else {
     const picW = W * (c.relax >= 1 ? 0.38 : 0.44);

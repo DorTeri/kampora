@@ -41,6 +41,31 @@ describe('layout engine', () => {
     expect(unresolved).toEqual([]);
   });
 
+  it('a headline that grows to fill its space leaves room for the lines under it', () => {
+    // Bold type with a picture in 9:16 used to let the headline take the whole region and push the subheadline out,
+    // then report the copy as too long.
+    const spec = compose('BOLD_TYPE', '9:16', ['BRAND_COLOR_FLOOD', 'STACKED_HEADLINE', 'MINIMAL_COPY', 'SINGLE_FOCAL_POINT', 'OVERSIZED_HEADLINE']);
+    expect(['FITS', 'REFLOWED']).toContain(spec.fit.status);
+    expect(spec.fit.headlineRatio).toBe(1);
+    const text = spec.layers.flatMap((l) => (l.kind === 'text' ? [l] : []));
+    const head = text.find((l) => l.role === 'HEADLINE')!;
+    const sub = text.find((l) => l.role === 'SUBHEADLINE')!;
+    expect(sub.rect.y).toBeGreaterThanOrEqual(head.rect.y + head.rect.h);
+  });
+
+  it('Hebrew lines are never widely tracked, whatever the type system asks for', () => {
+    for (const typeSystem of ['LUXURY_SERIF', 'EDITORIAL_SERIF', 'MODERN_SANS'] as const) {
+      const spec = composeDesign({ format: '4:5', method: 'EDITORIAL', moves: [], typeSystem, palette: derivePalette(LUZ, []), copy: COPY, picture, logoAssetId: 'logo', emphasis: 'HEADLINE' });
+      for (const l of spec.layers) if (l.kind === 'text' && /[֐-׿]/.test(l.text)) expect(l.font.letterSpacing, `${typeSystem} ${l.role}`).toBeLessThanOrEqual(0.03);
+    }
+  });
+
+  it('when the price leads, the headline is planned smaller than the price numeral', () => {
+    const spec = composeDesign({ format: '4:5', method: 'BOLD_TYPE', moves: ['OVERSIZED_HEADLINE'], typeSystem: 'MODERN_SANS', palette: derivePalette(LUZ, []), copy: COPY, logoAssetId: 'logo', emphasis: 'PRICE' });
+    const size = (role: string) => spec.layers.flatMap((l) => (l.kind === 'text' && l.role === role ? [l.font.size] : []))[0]!;
+    expect(size('HEADLINE')).toBeLessThan(size('PRICE'));
+  });
+
   it('methods produce genuinely different arrangements', () => {
     const headlineBoxes = CompositionMethodSchema.options.map((m) => {
       const l = compose(m, '4:5').layers.find((x) => x.kind === 'text' && x.role === 'HEADLINE')!;

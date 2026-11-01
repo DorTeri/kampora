@@ -298,8 +298,10 @@ export function applyCreativeChange(input: DirectionInput, set: CreativeDirectio
           break;
         }
         d.emphasis = 'PRICE';
-        d.moves = editMoves(d.moves, ['PRICE_AS_GRAPHIC'], ['PRICE_UNDERSTATED', 'BADGE_STAMP'], excluded.filter((m) => m !== 'PRICE_AS_GRAPHIC'));
-        changes.push(request('ART_DIRECTOR', ['OFFER_COMMUNICATION'], 'להבליט את המחיר', 'FREE', 'APPLIED', `המחיר ${input.copy.price.price} הפך למוקד: ספרה גדולה בגופן התצוגה. המחיר עצמו לא השתנה`));
+        // Two heroes is no hero: moves that make the headline the image step back so the price can lead.
+        const yielded = d.moves.filter((m) => m === 'OVERSIZED_HEADLINE' || m === 'TYPE_AS_IMAGE');
+        d.moves = editMoves(d.moves, ['PRICE_AS_GRAPHIC'], ['PRICE_UNDERSTATED', 'BADGE_STAMP', ...yielded], excluded.filter((m) => m !== 'PRICE_AS_GRAPHIC'));
+        changes.push(request('ART_DIRECTOR', ['OFFER_COMMUNICATION'], 'להבליט את המחיר', 'FREE', 'APPLIED', `המחיר ${input.copy.price.price} הפך למוקד: ספרה גדולה בגופן התצוגה${yielded.length ? ', והכותרת קטנה מהמחיר' : ''}. המחיר עצמו לא השתנה`));
         break;
       }
       case 'BIGGER_HEADLINE': {
