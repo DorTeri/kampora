@@ -67,3 +67,20 @@ Durable state so work can resume without rediscovery. Updated at each checkpoint
 
 ## Scripts (gitignored `out/scripts/`)
 - `q7-smoke.mjs` renders a few specs → `out/q7/smoke/`; `q7-sweep.mjs` composes 2,700 combinations (no render).
+
+## Q7 final acceptance & hardening (2026-11-01)
+- [x] Docker recovered without touching data. Root cause: Docker Desktop crashed removing stale 0-byte socket
+      files under `%LOCALAPPDATA%\Docker\run` ("The file cannot be accessed by the system"). They were removed via
+      WSL (`rm -f`), and Docker came up. The 22 DB integration tests now run; nothing was skipped.
+- [x] Reference visual verification: 29/30 viewed, 83 corrections, evidence-weighted votes
+      (`docs/Q7_REFERENCE_VERIFICATION.md`). `scripts/apply-visual-verification.mjs` folds findings in.
+- [x] Reference influence proof: `packages/creative-engine/src/reference-trace.ts` (+ tests). Per-direction
+      results and the known gap (Pilates A/B moves recorded, not drawn) are in `docs/Q7_QUALITY_ACCEPTANCE.md`.
+- [x] Composer fixes found by inspecting the full-resolution renders: fill blocks reserve room for what follows,
+      stacking yields before size, the headline stops short of a leading price, the ASYMMETRIC 9:16 CTA
+      collision, Hebrew tracking ≤ 0.03em, dangling separators, and the no-photo colour block.
+- [x] Showcase re-rendered (`out/scripts/q7-showcase.mjs`, gitignored): revised copy, with/without-reference
+      renders, motion previews. Studio review page shows seen vs text-only references, corrections, the copy
+      revision and the trace.
+- [ ] Owner review of the showcase and the revised copy (not claimed).
+- [ ] Pilates photography: priced (≈$0.12 medium / ≈$0.50 high for 3 images), awaiting approval.
