@@ -187,7 +187,8 @@ describe('sample-exact slicing', () => {
     const cuts = [0, 0.5, 1.2, 2.0];
     const clips = slicePcm(pcm, rate, cuts);
     expect(clips.map((c) => (c.length - 44) / 2)).toEqual([24_000, 33_600, 38_400]);
-    expect(Buffer.concat(clips.map((c) => c.subarray(44)))).toEqual(pcm);
+    // Buffer.equals, not toEqual: a deep compare of 96k samples is slow enough to time out under parallel load.
+    expect(Buffer.concat(clips.map((c) => c.subarray(44))).equals(pcm)).toBe(true);
   });
 
   it('records with the mock voice, decodes with ffmpeg and cuts it into scene clips', async () => {

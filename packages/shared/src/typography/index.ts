@@ -188,7 +188,7 @@ export function tokenize(text: string): string[] {
   for (const w of raw) {
     const prev = out[out.length - 1];
     if (prev !== undefined && (/^[₪%]$/.test(w) || /^₪$/.test(prev) || /^[\d.,]+$/.test(prev) && /^[₪%]/.test(w)))
-      out[out.length - 1] = `${prev} ${w}`;
+      out[out.length - 1] = `${prev}\u00A0${w}`;
     else out.push(w);
   }
   return out;

@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/drizzle/**',
       '.data/**',
+      'out/**',
       '**/next-env.d.ts',
     ],
   },
