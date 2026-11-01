@@ -29,14 +29,37 @@ Durable state so work can resume without rediscovery. Updated at each checkpoint
       (IMAGE_LED / EDITORIAL_TYPE / BOLD_GRAPHIC), reference-weighted move votes, method affinity, conflict
       groups, unique type systems/palettes, arrangement swap on UNRESOLVED, influences recorded. Tests prove
       that a different moodboard changes decisions.
-- [ ] Copywriter/strategist upgrade (concept → visual idea, design intent); mock upgrade.
-- [ ] Visual planner fed by the spec (image region aspect, negative space, crop).
-- [ ] Critic 2.0: technical QA vs creative analysis vs human approval; Q6 gaps; targeted revisions.
-- [ ] Video: art direction into storyboard/motion; typography animation.
-- [ ] Studio: creative review page, moodboard, 3 directions, NL revisions (Hebrew) → validated changes. API.
-- [ ] E2E demo Luz + Pilates (4:5, 9:16, storyboard, motion preview, critique, contact sheets, Q6 comparison).
-- [ ] Verification: lint, typecheck, tests, web build, renders.
-- [ ] Vercel deployment (CLI is logged in; web app only; API/worker/DB/Redis are local → demo mode).
+- [x] Copywriter/strategist upgrade: concepts carry a visual idea, design moves, emphasis and eyebrow (prompt,
+      LLM schema, mock); the Art Director reads them as one vote among the references.
+- [x] Visual planner fed by the spec: `pictureBriefFromSpec` (region aspect, negative space, crop, focal point).
+- [x] Critic 2.0 (`packages/creative-engine/src/critic/`): technical QA (blocking, measured) vs creative analysis
+      (advisory heuristics, never a score) vs human approval; catches the Q6 duplicated price, unprotected text on
+      photos, collisions, unapproved claims, generic CTAs, translationese; bounded targeted revisions.
+      The composer's `ensureReadable` pass uses the critic's own backdrop model, so text is readable by construction.
+- [x] Video: `artDirectVideo` (composed end card from the 9:16 direction, display face + entrance on overlays,
+      safe areas, motion direction). Local Remotion only; no paid video.
+- [x] Hebrew change requests (`change-requests.ts`): deterministic lexicon over 9 intents, conflicts detected,
+      free changes recomposed + re-checked, Copywriter/Visual Planner requests left PENDING_APPROVAL (paid),
+      approved words never change. Tested on Luz (picture) and Pilates (no picture): every request × direction
+      passes technical QA at full size.
+- [x] API: `GET /v1/projects/:id/directions`, `POST …/directions/:key/changes`, `POST …/directions/:key/approve`
+      (approval rejects any non-approved text, saves a composed version per format, audit log).
+- [x] Studio review (`/studio/review/[case]`, live `/studio/projects/[id]/review`): brief, concepts, moodboard
+      with sources, 3 directions × 4:5/9:16, before/after, Hebrew change box, rationale, technical vs advisory
+      findings, revision history, storyboard, motion preview, Q6 comparison, approval.
+- [x] E2E demo Luz (offer) + Pilates (leads): `out/scripts/q7-demo.mjs` → `apps/web/src/demo/studio-demo.json`
+      (committed data) + `apps/web/public/demo-media/` (gitignored renders) + `out/q7/demo/*-sheet.jpg`.
+- [x] Verification (2026-11-01): lint clean, typecheck (packages, api, worker, web), 438 tests pass
+      (22 DB-integration tests skip without Docker/Postgres), `next build` passes, renders checked.
+- [ ] Vercel: project `kampora-studio` (CLI upload from the repo root, root dir `apps/web`, Vercel
+      Authentication on, not git-connected, demo mode, no secrets). Protected Preview first.
+
+## Honest limits
+- No reference is IMAGES_VIEWED (text-grounded analyses only); typography is rarely described in sources;
+  only 1–2 Israeli references.
+- Demo copy is the Q6 real OpenAI pilot copy; pictures are cached AI stand-ins; Pilates has no photo, so its
+  video scenes are gradients (weak). The motion preview is silent. The storyboard is derived deterministically.
+- Technical PASS is not professional acceptance; that needs the owner's review.
 
 ## Scripts (gitignored `out/scripts/`)
 - `q7-smoke.mjs` renders a few specs → `out/q7/smoke/`; `q7-sweep.mjs` composes 2,700 combinations (no render).

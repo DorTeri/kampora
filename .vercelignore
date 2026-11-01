@@ -1,0 +1,23 @@
+# Vercel CLI upload (the repo root, since the project builds apps/web inside the npm workspace).
+# Secrets and local data never leave this machine.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.data
+.claude
+.git
+
+# Installed and generated on Vercel
+node_modules
+**/node_modules
+**/.next
+**/dist
+*.tsbuildinfo
+.remotion
+coverage
+out
+*.log
+
+# apps/web/public/demo-media is gitignored but deliberately uploaded: the demo renders the review page from it.
