@@ -3,7 +3,16 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { and, asc, eq, max } from 'drizzle-orm';
 import { industryFor } from '@kampora/agent-expertise';
-import { reviewStaticAd } from '@kampora/creative-engine';
+import {
+  applyCreativeChange,
+  directCreative,
+  directionInputFor,
+  reviewDirectionSet,
+  reviewStaticAd,
+  withComposition,
+  type DirectionInput,
+  type StaticDirectionContext,
+} from '@kampora/creative-engine';
 import {
   auditLog,
   campaignBriefs,
@@ -26,6 +35,9 @@ import {
   STATIC_AD_JOB_NAME,
   StaticAdSchema,
   mediaAuthenticity,
+  type CreativeDirection,
+  type DirectionApprovalRequest,
+  type DirectionChangeRequest,
   type MediaAsset,
   type StaticAd,
   type StaticAdEdit,
@@ -321,6 +333,132 @@ export class StaticAdsService {
     }
     await this.saveVersion(ctx, projectId, next);
     return this.list(ctx, projectId);
+  }
+
+  /**
+   * Design directions (Art Director 2.0) for the latest ad: three composed alternatives, each reviewed by the
+   * Critic. Deterministic and free, so it is recomputed on every request rather than stored.
+   */
+  private async directionState(ctx: AuthContext, projectId: string) {
+    const c = await this.context(ctx, projectId);
+    const rows = await this.rows(ctx, projectId);
+    const base = rows.filter((r) => r.format === '4:5').at(-1) ?? rows.at(-1);
+    if (!base) throw new ApiError(HttpStatus.CONFLICT, 'NO_STATIC_AD', 'Build the static ads first');
+    if (!c.concept) throw new ApiError(HttpStatus.CONFLICT, 'NO_CONCEPT', 'The project has no concept');
+    const ad = StaticAdSchema.parse(base.ad);
+    const dctx: StaticDirectionContext = {
+      business: c.profile,
+      brief: c.brief,
+      concept: c.concept,
+      assets: c.candidates.map((x) => ({
+        id: x.asset.id,
+        kind: 'image' as const,
+        description: x.content,
+        tags: [],
+        ...(x.asset.width ? { width: x.asset.width } : {}),
+        ...(x.asset.height ? { height: x.asset.height } : {}),
+        mimeType: x.asset.mimeType,
+        source: x.asset.provenance.source,
+        commercialUse: x.asset.provenance.commercialUse,
+      })),
+    };
+    const input = directionInputFor(ad, dctx);
+    // The brief's key message is approved copy: it may replace a subheadline that only repeats the price.
+    const reviewed = reviewDirectionSet(input, directCreative(input), {
+      approvedClaims: c.profile.approvedClaims,
+      approvedSubheadline: c.brief.keyMessage,
+    });
+    const approvedWords = new Set(
+      [
+        ...Object.values(input.copy).flatMap((v) => (typeof v === 'string' ? [v] : v ? [v.price, v.label ?? ''] : [])),
+        c.brief.keyMessage,
+        c.profile.name,
+      ].filter(Boolean),
+    );
+    return { c, rows, base, ad, input, reviewed, approvedWords };
+  }
+
+  async directions(ctx: AuthContext, projectId: string) {
+    const { c, base, reviewed } = await this.directionState(ctx, projectId);
+    return {
+      baseStaticAdId: base.id,
+      set: reviewed.set,
+      copy: reviewed.copy,
+      reviews: reviewed.reviews,
+      assetUrls: Object.fromEntries(
+        await Promise.all(
+          c.pictures.map(async (p) => [p.id, await this.storage.getReadUrl(p.storageKey, { expiresInSec: 3600 })] as const),
+        ),
+      ),
+    };
+  }
+
+  /** An owner's change request in Hebrew, applied to one direction (its current state comes from the client). */
+  async changeDirection(
+    ctx: AuthContext,
+    projectId: string,
+    key: CreativeDirection['key'],
+    body: DirectionChangeRequest,
+  ) {
+    const { input, reviewed } = await this.directionState(ctx, projectId);
+    if (body.direction && body.direction.key !== key)
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'INVALID_DIRECTION', 'Direction key mismatch');
+    const copy = reviewed.copy[key];
+    if (!copy) throw notFound('Direction');
+    const set = {
+      ...reviewed.set,
+      directions: reviewed.set.directions.map((d) => (d.key === key && body.direction ? body.direction : d)),
+    };
+    const withCopy: DirectionInput = { ...input, copy };
+    return applyCreativeChange(withCopy, set, key, body.text);
+  }
+
+  /**
+   * The owner approves a direction: each of its specs becomes the composition of a new version of that format's
+   * ad, rendered by the worker. Every word in the specs must be approved copy; the owner's decision is audited.
+   */
+  async approveDirection(
+    ctx: AuthContext,
+    projectId: string,
+    key: CreativeDirection['key'],
+    body: DirectionApprovalRequest,
+  ) {
+    const { rows, ad, approvedWords } = await this.directionState(ctx, projectId);
+    const d = body.direction;
+    if (d.key !== key) throw new ApiError(HttpStatus.BAD_REQUEST, 'INVALID_DIRECTION', 'Direction key mismatch');
+    for (const spec of Object.values(d.specs))
+      for (const l of spec.layers)
+        if (l.kind === 'text' && !approvedWords.has(l.text))
+          throw new ApiError(HttpStatus.BAD_REQUEST, 'UNAPPROVED_COPY', `"${l.text}" is not approved copy`);
+    const saved: { format: StaticAdFormat; staticAdId: string; version: number }[] = [];
+    for (const [format, spec] of Object.entries(d.specs) as [StaticAdFormat, (typeof d.specs)[string]][]) {
+      const latest = rows.filter((r) => r.format === format).at(-1);
+      const size = STATIC_AD_FORMATS[format];
+      const current = latest
+        ? StaticAdSchema.parse(latest.ad)
+        : { ...ad, format, width: size.width, height: size.height, safeArea: size.safeArea };
+      const sub = spec.layers.find((l) => l.kind === 'text' && l.role === 'SUBHEADLINE');
+      const text = { ...current.text, ...(sub && sub.kind === 'text' ? { subheadline: sub.text } : {}) };
+      const row = await this.saveVersion(
+        ctx,
+        projectId,
+        withComposition({ ...current, id: `${projectId}:${format}`, text }, spec),
+      );
+      saved.push({ format, staticAdId: row.id, version: row.version });
+    }
+    await this.db.insert(auditLog).values({
+      orgId: ctx.orgId,
+      actorUserId: ctx.userId,
+      action: 'creative_direction.approved',
+      subjectType: 'video_project',
+      subjectId: projectId,
+      metadata: { key, method: d.method, typeSystem: d.typeSystem, moves: d.moves, note: body.note ?? null, saved },
+    });
+    return {
+      approved: { key, decidedAt: new Date().toISOString(), note: body.note ?? null },
+      saved,
+      ...(await this.list(ctx, projectId)),
+    };
   }
 
   /** Same content as the latest good version ⇒ reuse it; otherwise a new version, queued for rendering. */

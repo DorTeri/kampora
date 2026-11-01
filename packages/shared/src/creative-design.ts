@@ -325,3 +325,17 @@ export const CreativeDirectionSetSchema = z.object({
   recommendedBecause: z.string(),
 });
 export type CreativeDirectionSet = z.infer<typeof CreativeDirectionSetSchema>;
+
+/** An owner's change request to one direction, in their own words (Hebrew); `direction` is its current state. */
+export const DirectionChangeRequestSchema = z.object({
+  text: z.string().trim().min(2).max(300),
+  direction: CreativeDirectionSchema.optional(),
+});
+export type DirectionChangeRequest = z.infer<typeof DirectionChangeRequestSchema>;
+
+/** The owner approves a direction (possibly revised): its specs become the static ads' compositions. */
+export const DirectionApprovalRequestSchema = z.object({
+  direction: CreativeDirectionSchema,
+  note: z.string().trim().max(500).optional(),
+});
+export type DirectionApprovalRequest = z.infer<typeof DirectionApprovalRequestSchema>;

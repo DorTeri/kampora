@@ -4,12 +4,16 @@ import { z } from 'zod';
 import {
   CampaignRequestSchema,
   CreativeFeedbackInputSchema,
+  DirectionApprovalRequestSchema,
+  DirectionChangeRequestSchema,
   NarrationModeSchema,
   RenderQualitySchema,
   StaticAdEditSchema,
   StaticAdFormatSchema,
   VoiceStyleSchema,
   type CreativeFeedbackInput,
+  type DirectionApprovalRequest,
+  type DirectionChangeRequest,
   type StaticAdEdit,
 } from '@kampora/shared';
 import { Auth, type AuthContext } from '../common/auth';
@@ -54,6 +58,9 @@ const NarrationLineRequestSchema = z.object({
   approvedUsd: z.number().positive().max(100).optional(),
 });
 type NarrationLineRequest = z.infer<typeof NarrationLineRequestSchema>;
+
+const DirectionKeySchema = z.enum(['A', 'B', 'C']);
+type DirectionKey = z.infer<typeof DirectionKeySchema>;
 
 @ApiTags('businesses')
 @ApiBearerAuth()
@@ -193,6 +200,38 @@ export class ProjectsController {
     @Body(new ZodPipe(StaticAdEditSchema)) body: StaticAdEdit,
   ) {
     return this.staticAds.edit(ctx, id, adId, body);
+  }
+
+  @Get(':id/directions')
+  @ApiOperation({ summary: 'Three composed design directions for the latest static ad, with rationale and Critic review (free)' })
+  listDirections(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
+    return this.staticAds.directions(ctx, id);
+  }
+
+  @Post(':id/directions/:key/changes')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Apply an owner change request (Hebrew) to one direction; paid changes are only requested' })
+  @ApiBody({ schema: openApiSchema(DirectionChangeRequestSchema) })
+  changeDirection(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Param('key', new ZodPipe(DirectionKeySchema)) key: DirectionKey,
+    @Body(new ZodPipe(DirectionChangeRequestSchema)) body: DirectionChangeRequest,
+  ) {
+    return this.staticAds.changeDirection(ctx, id, key, body);
+  }
+
+  @Post(':id/directions/:key/approve')
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Approve a direction: its compositions become new static ad versions (rendered locally)' })
+  @ApiBody({ schema: openApiSchema(DirectionApprovalRequestSchema) })
+  approveDirection(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Param('key', new ZodPipe(DirectionKeySchema)) key: DirectionKey,
+    @Body(new ZodPipe(DirectionApprovalRequestSchema)) body: DirectionApprovalRequest,
+  ) {
+    return this.staticAds.approveDirection(ctx, id, key, body);
   }
 
   @Get(':id/images')
