@@ -32,6 +32,7 @@ export default async function StudioLayout({ children }: { children: React.React
   const latestProject = campaigns.find((c) => c.projectId);
 
   const items: NavItem[] = [
+    { href: '/studio/director', label: he.nav.director, icon: '✺', match: '/studio/director' },
     { href: '/studio', label: he.nav.home, icon: '⌂', match: '/studio' },
     { href: '/studio/business', label: he.nav.business, icon: '◎', match: '/studio/business' },
     { href: '/studio/campaigns/new', label: he.nav.newCampaign, icon: '＋', match: '/studio/campaigns/new' },
@@ -58,7 +59,7 @@ export default async function StudioLayout({ children }: { children: React.React
     { href: '/studio/review', label: he.nav.review, icon: '◇', match: '/studio/review' },
   ];
   const shown = DEMO_MODE
-    ? items.map((i) => (i.match === '/studio/review' || i.match === '/studio' ? i : { ...i, href: null }))
+    ? items.map((i) => (i.match === '/studio/review' || i.match === '/studio/director' ? i : { ...i, href: null }))
     : items;
 
   return (

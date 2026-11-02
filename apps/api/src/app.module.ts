@@ -8,6 +8,9 @@ import { DevAuthGuard, Public } from './common/auth';
 import { ApiExceptionFilter } from './common/errors';
 import { InfraModule } from './infra/infra.module';
 import { DATABASE } from './infra/tokens';
+import { DirectorController } from './director/director.controller';
+import { DirectorService } from './director/director.service';
+import { DirectorStore } from './director/director.store';
 import { MediaController } from './media/media.controller';
 import { ArtDirectionService } from './studio/art-direction.service';
 import { CriticService } from './studio/critic.service';
@@ -57,6 +60,7 @@ class HealthController {
     AiController,
     MediaController,
     VoiceLabController,
+    DirectorController,
   ],
   providers: [
     BusinessService,
@@ -68,6 +72,8 @@ class HealthController {
     StaticAdsService,
     ArtDirectionService,
     CriticService,
+    DirectorStore,
+    DirectorService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: DevAuthGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },

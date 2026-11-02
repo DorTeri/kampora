@@ -13,6 +13,10 @@
       "types": "./dist/design.d.ts",
       "default": "./dist/design.js"
     },
+    "./director": {
+      "types": "./dist/director/index.d.ts",
+      "default": "./dist/director/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

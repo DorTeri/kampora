@@ -7,6 +7,7 @@ import type { CampaignGoal, ConceptAngle, ProductionStrategy, SceneRole, ShotTyp
 export const he = {
   brand: { name: 'Kampora', tagline: 'סוכנות הפרסום החכמה של העסק שלך' },
   nav: {
+    director: 'מנהל הקמפיין',
     home: 'סקירה',
     business: 'העסק שלי',
     newCampaign: 'יצירת קמפיין',

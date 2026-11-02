@@ -33,6 +33,15 @@ import type {
   StoryboardScene,
   VideoProject,
   VisualScenePlan,
+  BusinessFact,
+  DirectorApprovalKind,
+  DirectorCampaignPlan,
+  DirectorCard,
+  DirectorConversationState,
+  FactSource,
+  FactStatus,
+  FactValue,
+  ToolCallRecord,
 } from '@kampora/shared';
 
 /**
@@ -238,6 +247,8 @@ export const campaignBriefs = pgTable(
     brief: jsonb('brief').$type<CampaignBrief>().notNull(),
     /** Snapshot of the professional brief the concepts were written from (null: campaigns before it existed). */
     professionalBrief: jsonb('professional_brief').$type<ProfessionalCreativeBrief>(),
+    /** Campaigns prepared by the Campaign Director: objective, conversion destination and the unpublished Meta draft. */
+    directorPlan: jsonb('director_plan').$type<DirectorCampaignPlan>(),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -698,4 +709,119 @@ export const auditLog = pgTable(
       .default(sql`now()`),
   },
   (t) => [index('audit_log_org_idx').on(t.orgId, t.createdAt)],
+);
+
+// ── Campaign Director ─────────────────────────────────────────────────
+
+/**
+ * Business memory: one row per fact and business, with where it came from and whether the owner confirmed it.
+ * The creative pipeline reads the business profile; confirmed facts are projected into it.
+ */
+export const businessFacts = pgTable(
+  'business_facts',
+  {
+    id: id(),
+    orgId: orgId(),
+    businessId: uuid('business_id')
+      .notNull()
+      .references(() => businesses.id, { onDelete: 'cascade' }),
+    key: text('key').$type<BusinessFact['key']>().notNull(),
+    value: jsonb('value').$type<FactValue>().notNull(),
+    source: text('source').$type<FactSource>().notNull(),
+    status: text('status').$type<FactStatus>().notNull(),
+    evidence: text('evidence'),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    updatedBy: uuid('updated_by').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('business_facts_business_key_uq').on(t.businessId, t.key), index('business_facts_org_idx').on(t.orgId)],
+);
+
+export const directorConversations = pgTable(
+  'director_conversations',
+  {
+    id: id(),
+    orgId: orgId(),
+    /** Null until the Director learns enough to create the business. */
+    businessId: uuid('business_id').references(() => businesses.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    state: jsonb('state').$type<DirectorConversationState>().notNull(),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('director_conversations_org_idx').on(t.orgId, t.updatedAt)],
+);
+
+export const directorMessages = pgTable(
+  'director_messages',
+  {
+    id: id(),
+    orgId: orgId(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => directorConversations.id, { onDelete: 'cascade' }),
+    role: text('role').$type<'OWNER' | 'DIRECTOR'>().notNull(),
+    text: text('text').notNull(),
+    cards: jsonb('cards').$type<DirectorCard[]>().notNull().default([]),
+    tools: jsonb('tools').$type<ToolCallRecord[]>().notNull().default([]),
+    /** Owner messages: the client's id, so a resend returns the stored reply instead of running the turn again. */
+    clientMessageId: text('client_message_id'),
+    /** Director replies: the owner message they answer. */
+    replyTo: uuid('reply_to'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('director_messages_conversation_idx').on(t.conversationId, t.createdAt),
+    uniqueIndex('director_messages_client_uq').on(t.conversationId, t.clientMessageId),
+  ],
+);
+
+/** A workflow the Director runs for the owner (campaign, promotion, revision): persisted so it can resume. */
+export const directorTasks = pgTable(
+  'director_tasks',
+  {
+    id: id(),
+    orgId: orgId(),
+    businessId: uuid('business_id').references(() => businesses.id, { onDelete: 'cascade' }),
+    conversationId: uuid('conversation_id').references(() => directorConversations.id, { onDelete: 'set null' }),
+    kind: text('kind').notNull(),
+    status: text('status').notNull(),
+    params: jsonb('params').$type<Record<string, unknown>>().notNull().default({}),
+    missing: jsonb('missing').$type<string[]>().notNull().default([]),
+    refs: jsonb('refs').$type<{ campaignId?: string; projectId?: string; conceptId?: string; directionKey?: string }>().notNull().default({}),
+    error: text('error'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('director_tasks_org_idx').on(t.orgId, t.businessId, t.updatedAt)],
+);
+
+/**
+ * Owner approvals requested by the Director. A suggestion in the conversation is never authorization: only an
+ * explicit decision recorded here (through the approvals endpoint) lets the action run, once.
+ */
+export const directorApprovals = pgTable(
+  'director_approvals',
+  {
+    id: id(),
+    orgId: orgId(),
+    businessId: uuid('business_id').references(() => businesses.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => directorTasks.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<DirectorApprovalKind>().notNull(),
+    title: text('title').notNull(),
+    details: jsonb('details').$type<string[]>().notNull().default([]),
+    /** What exactly is approved (ids, direction), so the action that runs is the one the owner saw. */
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    estimatedMicroUsd: bigint('estimated_micro_usd', { mode: 'number' }).notNull().default(0),
+    status: text('status').$type<'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED' | 'FAILED'>().notNull().default('PENDING'),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('director_approvals_org_idx').on(t.orgId, t.status)],
 );

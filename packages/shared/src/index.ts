@@ -18,3 +18,4 @@ export * from './color';
 export * from './layout-families';
 export * from './typography';
 export * from './creative-design';
+export * from './director';

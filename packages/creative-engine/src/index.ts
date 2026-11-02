@@ -23,3 +23,4 @@ export * from './creative-direction';
 export * from './critic/composition';
 export * from './change-requests';
 export * from './reference-trace';
+export * from './director';

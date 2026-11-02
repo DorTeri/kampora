@@ -17,7 +17,7 @@ const PROJECT_STATUS: Record<
 };
 
 export default async function StudioHome() {
-  if (DEMO_MODE) redirect('/studio/review');
+  if (DEMO_MODE) redirect('/studio/director');
   const [businesses, campaigns, videos] = await Promise.all([
     api<BusinessSummary[]>('/v1/businesses'),
     api<CampaignListItem[]>('/v1/campaigns'),

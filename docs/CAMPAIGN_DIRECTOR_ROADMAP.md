@@ -1,7 +1,8 @@
 # Campaign Director — Roadmap
 
-Status: **vision only.** Nothing in this document is implemented. No chat UI, agent memory framework, autonomous
-publishing, scheduling or Meta Ads integration exists, and none starts without a separate approval.
+Status: **V1 implemented** (conversation, business memory, typed tools, approvals): see
+[CAMPAIGN_DIRECTOR.md](CAMPAIGN_DIRECTOR.md). Autonomous publishing, scheduling and the Meta Ads integration are still
+not implemented and need a separate approval.
 
 ## What it is
 
