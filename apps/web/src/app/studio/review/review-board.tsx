@@ -723,13 +723,15 @@ function TraceSection({ data }: { data: ReviewCase }) {
     <section id="trace">
       <h2 className="mb-1 text-xl font-bold">איך ההשראות שינו את העיצוב</h2>
       <p className="mb-3 text-sm text-muted">
-        לכל כיוון הרצנו את אותו מנוע פעמיים: פעם עם ההחלטות שרק ההשראות הביאו, ופעם בלעדיהן. ההבדל בשכבות הוא מה שההשראות ציירו בפועל. ההשראות
-        לא מכילות תמונות או טקסט, ולכן בעמוד מופיעים רק הטקסט המאושר והתמונות של העסק.
+        לכל כיוון הרצנו את אותו מנוע פעמיים: פעם מהבריף בלבד, בלי אף השראה (נקודת הבסיס), ופעם עם ההשראות שנבחרו. ההבדל בשכבות הוא מה שההשראות
+        שינו בפועל. ההשראות לא מכילות תמונות או טקסט, ולכן בעמוד מופיעים רק הטקסט המאושר והתמונות של העסק.
       </p>
       <div className="grid gap-4 lg:grid-cols-3">
         {data.trace!.map((t) => {
           const d = data.directions.find((x) => x.key === t.key);
-          const changes = t.withoutReferenceMoves['4:5'] ?? [];
+          const baseline = t.withoutAnyReference.layers?.['4:5'];
+          const changes = baseline ?? t.withoutReferenceMoves['4:5'] ?? [];
+          const pair = d?.baseline?.['4:5'] ?? d?.withoutReferences;
           return (
             <Card key={t.key} className="p-5">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -741,11 +743,11 @@ function TraceSection({ data }: { data: ReviewCase }) {
                   {t.method}
                 </span>
               </div>
-              {d?.withoutReferences ? (
+              {d && pair ? (
                 <div className="mb-3 grid grid-cols-2 gap-2">
                   <figure>
-                    <img src={`/demo-media/${d.withoutReferences}`} alt={`כיוון ${t.key} בלי ההחלטות של ההשראות`} className="w-full rounded-lg bg-canvas" />
-                    <figcaption className="mt-1 text-center text-[11px] text-muted">בלי ההשראות</figcaption>
+                    <img src={`/demo-media/${pair}`} alt={`כיוון ${t.key} מהבריף בלבד, בלי השראות`} className="w-full rounded-lg bg-canvas" />
+                    <figcaption className="mt-1 text-center text-[11px] text-muted">{baseline ? 'בסיס: בלי השראות' : 'בלי ההשראות'}</figcaption>
                   </figure>
                   <figure>
                     <img src={`/demo-media/${d.renders['4:5']}`} alt={`כיוון ${t.key} כפי שהוצע`} className="w-full rounded-lg bg-canvas" />
@@ -760,14 +762,20 @@ function TraceSection({ data }: { data: ReviewCase }) {
               ) : (
                 <p className="text-xs text-muted">כל ההחלטות בכיוון הזה הגיעו גם מהקונספט או מברירת המחדל של הגישה.</p>
               )}
-              {t.referenceOnlyMoves.length && !changes.length ? (
+              {t.withoutAnyReference.changed.length ? (
+                <p className="mt-1 text-xs text-ink-soft" dir="ltr">
+                  baseline → with references: {t.withoutAnyReference.changed.join('; ')}
+                </p>
+              ) : null}
+              {!changes.length ? (
                 <p className="mt-2 text-xs font-semibold text-ink-soft">
-                  ההחלטות האלה נרשמו, אבל שיטת הקומפוזיציה הזו לא מציירת אותן: אין הבדל בעמוד.
+                  אין הבדל נראה בעמוד בין נקודת הבסיס לכיוון הזה.
+                  {t.withoutAnyReference.samePage ? ' ההשראות שינו את התוכנית, אבל גם בלעדיהן מנוע העימוד מגיע לאותו סידור.' : ''}
                 </p>
               ) : null}
               {changes.length ? (
                 <ul className="mt-2 space-y-0.5 text-[11px] text-muted" dir="ltr">
-                  {changes.slice(0, 6).map((c) => (
+                  {changes.slice(0, 10).map((c) => (
                     <li key={c.change}>{c.change}</li>
                   ))}
                 </ul>

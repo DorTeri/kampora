@@ -45,7 +45,7 @@ export interface ReviewTrace {
   moveSources: Record<string, string[]>;
   referenceOnlyMoves: string[];
   withoutReferenceMoves: Record<string, { change: string }[]>;
-  withoutAnyReference: { method: string; moves: string[]; typeSystem: string; changed: string[] };
+  withoutAnyReference: { method: string; moves: string[]; typeSystem: string; picture?: string | null; changed: string[]; layers?: Record<string, { change: string }[]>; samePage?: string };
   originality: { maxOverlap: number; closestReference: string | null; referencesCombined: number; ownAssetsOnly: boolean };
   effects: { referenceId: string; brand: string; analysisBasis: string; moves: string[]; withoutReference: string[] }[];
 }
@@ -72,6 +72,9 @@ export interface ReviewCase {
     renders: Record<string, string>;
     /** The 4:5 render of this direction without its reference-only moves. */
     withoutReferences?: string | null;
+    /** The brief-only baseline (no references at all), rendered per format. */
+    baseline?: Partial<Record<'4:5' | '9:16', string>> | null;
+    picture?: { assetId: string; because: string } | null;
     reviews: Record<string, CreativeReview>;
     pictureBrief: { guidance: string } | null;
   })[];
