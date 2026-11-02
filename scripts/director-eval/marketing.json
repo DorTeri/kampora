@@ -1,0 +1,302 @@
+{
+  "note": "Marketing-intelligence cases for the paid LLM validation (2026-11-02), frozen with holdout-v2 (hash in the ledger). A scripted owner answers the Director's questions from `answers` (by fact key); unknown questions get the fallback answer. Each case runs until the RECOMMENDATION card or 8 owner turns. `organicFirst` marks cases where a professional marketer would not start with paid advertising.",
+  "fallbackAnswer": "לא יודע, תמשיך בלי זה",
+  "cases": [
+    {
+      "id": "m-coffee-cart",
+      "model": "COFFEE_CART",
+      "opening": [
+        "יש לי עגלת קפה בנמל יפו, קוראים לה קפה נמל. אני רוצה יותר לקוחות"
+      ],
+      "answers": {
+        "business.name": "קפה נמל",
+        "business.category": "עגלת קפה",
+        "location.city": "יפו",
+        "location.serviceArea": "בנמל יפו, תמיד באותו מקום",
+        "offering.main": "אספרסו כפול וקרואסון חמאה",
+        "location.address": "ליד המזח, מול הכניסה לנמל",
+        "location.hours": "6:30 עד 12:00",
+        "media.realPhotos": "כן יש לי תמונות",
+        "goal.primary": "שיותר אנשים יעצרו בבוקר",
+        "channel.instagram": "אין לי אינסטגרם פעיל"
+      },
+      "expect": {
+        "objectiveIn": [
+          "VISITS",
+          "LOCAL_AWARENESS",
+          "RETENTION"
+        ],
+        "conversionIn": [
+          "NAVIGATION",
+          "INSTAGRAM_DM"
+        ],
+        "irrelevant": [
+          "conversion.orderUrl",
+          "channel.website",
+          "conversion.bookingUrl"
+        ]
+      }
+    },
+    {
+      "id": "m-burger-wolt",
+      "model": "RESTAURANT",
+      "opening": [
+        "יש לי המבורגרייה בפתח תקווה, ההמבורגר של אבי, רוצה להביא יותר לקוחות"
+      ],
+      "answers": {
+        "business.name": "ההמבורגר של אבי",
+        "business.category": "המבורגרייה",
+        "location.city": "פתח תקווה",
+        "offering.main": "סמאש בורגר כפול",
+        "goal.primary": "יותר הזמנות במשלוח",
+        "conversion.ordering": "דרך וולט",
+        "conversion.orderUrl": "https://wolt.com/he/isr/petah-tikva/restaurant/avi-burger-demo",
+        "media.realPhotos": "כן"
+      },
+      "expect": {
+        "objectiveIn": [
+          "ORDERS"
+        ],
+        "conversionIn": [
+          "ORDERING_PAGE"
+        ],
+        "destination": "https://wolt.com/he/isr/petah-tikva/restaurant/avi-burger-demo",
+        "irrelevant": [
+          "conversion.bookingUrl",
+          "channel.website"
+        ]
+      }
+    },
+    {
+      "id": "m-cafe-neighbourhood",
+      "model": "CAFE",
+      "opening": [
+        "יש לי בית קפה שכונתי בקריית חיים, קפה לילך, השכונה לא מכירה אותנו מספיק"
+      ],
+      "answers": {
+        "business.name": "קפה לילך",
+        "business.category": "בית קפה",
+        "location.city": "קריית חיים, חיפה",
+        "offering.main": "ארוחות בוקר ועוגות בית",
+        "goal.primary": "שיבואו לשבת בבוקר",
+        "location.address": "רחוב אח\"י אילת 20",
+        "media.realPhotos": "יש תמונות של המנות",
+        "conversion.ordering": "רק במקום, אין משלוחים"
+      },
+      "expect": {
+        "objectiveIn": [
+          "VISITS",
+          "LOCAL_AWARENESS"
+        ],
+        "conversionIn": [
+          "NAVIGATION",
+          "PHONE_CALL",
+          "INSTAGRAM_DM"
+        ],
+        "irrelevant": [
+          "conversion.orderUrl",
+          "conversion.bookingUrl"
+        ]
+      }
+    },
+    {
+      "id": "m-pilates-trial",
+      "model": "FITNESS_STUDIO",
+      "opening": [
+        "סטודיו פילאטיס מכשירים בגדרה, קוראים לנו פילאטיס בתנועה, רוצה עוד מתאמנות"
+      ],
+      "answers": {
+        "business.name": "פילאטיס בתנועה",
+        "business.category": "סטודיו לפילאטיס",
+        "location.city": "גדרה",
+        "offering.main": "שיעור ניסיון על מכשיר רפורמר",
+        "goal.primary": "הרשמות לשיעור ניסיון",
+        "contact.whatsapp": "052-1234567",
+        "conversion.bookingUrl": "אין, הכל בוואטסאפ",
+        "media.realPhotos": "כן, מהשיעורים",
+        "audience": "נשים 30 עד 55 מגדרה והסביבה"
+      },
+      "expect": {
+        "objectiveIn": [
+          "LEADS",
+          "BOOKINGS"
+        ],
+        "conversionIn": [
+          "WHATSAPP",
+          "BOOKING_PAGE",
+          "LEAD_FORM"
+        ],
+        "destinationIncludes": "052-1234567",
+        "irrelevant": [
+          "conversion.orderUrl",
+          "location.hours"
+        ]
+      }
+    },
+    {
+      "id": "m-beauty-lashes",
+      "model": "BEAUTY",
+      "opening": [
+        "אני מאפרת ועושה ריסים בנס ציונה, הסטודיו נקרא מבט, רוצה יותר תורים לפני החגים"
+      ],
+      "answers": {
+        "business.name": "מבט",
+        "business.category": "סטודיו לאיפור וריסים",
+        "location.city": "נס ציונה",
+        "offering.main": "הרמת ריסים",
+        "contact.whatsapp": "054-7654321",
+        "conversion.bookingUrl": "אין קישור, קובעים בוואטסאפ",
+        "media.realPhotos": "יש לפני ואחרי באישור הלקוחות",
+        "goal.primary": "יותר תורים"
+      },
+      "expect": {
+        "objectiveIn": [
+          "BOOKINGS",
+          "LEADS"
+        ],
+        "conversionIn": [
+          "WHATSAPP",
+          "BOOKING_PAGE"
+        ],
+        "destinationIncludes": "054-7654321",
+        "irrelevant": [
+          "conversion.orderUrl"
+        ]
+      }
+    },
+    {
+      "id": "m-local-electrician",
+      "model": "LOCAL_SERVICE",
+      "opening": [
+        "אני חשמלאי מוסמך באזור השרון, העסק נקרא חשמל השרון, צריך יותר עבודות"
+      ],
+      "answers": {
+        "business.name": "חשמל השרון",
+        "business.category": "חשמלאי",
+        "location.city": "השרון",
+        "offering.main": "התקנת עמדות טעינה לרכב חשמלי",
+        "contact.phone": "050-1112233",
+        "location.serviceArea": "נתניה, כפר סבא, רעננה, הוד השרון",
+        "media.realPhotos": "כן, מעבודות שעשיתי",
+        "goal.primary": "יותר פניות"
+      },
+      "expect": {
+        "objectiveIn": [
+          "LEADS"
+        ],
+        "conversionIn": [
+          "PHONE_CALL",
+          "WHATSAPP",
+          "LEAD_FORM"
+        ],
+        "destinationIncludes": "050-1112233",
+        "irrelevant": [
+          "conversion.orderUrl",
+          "location.hours",
+          "location.address"
+        ]
+      }
+    },
+    {
+      "id": "m-online-candles",
+      "model": "ECOMMERCE",
+      "opening": [
+        "אני מוכרת נרות ריחניים בעבודת יד דרך האתר שלי, אור רך, רוצה למכור יותר"
+      ],
+      "answers": {
+        "business.name": "אור רך",
+        "business.category": "חנות אונליין לנרות",
+        "channel.website": "https://or-rach-candles.co.il",
+        "offering.main": "נר סויה בריח לבנדר",
+        "media.realPhotos": "כן, צילומי מוצר",
+        "goal.primary": "מכירות באתר"
+      },
+      "expect": {
+        "objectiveIn": [
+          "ONLINE_SALES"
+        ],
+        "conversionIn": [
+          "PRODUCT_PAGE",
+          "WEBSITE"
+        ],
+        "destinationIncludes": "or-rach-candles.co.il",
+        "irrelevant": [
+          "location.city",
+          "location.address",
+          "location.hours"
+        ]
+      }
+    },
+    {
+      "id": "m-organic-full-calendar",
+      "model": "BEAUTY",
+      "organicFirst": "היומן מלא לחודשיים: פרסום לתורים חדשים לא יעזור. מתאים יותר רשימת המתנה, העלאת מחיר או תוכן אורגני למיתוג.",
+      "opening": [
+        "יש לי קליניקה לטיפולי פנים ברעננה, עור זוהר. היומן שלי מלא לחודשיים קדימה, אבל אני רוצה שיותר אנשים יכירו אותי"
+      ],
+      "answers": {
+        "business.name": "עור זוהר",
+        "business.category": "קליניקה לטיפולי פנים",
+        "location.city": "רעננה",
+        "conversion.bookingUrl": "אין קישור, קובעים בוואטסאפ",
+        "offering.main": "טיפול פנים עמוק",
+        "contact.whatsapp": "053-2223344",
+        "media.realPhotos": "כן",
+        "goal.primary": "שיכירו את השם"
+      },
+      "expect": {
+        "irrelevant": [
+          "conversion.orderUrl"
+        ]
+      }
+    },
+    {
+      "id": "m-conversion-broken-phone",
+      "model": "RESTAURANT",
+      "organicFirst": "ההזמנות נופלות כי אף אחד לא עונה לטלפון בערב: קודם לתקן את ערוץ ההזמנה (וואטסאפ/אפליקציה), אחרת פרסום ישרוף כסף.",
+      "opening": [
+        "יש לי פיצרייה בטבריה, פיצה הכנרת. רוב ההזמנות בטלפון אבל בערב אין מי שיענה ואנשים מתייאשים. תביא לי יותר הזמנות"
+      ],
+      "answers": {
+        "business.name": "פיצה הכנרת",
+        "business.category": "פיצרייה",
+        "location.city": "טבריה",
+        "offering.main": "פיצה משפחתית",
+        "conversion.ordering": "בטלפון",
+        "contact.phone": "04-6712345",
+        "media.realPhotos": "כן",
+        "goal.primary": "יותר הזמנות"
+      },
+      "expect": {
+        "irrelevant": [
+          "conversion.bookingUrl"
+        ]
+      }
+    },
+    {
+      "id": "m-organic-no-budget",
+      "model": "COFFEE_CART",
+      "organicFirst": "אין תקציב פרסום בכלל: להתחיל בתוכן אורגני, נוכחות מקומית ושיתופי פעולה, לא במודעות ממומנות.",
+      "opening": [
+        "יש לי עגלת קפה קטנה בקיבוץ יגור, קפה בשדה. אין לי שקל לפרסום, רק רוצה שיותר אנשים מהאזור יכירו"
+      ],
+      "answers": {
+        "business.name": "קפה בשדה",
+        "business.category": "עגלת קפה",
+        "location.city": "קיבוץ יגור",
+        "location.serviceArea": "ליד שער הקיבוץ, קבוע",
+        "offering.main": "קפה קר ועוגיות",
+        "location.address": "ליד שער הקיבוץ",
+        "media.realPhotos": "כן",
+        "goal.primary": "שיכירו אותנו",
+        "budget.monthlyIls": "אפס, אין תקציב"
+      },
+      "expect": {
+        "irrelevant": [
+          "conversion.orderUrl",
+          "channel.website"
+        ]
+      }
+    }
+  ]
+}
