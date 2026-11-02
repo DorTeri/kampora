@@ -55,6 +55,12 @@ export interface Understanding {
   forbidden?: 'PUBLISH' | 'APPROVE' | 'MESSAGE' | 'SPEND' | 'INJECTION';
   /** Tool calls an LLM brain asked for. Always checked by the policy; the rule-based brain never asks. */
   toolRequests: { tool: string; args: unknown }[];
+  /** "יותר לקוחות": a goal without a channel. */
+  growth?: boolean;
+  /** A short natural reply from the LLM brain, already checked by `guardReply`. */
+  reply?: string;
+  /** Which reading this is (shown in diagnostics, never to the owner). */
+  brain?: 'rules' | 'llm' | 'rules-fallback';
 }
 
 /** Hebrew without niqqud, single spaces, Latin lower-cased; punctuation kept (URLs, prices). */
@@ -94,10 +100,10 @@ const MODEL_RULES: ModelRule[] = [
   },
   {
     model: 'RESTAURANT',
-    re: /מסעדת [א-ת]+|מסעדה|המבורגרי[הא]|בורגר בר|פיצרי[הא]|שווארמ[הא]|פלאפל|סושי|ביסטרו|דיינר|גריל בר|מעדני[הא]/,
-    category: (m) => (/מסעדה$/.test(m[0]) ? 'מסעדה' : m[0]),
+    re: /מסעדת [א-ת]+|מסעדה|המבורגרי+[הא]|בורגר בר|בורגרי+[הא]|פיצרי+[הא]|שווארמ[הא]|פלאפל|סושי|ביסטרו|דיינר|גריל בר|מעדני+[הא]/,
+    category: (m) => (/מסעדה$/.test(m[0]) ? 'מסעדה' : /המבורגרי|בורגרי|בורגר בר/.test(m[0]) ? 'מסעדת המבורגרים' : /פיצרי/.test(m[0]) ? 'פיצרייה' : m[0]),
   },
-  { model: 'CAFE', re: /בית (ה)?קפה|קפה שכונתי|קונדיטורי[הא]|מאפי[הא]|בייקרי/, category: (m) => m[0].replace('בית הקפה', 'בית קפה') },
+  { model: 'CAFE', re: /בית (ה)?קפה|קפה שכונתי|קונדיטורי+[הא]|מאפי+[הא]|בייקרי/, category: (m) => m[0].replace('בית הקפה', 'בית קפה') },
   {
     model: 'BEAUTY',
     re: /מספרה|מספרת|ברברשופ|קוסמטיק[הא]|קוסמטיקאית|ציפורניים|מניקור|לק ג'ל|גבות|ריסים|מכון יופי|טיפולי פנים|הסרת שיער/,
@@ -123,7 +129,11 @@ const IMPLIED_MODEL: { re: RegExp; model: BusinessModel; category: string }[] = 
 ];
 
 const SELF_DESCRIPTION =
-  /(יש לי|יש לנו|אני (ה)?(בעל|בעלת|בעלים|מנהל|מנהלת|מפעיל|מפעילה|מחזיק|מחזיקה)|העסק שלי|העסק שלנו|אנחנו|פתחתי|פתחנו|אני עם)/;
+  /(יש לי|יש לנו|אני (ה)?(בעל|בעלת|בעלים|מנהל|מנהלת|מפעיל|מפעילה|מחזיק|מחזיקה)|העסק שלי|העסק שלנו|אנחנו|פתחתי|פתחנו|אני עם|[א-ת]+ שלי(?=\s|$|[.,!?])|[א-ת]+ שלנו(?=\s|$|[.,!?]))/;
+
+/** A goal without a channel: "יותר לקוחות", "שהעסק יגדל". The business's playbook decides what it means. */
+const GROWTH_RE =
+  /(יותר|עוד|להביא|להגדיל( את)?( מספר)?( ה)?|תביא( לי)?|שיהיו( לי)?( יותר)?) ?(לקוחות|קליינטים|אנשים|מכירות|עבודה|עסקאות|קהל)|שהעסק (יגדל|יצמח)|לגדול|להגדיל את העסק/;
 
 const OBJECTIVE_RULES: { re: RegExp; objective: MarketingObjective }[] = [
   { re: /הזמנות|שיזמינו|יזמינו|משלוחים/, objective: 'ORDERS' },
@@ -288,6 +298,8 @@ export function parseProductAnswer(raw: string): { name: string; detail?: string
 const REQUEST_RE =
   /(רוצה|צריך|צריכה|בוא|בואו|תכין|להכין|נעשה|תעזור) .*(קמפיין|פרסומת|פרסום|מודעה|מודעות|סרטון|לקדם|לפרסם)|קמפיין|מה נשאר|מה הסטטוס|איזה (פרסומות|מודעות)|(תשנה|לשנות|תחליף|תתקן) |נקדם|לקדם|מה כדאי|תמליץ|נסה שוב/;
 
+const PREFERENCE_RE = /(?:לא )?(?:אוהב|אוהבת|אוהבים|רוצה|רוצים|מעדיף|מעדיפה|מעדיפים)\s+[^.!?]{2,80}?\s(?:במודעות|בעיצוב|בעיצובים|בסרטונים|בפרסומות|בתמונות)/;
+
 export interface UnderstandContext {
   now: Date;
   /** Keys the Director just asked about: a bare answer is read as their value. */
@@ -315,24 +327,37 @@ export function understand(raw: string, ctx: UnderstandContext): Understanding {
   else if (/(תעלה|להעלות|העלה|תוציא|להוציא) (את )?(המודעה|הקמפיין|הפרסומת)? ?לאוויר|(תפעיל|להפעיל|הפעל|תריץ) (את )?(הקמפיין|המודעה|המודעות|הפרסום)|(תפרסם|פרסם) (את )?(המודעה|הקמפיין|הסרטון|עכשיו|במטא|בפייסבוק|באינסטגרם)|\bpublish\b|go live/i.test(t))
     u.forbidden = 'PUBLISH';
   else if (/(תשלח|שלח|לשלוח) (הודעה|הודעות|וואטסאפ|ווטסאפ|הודעת וואטסאפ|sms|מייל)/i.test(t)) u.forbidden = 'MESSAGE';
-  else if (/(תאשר|אשר|לאשר) (הכל|את הכל|בשמי|במקומי|כל האישורים|את כל)|אישור אוטומטי/.test(t)) u.forbidden = 'APPROVE';
+  else if (/(תאשר|אשר|לאשר|תאשרו) (הכל|את הכל|בשמי|במקומי|כל האישורים|את כל)|(תאשר|אשר|לאשר|תאשרו) [^.!?]{0,40}(בשמי|במקומי|בשבילי|לבד|אוטומטית)|אישור אוטומטי/.test(t)) u.forbidden = 'APPROVE';
   else if (/(תוציא|להוציא|תשקיע|לשלם|תשלם|תחייב|לחייב) .*(כסף|תקציב|שקל|₪|\$|דולר)|תקציב פרסום עכשיו/.test(t)) u.forbidden = 'SPEND';
 
   // ── Facts ──
   // A bare reply ("בורגר בוי") answers the open question; a request ("אני רוצה קמפיין") never does.
   // "אני רוצה יותר הרשמות" states a goal: it starts a campaign and is never a bare answer.
   const goal = objectiveIn(t);
-  const wantsOutcome = Boolean(goal) && /(רוצה|צריך|צריכה|מעוניין|מעוניינת|שיהיו|להביא|להגדיל|לקבל|מחפש|מחפשת|שיביא|שתביא)/.test(t);
-  if (wantsOutcome) owner('goal.primary', goal!);
-  const bare = !REQUEST_RE.test(t) && !u.forbidden && !wantsOutcome;
+  const wantsVerb = /(רוצה|רוצים|נרצה|צריך|צריכה|מעוניין|מעוניינת|שיהיו|להביא|להגדיל|לקבל|מחפש|מחפשת|שיביא|שתביא|תביא|תביאו|תעשה ש|בא לי|באלי|הייתי רוצה|אשמח|עדיף|בעצם|דווקא)/.test(t);
+  const wantsOutcome = Boolean(goal) && wantsVerb;
+  // "יותר הזמנות" on its own states the goal too; it is never a business name.
+  const statesGoal = Boolean(goal) && (wantsOutcome || waits('goal.primary') || /^(יותר|עוד|שיהיו|שיגיעו|שיבואו|שיזמינו|שירשמו|שיכירו)/.test(t));
+  if (statesGoal) owner('goal.primary', goal!);
+  u.growth = !goal && GROWTH_RE.test(t);
+  const bare = !REQUEST_RE.test(t) && !u.forbidden && !statesGoal && !u.growth && !PREFERENCE_RE.test(t);
   // Bare answers wait until the end: they apply only when nothing more specific was recognised, and only to
   // the first open question ("ברמת גן" answers the city, not also the product asked with it).
   const fallbacks: { key: FactKey; value: FactProposal['value']; extra: { key: FactKey; value: FactProposal['value'] }[] }[] = [];
   const fallback = (key: FactKey, value: FactProposal['value'], extra: { key: FactKey; value: FactProposal['value'] }[] = []) =>
     fallbacks.push({ key, value, extra });
 
+  // "בורגר דרום, הכי נמכר אצלנו הסמאש": two answers to the two questions asked together.
+  const parts = t.split(',').map((x) => x.trim());
+  const paired = bare && waits('business.name') && waits('offering.main') && parts.length >= 2 && parts[0]!.split(' ').length <= 5 && Boolean(parts[1]);
+  if (paired) {
+    owner('business.name', clean(parts[0]!));
+    const rest = parts.slice(1).join(', ');
+    const named = rest.match(/הכי (?:נמכר|נמכרת|מבוקש|מבוקשת|פופולרי|פופולרית)(?: אצלנו)?(?: זה| הוא| היא)? ([^,.!?]{2,60})$/);
+    owner('offering.main', clean(named ? named[1]! : rest).slice(0, 120));
+  }
   // While naming a product ("קוראים לו סמוקי ביף"), "קוראים לו" is the product's name, not the business's.
-  const name = waits('offering.products') ? undefined : extractName(t);
+  const name = waits('offering.products') || paired ? undefined : extractName(t);
   if (name) owner('business.name', name);
   else if (bare && waits('business.name') && !u.skip && !DECLINE_RE.test(t) && t.split(' ').length <= 6 && !MODEL_RULES.some((r) => r.re.test(t)))
     fallback('business.name', clean(t));
@@ -368,7 +393,7 @@ export function understand(raw: string, ctx: UnderstandContext): Understanding {
 
   const main = t.match(/(?:המנה|המוצר|השירות|הדבר|השיעור)(?: הכי)? (?:נמכר|נמכרת|פופולרי|פופולרית|מבוקש|מבוקשת|חשוב|חשובה)(?: אצלנו)? (?:הוא |היא |זה )?([^,.!?]{2,60})/)
     ?? t.match(/(?:אנחנו |אני )(?:מוכרים|מוכר|מוכרת|מגישים|מגיש|מגישה|מתמחים ב|מתמחה ב|מעבירים|מעבירה)\s+([^,.!?]{2,60})/);
-  if (main) owner('offering.main', clean(main[1]!));
+  if (main && !paired) owner('offering.main', clean(main[1]!));
   else if (bare && waits('offering.main') && !u.skip && !DECLINE_RE.test(t)) fallback('offering.main', clean(t).slice(0, 120));
 
 
@@ -377,6 +402,9 @@ export function understand(raw: string, ctx: UnderstandContext): Understanding {
   else if (bare && waits('audience') && !u.skip) fallback('audience', clean(t).slice(0, 120));
 
   const diff = t.match(/(?:מה שמייחד אותנו|הייחוד שלנו|מה שמיוחד אצלנו|אנחנו היחידים ש)(?: זה| הוא|:)?\s*([^.!?]{3,120})/);
+  // A style preference ("לא אוהב ורוד במודעות", "מעדיף משהו נקי בעיצוב"): kept in the owner's words for every brief.
+  const pref = t.match(PREFERENCE_RE);
+  if (pref) owner('preferences.style', clean(pref[0]).slice(0, 160));
   if (diff) owner('differentiator', clean(diff[1]!));
   else if (bare && waits('differentiator') && !u.skip) fallback('differentiator', clean(t).slice(0, 160));
 
@@ -411,7 +439,7 @@ export function understand(raw: string, ctx: UnderstandContext): Understanding {
   if (/אין (לנו |לי )?(משלוחים|הזמנות|הזמנה אונליין)|רק במקום|לא עושים משלוחים|רק איסוף|בלי משלוחים/.test(t)) owner('conversion.ordering', false);
   else if (channels.length) owner('conversion.ordering', channels.length === 1 ? channels[0]! : channels);
 
-  if (/יש (לי|לנו) (המון |הרבה |כמה |מלא )?(תמונות|צילומים)|צילמתי|צילמנו/.test(t)) owner('media.realPhotos', true);
+  if (/יש (לי |לנו )?(המון |הרבה |כמה |מלא )?(תמונות|צילומים)|צילמתי|צילמנו/.test(t)) owner('media.realPhotos', true);
   else if (/אין (לי|לנו) (תמונות|צילומים)|בלי תמונות|אין צילומים|עדיין אין תמונות/.test(t)) owner('media.realPhotos', false);
   else if (waits('media.realPhotos') && (u.yes || u.no || DECLINE_RE.test(t))) owner('media.realPhotos', u.yes);
 
@@ -489,7 +517,7 @@ export function understand(raw: string, ctx: UnderstandContext): Understanding {
   } else if (/מה (כדאי|מומלץ|אתה ממליץ|לדעתך)|תמליץ|המלצה|מה הצעד הבא|מה לעשות (עכשיו|השבוע|החודש)|במה להתמקד/.test(t)) u.intent = 'RECOMMEND';
   else if (u.product?.isNew || /השקה|משיקים|להשיק|חדש בתפריט/.test(t)) u.intent = 'LAUNCH';
   else if (offerWords && /(יש (לנו|לי)|רוצה|לפרסם|לקדם|נפרסם|נקדם|בוא|עושים|מתחיל|מתחילים)/.test(t)) u.intent = 'PROMOTION';
-  else if (wantsOutcome) u.intent = 'CAMPAIGN';
+  else if (wantsOutcome || u.growth) u.intent = 'CAMPAIGN';
   else if (/(קמפיין|פרסומת|פרסומות|מודעה|מודעות|פרסום|סרטון|ריל|רילס)/.test(t) && /(רוצה|צריך|צריכה|בוא|בואו|תכין|להכין|לעשות|נעשה|תעזור|אפשר)/.test(t))
     u.intent = 'CAMPAIGN';
   else if (u.product && /(נקדם|לקדם|תקדם|לפרסם|נפרסם)/.test(t)) u.intent = 'CAMPAIGN';

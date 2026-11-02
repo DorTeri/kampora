@@ -4,7 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
 import { sql } from 'drizzle-orm';
 import type { Database } from '@kampora/database';
-import { DevAuthGuard, Public } from './common/auth';
+import { AuthGuard, Public } from './common/auth';
 import { ApiExceptionFilter } from './common/errors';
 import { InfraModule } from './infra/infra.module';
 import { DATABASE } from './infra/tokens';
@@ -75,7 +75,7 @@ class HealthController {
     DirectorStore,
     DirectorService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_GUARD, useClass: DevAuthGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })

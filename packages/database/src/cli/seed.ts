@@ -3,7 +3,7 @@ import { DEMO_BUSINESS } from '@kampora/creative-engine';
 import { S3Storage, storageFromEnv } from '@kampora/storage';
 import { createDatabase } from '../client';
 import { DEMO_ASSET_DEFINITIONS, loadDemoAssetBytes } from '../demo/assets';
-import { DEMO_IDS, DEMO_USER_EMAIL, demoAssetId } from '../demo/ids';
+import { DEMO_IDS, DEMO_USER_EMAIL, FIXTURES_IDS, FIXTURES_USER_EMAIL, demoAssetId } from '../demo/ids';
 import {
   brandAssets,
   brandProfiles,
@@ -23,8 +23,20 @@ async function main() {
   try {
     await db
       .insert(organizations)
-      .values({ id: DEMO_IDS.org, name: 'Luz (demo)' })
-      .onConflictDoUpdate({ target: organizations.id, set: { name: 'Luz (demo)' } });
+      .values({ id: DEMO_IDS.org, name: 'Luz (demo)', isSynthetic: true })
+      .onConflictDoUpdate({ target: organizations.id, set: { name: 'Luz (demo)', isSynthetic: true } });
+    await db
+      .insert(organizations)
+      .values({ id: FIXTURES_IDS.org, name: 'Kampora test fixtures (synthetic)', isSynthetic: true })
+      .onConflictDoUpdate({ target: organizations.id, set: { isSynthetic: true } });
+    await db
+      .insert(users)
+      .values({ id: FIXTURES_IDS.user, email: FIXTURES_USER_EMAIL, displayName: 'בדיקות אוטומטיות' })
+      .onConflictDoNothing();
+    await db
+      .insert(memberships)
+      .values({ orgId: FIXTURES_IDS.org, userId: FIXTURES_IDS.user, role: 'OWNER' })
+      .onConflictDoNothing();
     await db
       .insert(users)
       .values({ id: DEMO_IDS.user, email: DEMO_USER_EMAIL, displayName: 'נועה (דמו)' })

@@ -1,11 +1,10 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { BudgetPolicy } from '@kampora/cost-engine';
+import type { BudgetPolicy, PriceCatalog } from '@kampora/cost-engine';
 import {
   DirectorEngine,
   DirectorToolError,
   FACT_SPECS,
-  RuleBasedDirectorBrain,
   decideFacts,
   displayFact,
   factState,
@@ -18,10 +17,12 @@ import { directorApprovals, directorMessages, type Database } from '@kampora/dat
 import type { DirectorApprovalDecision, DirectorMessageRequest, FactDecisionRequest } from '@kampora/shared';
 import type { AuthContext } from '../common/auth';
 import { ApiError } from '../common/errors';
-import { BUDGET_POLICY, DATABASE } from '../infra/tokens';
+import type { AppConfig } from '../config';
+import { BUDGET_POLICY, CONFIG, DATABASE, PRICE_CATALOG } from '../infra/tokens';
 import { PaidOperationsService } from '../studio/paid.service';
 import { StaticAdsService } from '../studio/static-ads.service';
 import { StudioService } from '../studio/studio.service';
+import { brainFor, DbDirectorLlmLedger, directorBrainSetup, type DirectorBrainSetup } from './director-brain';
 import { ApiDirectorExecutor } from './director.executor';
 import { DirectorStore, type ConversationRow } from './director.store';
 
@@ -45,15 +46,23 @@ const toMessage = (m: MessageRow) => ({
 export class DirectorService {
   private readonly logger = new Logger('DirectorService');
   private readonly locks = new Map<string, Promise<unknown>>();
+  private readonly brainSetup: DirectorBrainSetup;
+  private readonly llmLedger: DbDirectorLlmLedger;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(BUDGET_POLICY) private readonly policy: BudgetPolicy,
+    @Inject(CONFIG) config: AppConfig,
+    @Inject(PRICE_CATALOG) catalog: PriceCatalog,
     private readonly store: DirectorStore,
     private readonly studio: StudioService,
     private readonly staticAds: StaticAdsService,
     private readonly paid: PaidOperationsService,
-  ) {}
+  ) {
+    this.brainSetup = directorBrainSetup(config, catalog, policy);
+    this.llmLedger = new DbDirectorLlmLedger(db);
+    this.logger.log(`director brain: ${this.brainSetup.mode}${this.brainSetup.model ? ` (${this.brainSetup.model})` : ''}${this.brainSetup.reason ? ` — ${this.brainSetup.reason}` : ''}`);
+  }
 
   /** One turn at a time per conversation (single API instance; the unique client id guards resends anyway). */
   private async exclusive<T>(key: string, work: () => Promise<T>): Promise<T> {
@@ -75,7 +84,8 @@ export class DirectorService {
       studio: this.studio,
       staticAds: this.staticAds,
     });
-    return { executor, engine: new DirectorEngine({ brain: new RuleBasedDirectorBrain(), tools: executor, actions: executor, newId: () => crypto.randomUUID() }) };
+    const brain = brainFor(this.brainSetup, this.llmLedger, { orgId: ctx.orgId, conversationId: conversation.id });
+    return { executor, engine: new DirectorEngine({ brain, tools: executor, actions: executor, newId: () => crypto.randomUUID() }) };
   }
 
   private cost() {
@@ -84,13 +94,23 @@ export class DirectorService {
   }
 
   private async context(ctx: AuthContext, conversation: ConversationRow): Promise<DirectorContext> {
-    return {
+    const base: DirectorContext = {
       now: new Date(),
       state: conversation.state,
       facts: await this.store.facts(ctx, conversation.businessId),
       tasks: await this.store.tasks(ctx, conversation),
       approvals: await this.store.approvals(ctx, conversation),
       cost: this.cost(),
+    };
+    if (this.brainSetup.mode !== 'llm') return base;
+    // Only the model reads these: the last exchanges (the current message excluded) and the latest work titles.
+    const { executor } = this.engine(ctx, conversation);
+    const messages = await this.store.messages(ctx, conversation.id, 8);
+    const history = await executor.GetCampaignHistory({ limit: 5 });
+    return {
+      ...base,
+      transcript: messages.slice(-7, -1).map((m) => ({ role: m.role, text: m.text })),
+      recentWork: history.map((h) => h.title),
     };
   }
 
@@ -154,6 +174,7 @@ export class DirectorService {
       previews: await this.previews(ctx, history.flatMap((h) => (h.projectId ? [h.projectId] : [])).slice(0, 4)),
       recommendations: recommend({ memory, now, history, approvals, cost: this.cost() }),
       paidGenerationEnabled: this.policy.paidGenerationEnabled,
+      brain: this.brainSetup.mode,
     };
   }
 

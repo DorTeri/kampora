@@ -64,6 +64,13 @@
       "when": 1793611482749,
       "tag": "0008_campaign_director",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793628539315,
+      "tag": "0009_auth_fixtures",
+      "breakpoints": true
     }
   ]
 }

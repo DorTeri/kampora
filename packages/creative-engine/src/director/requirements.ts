@@ -1,5 +1,6 @@
 import type { BusinessModel, DirectorTask, FactKey, MarketingObjective } from '@kampora/shared';
 import { FACT_SPECS, factState, formatDay, isOffer, usable, usableText, type Memory } from './facts';
+import { GROWTH_CHOICE } from './playbooks';
 import { DEFAULT_OBJECTIVE, planConversion } from './strategy';
 
 /**
@@ -94,8 +95,13 @@ export function requirementsFor(task: DirectorTask, memory: Memory, now: Date): 
     }
   }
 
+  // "יותר לקוחות" for a restaurant can mean orders or people sitting in: different campaigns, so ask.
+  const choice = model ? GROWTH_CHOICE[model] : undefined;
+  if (task.params.growth && !task.params.objective && choice && missing('goal.primary'))
+    out.push(req('goal.primary', true, 'המטרה קובעת לאן המודעה שולחת את הלקוח.', choice.question, choice.options.map((o) => o.label)));
+
   const objective = taskObjective(task, memory, now);
-  if (model && objective) {
+  if (model && objective && !out.some((r) => r.key === 'goal.primary')) {
     const decision = planConversion(model, objective, memory, now);
     if (decision.needs) out.push(destinationRequirement(decision.needs, model));
   }

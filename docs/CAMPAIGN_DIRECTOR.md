@@ -1,5 +1,7 @@
 # Campaign Director V1
 
+> V2 (LLM path, playbooks, auth, scenarios F–K, budgets): see [CAMPAIGN_DIRECTOR_V2.md](CAMPAIGN_DIRECTOR_V2.md).
+
 Status: **implemented locally and tested against the real API and Postgres with mock providers.** The deployed web
 build is a labelled demonstration: the API, Postgres and Redis are not hosted yet (see "Deployment").
 
@@ -104,7 +106,7 @@ Other tables: `director_conversations` (state, focus, business), `director_messa
   idempotent replay, restart persistence, org isolation, double decision, offer expiry.
 - `scripts/director-scenarios.mjs` — starts its own API with mock providers and runs scenarios A–E over HTTP,
   including an API restart in the middle of D. Output: `docs/director/scenario-report.json` and
-  `scenario-transcripts.json` (latest run: 32 checks passed, 0 failed).
+  `scenario-transcripts.json` (latest run, with V2 scenarios F–K: 57 checks passed, 0 failed).
 
 | Scenario | What it covers |
 | --- | --- |

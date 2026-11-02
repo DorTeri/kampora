@@ -9,7 +9,7 @@ import {
   type DirectorMessageRequest,
   type FactDecisionRequest,
 } from '@kampora/shared';
-import { Auth, type AuthContext } from '../common/auth';
+import { Auth, Roles, type AuthContext } from '../common/auth';
 import { UuidPipe, ZodPipe, openApiSchema } from '../common/zod';
 import { DirectorService } from './director.service';
 
@@ -55,6 +55,7 @@ export class DirectorController {
 
   @Post('conversations/:id/facts')
   @HttpCode(200)
+  @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Confirm or reject a fact the Director inferred' })
   @ApiBody({ schema: openApiSchema(FactDecisionRequestSchema) })
   decideFact(
@@ -67,6 +68,7 @@ export class DirectorController {
 
   @Post('approvals/:id/decision')
   @HttpCode(200)
+  @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: "The owner's explicit approval decision (the only way an approval-gated action runs)" })
   @ApiBody({ schema: openApiSchema(DirectorApprovalDecisionSchema) })
   decide(

@@ -20,3 +20,13 @@ export function demoAssetId(key: string): string {
 }
 
 export const DEMO_USER_EMAIL = 'demo@kampora.dev';
+
+/**
+ * A separate synthetic organization for automated scenarios and integration tests, so test conversations and
+ * businesses never land in the demo organization (or next to real business records).
+ */
+export const FIXTURES_IDS = {
+  org: '00000000-0000-4000-8000-000000000201',
+  user: '00000000-0000-4000-8000-000000000202',
+} as const;
+export const FIXTURES_USER_EMAIL = 'fixtures@kampora.dev';

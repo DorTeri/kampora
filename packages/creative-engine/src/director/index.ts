@@ -8,3 +8,4 @@ export * from './brain';
 export * from './engine';
 export * from './sandbox-executor';
 export * from './sandbox';
+export * from './playbooks';

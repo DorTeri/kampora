@@ -46,6 +46,8 @@ export interface DirectorWorkspaceDto {
   previews: { projectId: string; imageUrl: string | null; videoUrl: string | null }[];
   recommendations: Recommendation[];
   paidGenerationEnabled: boolean;
+  /** Which brain reads the owner's messages: the deterministic Hebrew rules or the validated LLM. */
+  brain?: 'rules' | 'llm';
 }
 
 export interface ConversationListItem {

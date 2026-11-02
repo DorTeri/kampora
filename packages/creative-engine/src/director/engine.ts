@@ -19,6 +19,7 @@ import { FACT_SPECS, decideFacts, factState, formatDay, isOffer, mergeFacts, mem
 import { parseProductAnswer, type Understanding } from './hebrew';
 import { campaignLabel, resolveReference } from './references';
 import { nextQuestion, requirementsFor, taskObjective, taskProduct } from './requirements';
+import { GROWTH_MEANING, marketingRecommendation } from './playbooks';
 import { ACTION_LABELS, OBJECTIVE_LABELS, displayFact, proposeCampaign, recommend, type CostContext } from './strategy';
 import {
   authorizeTool,
@@ -43,7 +44,27 @@ export interface DirectorContext {
   tasks: DirectorTask[];
   approvals: DirectorApprovalSummary[];
   cost: CostContext & { paidEnabled: boolean };
+  /** Titles of recent campaigns (newest first), so a brain can follow references. */
+  recentWork?: string[];
+  /** The last few messages of this conversation (newest last). */
+  transcript?: { role: 'OWNER' | 'DIRECTOR'; text: string }[];
 }
+
+/** Facts a passing remark must not overwrite silently: the owner confirms the change first. */
+const CONFLICT_KEYS: FactKey[] = [
+  'business.name',
+  'location.city',
+  'location.address',
+  'contact.phone',
+  'contact.whatsapp',
+  'channel.website',
+  'conversion.orderUrl',
+  'conversion.bookingUrl',
+  'offering.main',
+];
+
+/** Lookups a brain may ask for; they run through the same policy and only read. */
+const LOOKUPS: DirectorToolName[] = ['ReadBusinessProfile', 'GetCampaignHistory', 'GetAvailableAssets', 'GetProductionStatus'];
 
 export interface DirectorPorts {
   brain: DirectorBrain;
@@ -188,7 +209,30 @@ class Turn {
 
   async remember(proposals: FactProposal[]) {
     if (!proposals.length) return;
-    const r = mergeFacts(this.memory, proposals, this.now);
+    // A different value for a confirmed essential ("בעצם אנחנו באשדוד") is held until the owner confirms it,
+    // unless it answers the question the Director just asked.
+    const awaited = this.state.awaiting?.kind === 'FACTS' ? this.state.awaiting.keys : [];
+    const accepted: FactProposal[] = [];
+    for (const p of proposals) {
+      const existing = this.memory[p.key];
+      const conflicting =
+        CONFLICT_KEYS.includes(p.key) &&
+        p.source === 'OWNER_STATED' &&
+        !awaited.includes(p.key) &&
+        existing?.status === 'CONFIRMED' &&
+        factState(existing, this.now) === 'USABLE' &&
+        typeof p.value === 'string' &&
+        typeof existing.value === 'string' &&
+        p.value.trim() !== existing.value.trim();
+      if (conflicting && !this.state.conflict) {
+        this.state.conflict = { key: p.key, value: p.value, evidence: (p.evidence ?? '').slice(0, 300) };
+        continue;
+      }
+      if (conflicting) continue;
+      accepted.push(p);
+    }
+    if (!accepted.length) return;
+    const r = mergeFacts(this.memory, accepted, this.now);
     await this.persist(r.changed, r.memory);
     const confirmed = r.changed.filter((f) => f.status === 'CONFIRMED' && f.value !== false);
     const shown = confirmed.filter((f) => !(f.key === 'business.model' && confirmed.some((c) => c.key === 'business.category')));
@@ -278,21 +322,70 @@ export class DirectorEngine {
   /** One owner message. */
   async turn(text: string, ctx: DirectorContext): Promise<TurnResult> {
     const t = new Turn(ctx, this.ports);
+    const active = t.activeTask();
+    const awaiting = ctx.state.awaiting;
     const u = await this.ports.brain.interpret({
       text,
       now: ctx.now,
       state: ctx.state,
       knownFacts: ctx.facts.map((f) => f.key),
-      recentWork: [],
+      recentWork: ctx.recentWork ?? [],
+      memory: ctx.facts.map((f) => ({ key: f.key, label: FACT_SPECS[f.key].label, value: displayFact(f.key, f.value), state: factState(f, ctx.now) })),
+      awaitingQuestion:
+        awaiting?.kind === 'FACTS'
+          ? awaiting.keys.map((k) => FACT_SPECS[k].question).join(' ')
+          : awaiting?.kind === 'CONCEPT'
+            ? 'איזה רעיון לבחור?'
+            : awaiting?.kind === 'CLARIFY'
+              ? 'לאיזה מהם התכוונת?'
+              : awaiting?.kind === 'INSTRUCTION'
+                ? 'מה לשנות?'
+                : ctx.state.conflict
+                  ? `לעדכן ${FACT_SPECS[ctx.state.conflict.key].label}?`
+                  : undefined,
+      ...(active ? { activeTask: { kind: active.kind, status: active.status, objective: active.params.objective, product: active.params.product } } : {}),
+      pendingApprovals: ctx.approvals.filter((a) => a.status === 'PENDING').map((a) => a.title),
+      transcript: ctx.transcript ?? [],
     });
     t.state.turns += 1;
+    const hadConflict = Boolean(ctx.state.conflict);
     try {
       await this.handle(t, u, text);
     } catch (error) {
       if (!(error instanceof StepStop)) throw error;
       this.stopped(t, error);
     }
+    if (t.state.conflict && !hadConflict) this.askConflict(t);
+    // The model's own words lead the reply only when the turn was not a refusal.
+    if (u.reply && u.intent !== 'FORBIDDEN') t.parts.unshift(u.reply);
     return t.result();
+  }
+
+  private askConflict(t: Turn) {
+    const c = t.state.conflict!;
+    const old = t.memory[c.key];
+    t.say(`רגע, עד עכשיו רשום אצלי ${FACT_SPECS[c.key].label}: ${old ? displayFact(c.key, old.value) : '—'}. לעדכן ל"${displayFact(c.key, c.value)}"?`);
+    t.cards.push({ kind: 'QUESTION', keys: [c.key], skippable: false, suggestions: ['כן, לעדכן', 'לא, להשאיר'] });
+  }
+
+  /** The owner's answer to a held contradiction. Returns true when this message was that answer. */
+  private async resolveConflict(t: Turn, u: Understanding): Promise<boolean> {
+    const c = t.state.conflict;
+    if (!c) return false;
+    const restated = u.facts.find((f) => f.key === c.key && f.source === 'OWNER_STATED');
+    const label = FACT_SPECS[c.key].label;
+    if ((u.yes && !u.no) || (restated && restated.value === c.value)) {
+      t.state.conflict = undefined;
+      await t.remember([{ key: c.key, value: c.value, source: 'OWNER_CONFIRMED', evidence: c.evidence }]);
+      return true;
+    }
+    if (u.no) {
+      t.state.conflict = undefined;
+      const old = t.memory[c.key];
+      t.say(`בסדר, נשאר ${label}: ${old ? displayFact(c.key, old.value) : '—'}.`);
+      return true;
+    }
+    return false;
   }
 
   private stopped(t: Turn, error: StepStop) {
@@ -307,12 +400,24 @@ export class DirectorEngine {
   }
 
   private async handle(t: Turn, u: Understanding, text: string) {
-    // Lookups a model asked for go through the same policy (writes are refused).
-    for (const r of u.toolRequests) {
+    // Tools a model asked for go through the same policy: lookups run, anything else is refused and recorded.
+    const lookups = new Set<DirectorToolName>();
+    for (const r of u.toolRequests.slice(0, 3)) {
       const a = authorizeTool(r.tool, r.args, { source: 'BRAIN', paidProvider: t.ctx.cost.providerPaid, paidEnabled: t.ctx.cost.paidEnabled });
-      if (!a.ok) t.records.push({ tool: (TOOL_SPECS as Record<string, unknown>)[r.tool] ? (r.tool as DirectorToolName) : 'ReadBusinessProfile', status: 'REFUSED', summary: `בקשה של המודל: ${r.tool}`.slice(0, 400), error: a.reason });
+      const known = (TOOL_SPECS as Record<string, unknown>)[r.tool] ? (r.tool as DirectorToolName) : 'ReadBusinessProfile';
+      if (!a.ok || !LOOKUPS.includes(known)) {
+        t.records.push({ tool: known, status: 'REFUSED', summary: `בקשה של המודל: ${r.tool}`.slice(0, 400), error: a.ok ? 'רק בדיקות קריאה מותרות למודל' : a.reason });
+        continue;
+      }
+      lookups.add(known);
     }
     if (u.intent === 'FORBIDDEN') return this.refuse(t, u.forbidden!);
+    if (await this.resolveConflict(t, u)) return this.continueOrFallback(t, { ...u, yes: false, no: false });
+    if (['UNKNOWN', 'PROVIDE_INFO'].includes(u.intent) && !u.facts.length && !t.state.awaiting) {
+      if (lookups.has('GetProductionStatus')) return this.status(t);
+      if (lookups.has('GetCampaignHistory')) return this.historyReply(t);
+    }
+    for (const tool of lookups) if (tool === 'ReadBusinessProfile' || tool === 'GetAvailableAssets') await t.call(tool, {}, () => TOOL_SPECS[tool].label);
 
     const awaiting = t.state.awaiting;
     const proposals = [...u.facts];
@@ -345,6 +450,14 @@ export class DirectorEngine {
         const essential = requirementsFor(task, t.memory, t.now).filter((r) => r.essential && awaiting.keys.includes(r.key));
         if (essential.length) t.say(`את זה אני חייב לשאול: ${essential[0]!.why}`);
         else t.state.skipped = [...new Set([...t.state.skipped, ...awaiting.keys])];
+      } else if (!answered && !proposals.length && !NEW_TASK_INTENTS.includes(u.intent) && !['STATUS', 'HISTORY', 'RECOMMEND', 'FORBIDDEN', 'RETRY'].includes(u.intent)) {
+        // An answer to an optional question that was not understood: move on instead of asking it again.
+        const task = t.task(awaiting.taskId) ?? { id: '', kind: 'CAMPAIGN' as const, status: 'COLLECTING' as const, params: {}, missing: [], refs: {} };
+        const asked = requirementsFor(task, t.memory, t.now).filter((r) => awaiting.keys.includes(r.key));
+        if (asked.length && asked.every((r) => !r.essential)) {
+          t.state.skipped = [...new Set([...t.state.skipped, ...awaiting.keys])];
+          t.say('לא הייתי בטוח מה התשובה, אז נמשיך בלי זה כרגע. אפשר לחזור לזה בכל רגע.');
+        } else if (asked[0]) t.say(`לא הבנתי את התשובה. ${asked[0].why}`);
       }
     }
 
@@ -417,12 +530,18 @@ export class DirectorEngine {
       ...(u.objective ? { objective: u.objective } : {}),
       ...(u.product ? { product: u.product.text, productIsNew: u.product.isNew } : {}),
       ...(u.window ? { window: u.window } : {}),
+      ...(u.growth && !u.objective ? { growth: true } : {}),
     };
     if (active && active.kind === intent && ['COLLECTING', 'FAILED'].includes(active.status)) {
-      const merged = { ...active, status: 'COLLECTING' as const, params: { ...active.params, ...params } };
+      // A changed goal mid-conversation replaces the old one; everything already learned stays.
+      if (params.objective && active.params.objective && params.objective !== active.params.objective)
+        t.say(`בסדר, שיניתי את המטרה ל${OBJECTIVE_LABELS[params.objective]}.`);
+      const merged = { ...active, status: 'COLLECTING' as const, params: { ...active.params, ...params, ...(params.objective ? { growth: false } : {}) } };
       t.save(merged);
       return this.advance(t, merged);
     }
+    if (active && ['WAITING_CHOICE', 'WAITING_APPROVAL'].includes(active.status) && params.objective && active.params.objective !== params.objective)
+      t.say('הקמפיין הקודם נשמר כמו שהוא, ואפשר לחזור אליו.');
     const task = t.newTask(intent, params);
     t.say(
       intent === 'PROMOTION'
@@ -468,9 +587,21 @@ export class DirectorEngine {
       t.say(FACT_SPECS[strategy.needs].question);
       return;
     }
+    const marketing = marketingRecommendation({
+      model,
+      objective,
+      product,
+      promotion,
+      conversion: strategy.conversion,
+      memory: t.memory,
+      now: t.now,
+      paidProvider: t.ctx.cost.providerPaid,
+    });
     t.recordDecision('ProposeCampaignStrategy', `${strategy.recommendation.title} · יעד: ${ACTION_LABELS[strategy.conversion.action]}`);
-    t.cards.push({ kind: 'RECOMMENDATION', recommendation: strategy.recommendation, conversion: strategy.conversion });
+    t.cards.push({ kind: 'RECOMMENDATION', recommendation: strategy.recommendation, conversion: strategy.conversion, marketing });
+    if (task.params.growth && !usable(t.memory, 'goal.primary', t.now)) t.say(GROWTH_MEANING[model]);
     t.say(`הנה מה שאני מציע. ${strategy.recommendation.reasoning}`);
+    t.say(`ההנחה שנבדוק: ${marketing.hypothesis} נמדוד את זה לפי ${marketing.measurement.primaryMetric}.`);
 
     const offer = promotion ? usable(t.memory, 'offer.current', t.now) : undefined;
     const brief = {
@@ -480,10 +611,14 @@ export class DirectorEngine {
       notes: [
         task.params.productDetail ? `על המוצר, במילים של בעל העסק: ${task.params.productDetail}` : '',
         task.params.window ? `לוח זמנים: ${task.params.window}` : '',
+        usableText(t.memory, 'preferences.style', t.now) ? `העדפת סגנון של בעל העסק: ${usableText(t.memory, 'preferences.style', t.now)}` : '',
         `הלקוח מתבקש: ${ACTION_LABELS[strategy.conversion.action]}${strategy.conversion.destination ? ` (${strategy.conversion.destination})` : ''}`,
+        `השערה שיווקית: ${marketing.hypothesis}`,
+        `פורמטים: ${marketing.creativeFormats.map((f) => f.format).join(', ')}`,
       ]
         .filter(Boolean)
-        .join('\n'),
+        .join('\n')
+        .slice(0, 1000),
       plan: { objective, goal: strategy.goal, conversion: strategy.conversion, meta: strategy.meta, recommendationId: strategy.recommendation.id },
     };
     if (t.ctx.cost.providerPaid) {

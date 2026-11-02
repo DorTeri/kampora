@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { BudgetPolicy } from '@kampora/cost-engine';
+import { PriceCatalog, type BudgetPolicy } from '@kampora/cost-engine';
 import {
   brandProfiles,
   businesses,
@@ -14,6 +14,7 @@ import {
 } from '@kampora/database';
 import type { BusinessFact } from '@kampora/shared';
 import type { AuthContext } from '../common/auth';
+import { loadConfig } from '../config';
 import type { PaidOperationsService } from '../studio/paid.service';
 import type { StaticAdsService } from '../studio/static-ads.service';
 import type { StudioService } from '../studio/studio.service';
@@ -40,19 +41,20 @@ describe.skipIf(!dbAvailable)('Campaign Director API (integration)', () => {
   const a: AuthContext = { orgId: randomUUID(), userId: randomUUID(), role: 'OWNER' };
   const b: AuthContext = { orgId: randomUUID(), userId: randomUUID(), role: 'OWNER' };
   const policy = { paidGenerationEnabled: false } as BudgetPolicy;
+  const config = loadConfig({ DATABASE_URL, REDIS_URL: 'redis://127.0.0.1:6379' } as NodeJS.ProcessEnv);
   const paid = { creativeQuote: () => ({ provider: 'mock', paid: false, ready: true, expectedUsd: 0, maxUsd: 0 }) } as unknown as PaidOperationsService;
   // Onboarding turns never reach the Studio; if one did, the test should fail loudly.
   const studio = new Proxy({}, { get: () => () => Promise.reject(new Error('studio not expected')) }) as StudioService;
   const staticAds = studio as unknown as StaticAdsService;
   const service = () => {
     const store = new DirectorStore(handle.db);
-    return { store, director: new DirectorService(handle.db, policy, store, studio, staticAds, paid) };
+    return { store, director: new DirectorService(handle.db, policy, config, PriceCatalog.fromEnv({}), store, studio, staticAds, paid) };
   };
 
   beforeAll(async () => {
     handle = createDatabase(DATABASE_URL, 2);
     for (const ctx of [a, b]) {
-      await handle.db.insert(organizations).values({ id: ctx.orgId, name: `director-test-${ctx.orgId.slice(0, 6)}` });
+      await handle.db.insert(organizations).values({ id: ctx.orgId, name: `director-test-${ctx.orgId.slice(0, 6)}`, isSynthetic: true });
       await handle.db.insert(users).values({ id: ctx.userId, email: `d-${ctx.userId}@test.local`, displayName: 't' });
     }
   });

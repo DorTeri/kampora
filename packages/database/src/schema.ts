@@ -114,6 +114,8 @@ export const sceneImageDecision = pgEnum('scene_image_decision', ['PENDING', 'AP
 export const organizations = pgTable('organizations', {
   id: id(),
   name: text('name').notNull(),
+  /** Demo and test-fixture organizations: synthetic data, never a real business. */
+  isSynthetic: boolean('is_synthetic').notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -121,6 +123,8 @@ export const users = pgTable('users', {
   id: id(),
   email: text('email').notNull().unique(),
   displayName: text('display_name').notNull(),
+  /** The identity provider's subject (`sub`) for OIDC sign-in; null for synthetic dev users. */
+  authSubject: text('auth_subject').unique(),
   createdAt: createdAt(),
 });
 

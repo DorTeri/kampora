@@ -38,7 +38,7 @@ export function DirectorDemo() {
         {(
           [
             ['try', 'נסו בעצמכם'],
-            ['recorded', 'הרצה מוקלטת (תרחישים A–E)'],
+            ['recorded', 'הרצה מוקלטת (תרחישים A–K)'],
           ] as const
         ).map(([id, label]) => (
           <button

@@ -242,6 +242,38 @@ export const DirectorApprovalKindSchema = z.enum([
 ]);
 export type DirectorApprovalKind = z.infer<typeof DirectorApprovalKindSchema>;
 
+// ── Marketing recommendation ──────────────────────────────────────────
+
+export const CreativeFormatSchema = z.enum(['REEL_9_16', 'STORY_9_16', 'FEED_4_5', 'SQUARE_1_1', 'CAROUSEL']);
+export type CreativeFormat = z.infer<typeof CreativeFormatSchema>;
+
+/**
+ * Why a campaign should work for this business, how it runs and how the owner will know. A hypothesis to test,
+ * never a forecast: no revenue estimates or promised results.
+ */
+export const MarketingRecommendationSchema = z.object({
+  /** The goal in the owner's terms ("יותר הזמנות בוולט"). */
+  businessGoal: z.string().max(200),
+  objective: MarketingObjectiveSchema,
+  /** Confirmed facts the recommendation rests on. */
+  relevantFacts: z.array(z.string().max(200)).max(12),
+  hypothesis: z.string().max(400),
+  strategy: z.array(z.string().max(240)).min(1).max(6),
+  creativeFormats: z.array(z.object({ format: CreativeFormatSchema, why: z.string().max(200) })).min(1).max(4),
+  conversion: ConversionPlanSchema.nullable(),
+  missingInformation: z.array(z.string().max(200)).max(10),
+  requiredApprovals: z.array(DirectorApprovalKindSchema).max(6),
+  measurement: z.object({
+    primaryMetric: z.string().max(160),
+    secondaryMetrics: z.array(z.string().max(160)).max(4),
+    /** How the owner measures it with what they already have. */
+    method: z.string().max(400),
+    /** What to compare against (the weeks before the campaign), since no result is promised. */
+    baseline: z.string().max(240),
+  }),
+});
+export type MarketingRecommendation = z.infer<typeof MarketingRecommendationSchema>;
+
 // ── Conversation ──────────────────────────────────────────────────────
 
 export const DirectorCardSchema = z.discriminatedUnion('kind', [
@@ -251,7 +283,12 @@ export const DirectorCardSchema = z.discriminatedUnion('kind', [
     skippable: z.boolean(),
     suggestions: z.array(z.string().max(80)).max(6),
   }),
-  z.object({ kind: z.literal('RECOMMENDATION'), recommendation: RecommendationSchema, conversion: ConversionPlanSchema.nullable() }),
+  z.object({
+    kind: z.literal('RECOMMENDATION'),
+    recommendation: RecommendationSchema,
+    conversion: ConversionPlanSchema.nullable(),
+    marketing: MarketingRecommendationSchema.optional(),
+  }),
   z.object({
     kind: z.literal('CONCEPTS'),
     campaignId: z.string().uuid(),
@@ -318,6 +355,11 @@ export interface DirectorConversationState {
   /** The last few decisions in one line each (newest last). */
   notes: string[];
   turns: number;
+  /**
+   * The owner said something that contradicts a confirmed fact. The confirmed value stays until they confirm the
+   * change ("כן" applies `value`, "לא" keeps the old one).
+   */
+  conflict?: { key: FactKey; value: FactValue; evidence: string };
 }
 
 export const emptyDirectorState = (): DirectorConversationState => ({ skipped: [], notes: [], turns: 0 });
@@ -340,6 +382,8 @@ export interface DirectorTaskParams {
   instruction?: string;
   /** The step that failed, to resume from it on "נסה שוב". */
   failedStep?: string;
+  /** "יותר לקוחות": a goal without a channel; the business's playbook decides, or asks when it depends. */
+  growth?: boolean;
 }
 
 export interface DirectorTask {

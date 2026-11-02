@@ -29,6 +29,14 @@ const ACTION: Record<string, string> = {
   NAVIGATION: 'ניווט אליכם',
 };
 
+const FORMAT: Record<string, string> = {
+  REEL_9_16: 'רילס 9:16',
+  STORY_9_16: 'סטורי 9:16',
+  FEED_4_5: 'פיד 4:5',
+  SQUARE_1_1: 'ריבוע 1:1',
+  CAROUSEL: 'קרוסלה',
+};
+
 export interface CardActions {
   /** Sends text as the owner's message. */
   say(text: string): void;
@@ -78,6 +86,7 @@ export function DirectorCardView({ card, actions, latest }: { card: DirectorCard
 
     case 'RECOMMENDATION': {
       const r = card.recommendation;
+      const m = card.marketing;
       return (
         <div className={box}>
           <div className="flex flex-wrap items-center gap-2">
@@ -103,6 +112,37 @@ export function DirectorCardView({ card, actions, latest }: { card: DirectorCard
             <Row label="הצעד הבא">{r.proposedAction}</Row>
             <Row label="עלות">{r.costNote}</Row>
           </dl>
+          {m && (
+            <details className="mt-3 rounded-xl border border-line bg-surface p-3 text-sm">
+              <summary className="cursor-pointer font-semibold">האסטרטגיה המלאה</summary>
+              <dl className="mt-2 grid gap-2">
+                <Row label="מה העסק צריך">{m.businessGoal}</Row>
+                <Row label="ההנחה שנבדוק">{m.hypothesis}</Row>
+                <Row label="איך">
+                  <ul className="list-inside list-disc">
+                    {m.strategy.map((x) => (
+                      <li key={x}>{x}</li>
+                    ))}
+                  </ul>
+                </Row>
+                <Row label="פורמטים">
+                  <ul className="grid gap-1">
+                    {m.creativeFormats.map((f) => (
+                      <li key={f.format}>
+                        <span className="font-semibold">{FORMAT[f.format] ?? f.format}</span> · {f.why}
+                      </li>
+                    ))}
+                  </ul>
+                </Row>
+                <Row label="איך נמדוד">
+                  {m.measurement.primaryMetric}
+                  {m.measurement.secondaryMetrics.length > 0 && <span className="text-muted"> (וגם: {m.measurement.secondaryMetrics.join(', ')})</span>}
+                  <span className="block text-xs text-muted">{m.measurement.method} {m.measurement.baseline}</span>
+                </Row>
+                <Row label="אישורים נדרשים">{m.requiredApprovals.map((k) => APPROVAL_KIND_LABELS[k] ?? k).join(' ← ')}</Row>
+              </dl>
+            </details>
+          )}
           {r.approvalRequired && <p className="mt-2 text-xs font-semibold text-warn">ידרוש אישור שלך לפני ביצוע</p>}
         </div>
       );

@@ -16,7 +16,7 @@ import {
   type DirectionChangeRequest,
   type StaticAdEdit,
 } from '@kampora/shared';
-import { Auth, type AuthContext } from '../common/auth';
+import { Auth, Roles, type AuthContext } from '../common/auth';
 import { UuidPipe, ZodPipe, openApiSchema } from '../common/zod';
 import { BusinessService } from './business.service';
 import { CriticService } from './critic.service';
@@ -222,6 +222,7 @@ export class ProjectsController {
   }
 
   @Post(':id/directions/:key/approve')
+  @Roles('OWNER', 'ADMIN')
   @HttpCode(202)
   @ApiOperation({ summary: 'Approve a direction: its compositions become new static ad versions (rendered locally)' })
   @ApiBody({ schema: openApiSchema(DirectionApprovalRequestSchema) })
@@ -256,6 +257,7 @@ export class ProjectsController {
   }
 
   @Post(':id/images/:imageId/decision')
+  @Roles('OWNER', 'ADMIN')
   @HttpCode(200)
   @ApiOperation({ summary: 'Approve or reject a scene image version (re-plans the project)' })
   @ApiBody({ schema: openApiSchema(SceneImageDecisionRequestSchema) })
@@ -280,6 +282,7 @@ export class ProjectsController {
   }
 
   @Post(':id/approve-script')
+  @Roles('OWNER', 'ADMIN')
   @HttpCode(200)
   @ApiOperation({ summary: 'Approve the script (voiceover lines) of the storyboard' })
   approveScript(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
@@ -340,6 +343,7 @@ export class ProjectsController {
   }
 
   @Post(':id/approve')
+  @Roles('OWNER', 'ADMIN')
   @HttpCode(200)
   @ApiOperation({ summary: 'Approve the production plan and its estimate → timeline version' })
   approve(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
