@@ -1,7 +1,7 @@
 # Q7 quality acceptance: evidence pack for human review
 
-Date: 2026-11-01. Status: **ready for human review, not accepted.** Automated checks pass. Professional quality is
-the owner's call, and nothing here claims it.
+Date: 2026-11-02 (final integration pass; first pass 2026-11-01). Status: **ready for human review, not accepted.**
+Automated checks pass. Professional quality is the owner's call, and nothing here claims it.
 
 ## 1. References (see `Q7_REFERENCE_VERIFICATION.md`)
 
@@ -11,79 +11,110 @@ image is stored or shown; the Studio links to each source.
 
 ## 2. Do the references shape the pixels? (`traceReferenceInfluence`)
 
-For every direction the trace reruns the real Art Director and layout engine:
-- without each reference;
-- without the moves only the references brought (rendered side by side: `out/q7/showcase/<case>-reference-effect.jpg`,
-  and in the Studio review page under "איך ההשראות שינו את העיצוב");
-- with no references at all.
+### Root causes found in the final pass
 
-| Case · direction | What the references drew (4:5) | Without any reference | Single-reference effect (example) |
+| Where the decision was lost | Cause | Fix (design-system rule, not a per-case patch) |
+|---|---|---|
+| Layout engine | SPLIT_PANEL / COLLAGE_GRID / PEOPLE_AS_HERO were recorded but no method drew them | `picturePanel` (text measured first, picture takes the rest, bleeds through the larger safe band); collage tile from the ad's other pictures; people-as-hero weighs subject size and allows a 1.12 zoom |
+| Layout engine | LOGO_SMALL_CORNER never applied: free-spot checks used each text layer's full column, not its ink | `inkRect` (widest measured line on its alignment side); corner mark ≥ 26 px so it stays readable |
+| Layout engine | TYPE_AS_IMAGE had no effect on a short headline that fit one line | the headline is set as two balanced lines (≤ 2) with closed line height, dropped first when the copy needs room |
+| Layout engine | RULE_LINES / IMAGE_INSET_FRAME were ignored by EDITORIAL with a picture | `EDITORIAL_WITH_PICTURE` draws both |
+| Picture choice | every direction got the ranker's single top picture; the ranker matched Hebrew product names against English descriptions, so all candidates scored the same | per-direction picture choice (below); showcase pictures described in Hebrew so relevance is real |
+| Comparison | "without references" was an ablation of single moves, not a baseline | the Art Director and Critic rerun with **no references** (the brief-only baseline), rendered beside every direction and format |
+
+### Baseline (brief only) → reference-informed, as measured on the composed pages
+
+Sheets: `out/q7/showcase/<case>-reference-effect-4x5.jpg` and `-9x16.jpg` (pairs: baseline, then informed). Also in
+the Studio review page, "איך ההשראות שינו את העיצוב".
+
+| Case · direction | Plan change | Visible change (4:5 unless noted) | Judgement for review |
 |---|---|---|---|
-| Luz A · IMAGE_FIRST | film grain 0.08 | loses MINIMAL_COPY, TEXTURE_GRAIN, LOGO_SMALL_CORNER | without Burger King: no full-bleed photo, generous negative space instead |
-| Luz B · EDITORIAL | grain; two rule lines | serif + text-line CTA + muted palette instead of grain, negative space | without Wim Bakery: no rule lines, a serif face and logo sign-off instead |
-| **Luz C · BOLD_TYPE** (recommended) | the whole colour system: dark brand flood instead of cream, white type, accent ring | **becomes PROMO_PRICE** with oversized headline and price-as-graphic | **without Wim Bakery alone: the method flips to PROMO_PRICE** and the type system changes |
-| Pilates A · IMAGE_FIRST (with photos) | **nothing drawn** (PEOPLE_AS_HERO, SPLIT_PANEL, COLLAGE_GRID are recorded; the 4:5 page is identical without them) | gains FULL_BLEED_IMAGE, OVERSIZED_HEADLINE, SINGLE_FOCAL_POINT | without Bon Elliot: method becomes LIFESTYLE; without Equinox: SPLIT |
-| Pilates B · EDITORIAL (recommended) | **nothing drawn** (SERIF_EDITORIAL, SPLIT_PANEL are recorded, not drawn) | rule lines and a text-line CTA instead | without Coco: collage grid instead of an understated price |
-| **Pilates C · BOLD_TYPE** | brand-colour flood with light type | loses TYPE_AS_IMAGE, CONDENSED_DISPLAY | **without Not A Phase: the condensed face (Karantina) becomes a bold geometric sans** |
+| Luz A · IMAGE_FIRST | + MINIMAL_COPY, TEXTURE_GRAIN, LOGO_SMALL_CORNER | grain 0 → 0.08; brand mark moves to the corner, 33 → 26 px | **Small.** The references agree with the brief here; the full-bleed move cannot keep text off the coffee and pastry, so both fall back to the same picture panel. |
+| Luz B · EDITORIAL | − serif, text-line CTA, understated price, muted palette; + negative space, grain | lighter page, price 42 → 60 px in Frank Ruhl Libre, CTA becomes a button, photo treatment natural, whole block rises 55–65 px | Clear change. The price is easier to find; judge whether the serif baseline was the more elegant one. |
+| Luz C · BOLD_TYPE | PROMO_PRICE → BOLD_TYPE; − price-as-graphic; + stacked headline, shapes | headline 96 → 111 px, price 222 → 161 px, photo becomes an arch beside the type, ring replaces rule | Large change. The baseline sells the price; the informed design sells the moment and keeps the price. Owner's call. |
+| Pilates A · IMAGE_FIRST | LIFESTYLE → IMAGE_FIRST; + split panel, collage | group photo shares the top with a detail tile (2 pictures), headline 106 → 94 px | Clear change; the detail tile is a close crop of hands on straps: judge whether it adds or distracts. |
+| Pilates B · EDITORIAL | − text-line CTA, rule lines; + small-corner logo | CTA becomes a button, two rules removed, brand mark to the bottom corner | Modest change. |
+| Pilates C · BOLD_TYPE | + TYPE_AS_IMAGE, CONDENSED_DISPLAY | 9:16: headline 1 → 2 lines, supporting line beside the arch, photo ×0.84; **4:5: headline 190 → 194 px only** | **4:5 is nearly identical**: the brief-only layout already breaks this headline into the same two lines. Reported as convergence, not as an effect. |
 
-Honest reading: for four of the six directions the references cause visible, attributable decisions. For Pilates
-A and B, the references' extra moves are not implemented by those two composition methods, so they change the
-record but not the page (for A, single references do decide the method, but the chosen method draws the same page). That is a gap in the composer, not a hidden success. Closing it means adding
-SPLIT_PANEL/COLLAGE_GRID behaviour to ASYMMETRIC and EDITORIAL. Not done in Q7.
+When the references change the plan but not the page, the trace now says so (`withoutAnyReference.samePage`) and the
+Studio prints it, instead of showing an empty or decorative diff. Regression tests:
+`packages/creative-engine/src/picture-choice.test.ts` (references reach the page; reference-only moves are drawn;
+convergence is labelled).
 
-**Originality:** the highest overlap between a direction's set of moves and any single reference is 0.23–0.57
-(Jaccard). Pilates B is closest to Coco Reformer at 0.57. Every direction combines 5 references. Only the owner's
-pictures and approved words appear on the page; references carry no images or copy, so there is nothing to copy
-beyond abstract moves.
+Moves still not drawn by any method (they only steer choices or are recorded): FULL_BLEED_IMAGE (the default of the
+image methods), LAYERED_TYPE_OVER_IMAGE, SINGLE_FOCAL_POINT, Z_READING_PATH, PRODUCT_AS_HERO, ILLUSTRATIVE_ELEMENTS,
+TYPE_ONLY. SERIF_EDITORIAL, CONDENSED_DISPLAY and BOLD_GEOMETRIC_SANS act through the type system.
 
-## 3. Showcase (offline, $0)
+**Originality:** the highest overlap between a direction's set of moves and any single reference stays below 0.75
+(Jaccard; tested). Every direction combines several references. Only the owner's pictures and approved words appear
+on the page; references carry no images or copy.
 
-Full resolution: `out/q7/showcase/{luz,pilates}/{A,B,C}-{4x5,9x16}.png` (1080×1350, 1080×1920).
-Sheets: `out/q7/showcase/{luz,pilates}-q6-vs-q7-4x5.jpg`, `…-q7-9x16.jpg`, `…-reference-effect.jpg`.
-Motion previews: `luz/motion-preview.mp4` (15.5 s, captions, composed end card), `pilates/motion-preview.mp4`
-(14.6 s, now with the approved photos).
+## 3. Composition rules (deterministic, measured)
 
-Pilates photos (owner-approved 2026-11-01): 3 × gpt-image-2 medium, 1024×1536, ≈$0.041 each, **≈$0.123 estimated**
-(the exact charge is on the OpenAI usage page). Hero, detail and group shots of a fictional Haifa reformer studio.
-They are **AI demonstration photos, not the real studio or its clients**, and are labelled so in the Studio. The
-ranker picked the group shot (score 28) for all three directions. With a photo, A switched from ASYMMETRIC to
-IMAGE_FIRST (people as hero) and C uses it in an arch mask; B (still recommended) puts it above an editorial text block.
+- **Subject-safe text.** Pictures can carry layout metadata (`PictureLayoutSchema`: subject box, calm side,
+  composition, people; source MANUAL or ANALYSIS). `pictureBoxOnPage` mirrors the renderer's cover + focal point +
+  zoom, so the engine knows where the subject lands on the page. Text over a picture is planned by sweeping crop and
+  zoom: one band above or below the subject, or a split (message above, action on a brand band below), keeping
+  ≥ 72% of the subject in frame. If no plan fits, the text moves to a panel. **No coordinates are invented:**
+  without metadata the old calm-side behaviour is kept and the design is flagged for review. Coverage ≥ 3% of a
+  subject is flagged.
+- **Price with the action.** EDITORIAL groups label, price and button under the message when they fit; otherwise
+  a baseline-aligned row. A quiet (understated) price is set as strong text, not as a display numeral.
+- **No empty bands.** EDITORIAL sizes the picture from the measured copy (34–60% of the page), and 9:16 puts the
+  picture in the lower band so it bleeds through the platform UI zone instead of leaving it empty.
+- **Picture scale in bold type.** The picture takes the height the type leaves (≥ 24% of a tall page, 30% otherwise);
+  the action goes beside it only when a picture at least half the frame wide still fits, and the supporting line
+  then opens that column level with the picture's top, so the column is held at both ends.
+- **Responsive crops** use the subject's centre (`subjectFocal`), clamped to what the frame allows.
+- Tests: `packages/production-engine/src/picture-layout.test.ts` (geometry, coverage = 0 with metadata, the
+  review flag without it, collage, editorial 9:16 grouping and gaps, bold-type scale, two-line type, corner logo).
 
-Copy was revised from Q6 offline, from the approved claims only, with no model call. It awaits owner approval.
-- Luz: "קפה ומאפה בדרך לעבודה" / "קולים את הפולים בעצמנו. מאפים טריים כל בוקר." / 29.90 ₪ "קפה + מאפה · עד סוף
-  החודש" / "קפצו לפני העבודה" / "פלורנטין 12 · פתוח כל יום מ-7:00". The Q6 subheadline repeated the price the
-  design already shows, and the Q6 CTA was generic.
-- Pilates: "פילאטיס בקצב שלך" / "קבוצות של עד 6 מתאמנות, עם מדריכות מוסמכות." / 49 ₪ "שיעור ניסיון" / "שריינו
-  שיעור ניסיון" / "מוריה 40, חיפה". The Q6 CTA "נשימה | השאירו פרטים" repeated the brand name and read like a form.
+## 4. Per-direction picture choice
 
-## 4. What I saw at full resolution (reviewer's notes, not a verdict)
+Each direction composes with every approved picture that has recorded layout and commercial rights, and keeps the
+best by a measured score: no text on the subject, subject large enough for its kind (a group needs ~30% of the
+page), crop keeps the subject, fit status, relevance to the offer (from the ranker), the method's needs, and a
+penalty for a picture another direction already uses. One picture can still win everywhere if it is clearly best.
+The owner's choice (`selection.chosenBy = OWNER`) is kept by every direction. Authenticity labels travel with each
+picture; a stand-in is never presented as the product.
 
-Checked in every render: correct RTL order, no clipped or colliding text (the Critic's technical QA passes in all
-12), all approved copy present, price never larger than the headline unless the price leads.
+Result: Luz A coffee + pastry, B pastry close-up, C coffee + pastry (it scored best for the arch). Pilates A group
+(+ detail tile), B hero, C hero (the group shot scored 3.4 vs 3.6 in the arch).
 
-Fixed during this inspection:
-- Wide tracking broke Hebrew labels into letters. Hebrew is now clamped to 0.03em.
-- Price labels wrapped with a dangling "·".
-- The Pilates A no-photo field read as a missing image; it is now a deep brand-ink block.
-- A Luz C fit problem caused by a layout bug (headline fill starving the subheadline).
-- A CTA collision in ASYMMETRIC 9:16.
-- A price-vs-headline conflict after "make the price stand out".
+## 5. Showcase (offline, $0, no paid calls in this pass)
+
+Full resolution: `out/q7/showcase/{luz,pilates}/{A,B,C}-{4x5,9x16}.png` and the brief-only baselines `…-base.png`.
+Sheets: `{luz,pilates}-q6-vs-q7-4x5.jpg`, `…-q7-9x16.jpg`, `…-reference-effect-{4x5,9x16}.jpg`.
+Motion previews: `luz/motion-preview.mp4` (15.5 s), `pilates/motion-preview.mp4` (14.6 s). Silent local renders.
+
+Photography: Luz uses cached Q6 AI stand-ins. Pilates uses 3 AI demonstration photos approved on 2026-11-01
+(≈$0.123 estimated). Neither is the real business; both are labelled in the Studio.
+
+## 6. What I saw at full resolution (reviewer's notes, not a verdict)
+
+Checked in every render: RTL order, no clipped or colliding text, all approved copy present.
+
+Fixed in this pass, from the Q7 review notes:
+- Pilates A: the headline no longer crosses the class. The group photo is not cropped under text; with the
+  references it is a split panel with a detail tile.
+- Pilates B 9:16: the photo now fills the lower band, with no empty fifth under the CTA. Price, label and button read as
+  one group under the message.
+- Pilates C: the arch is larger and the column beside it holds the supporting line at the top and the action at
+  the bottom. In 9:16 a calm stretch remains between them (about 300 px); judge it.
+- The corner brand mark was 22 px and hard to read; it is now ≥ 26 px.
 
 Still open, for the reviewer:
-- **Luz photography is an AI stand-in** (cached Q6 picture), labelled in the Studio. It is not the café.
-- **Pilates photography is AI demonstration only** (3 approved photos), not the studio. Real photos should replace it.
-- Pilates A: the headline sits over the class (behind a scrim). It reads at full size, but it crosses the people.
-  Judge whether the type should move into the calm wall area instead.
-- Pilates B 9:16 leaves about a fifth of the frame empty under the CTA, and the price sits apart on the left.
-- Pilates C: the arch photo is small and leaves a wide empty field beside it; deliberate, but judge it.
-- Pilates B's small grey brand name next to the eyebrow is weak; the eyebrow already names the studio.
-- Luz C's accent ring is a stylistic decision that could read as decoration; judge it in context.
-- Luz C 9:16 reports SHORTER_COPY_SUGGESTED (the headline sits at full size; the engine suggests ≤12-character
-  headlines for that layout). The copy was not shortened, because shortening is an owner decision.
+- Luz C 9:16 reports SHORTER_COPY_SUGGESTED (headline at 89% of its plan, recorded). Not shortened: copy is the owner's.
+- Luz A's reference effect is small (grain, corner logo). The references agree with the brief.
+- Pilates C 4:5's reference effect is negligible (convergence, above).
+- The Pilates A detail tile crops to hands and a forearm: judge it.
+- The Luz C ring crosses near the price in 9:16: decorative; judge it.
+- 9:16 bold-type keeps the lower platform-UI band as plain brand colour (by safe-area design).
 
-## 5. Not validated
+## 7. Not validated
 
-- No human or audience has judged these ads. Automated checks measure fit, contrast, collisions and claims, not
-  taste or performance.
-- Copy is human-style Hebrew written offline; a native copy review is still needed.
-- The motion previews are silent local renders; no voiceover was generated.
+- No human or audience has judged these ads. Automated checks measure fit, contrast, collisions, coverage and
+  claims, not taste or performance.
+- The subject boxes for the 6 showcase photos were recorded by hand after viewing them (MANUAL). There is no image
+  analysis in the product yet; uploaded pictures without metadata get the review flag.
+- Copy is Hebrew written offline from the approved claims; a native copy review is still needed.

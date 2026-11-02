@@ -86,3 +86,20 @@ Durable state so work can resume without rediscovery. Updated at each checkpoint
 - [x] Pilates photography: 3 AI demonstration photos, approved by the owner in chat (gpt-image-2 medium, 3 calls,
       ≈$0.123 estimated; exact charge on the OpenAI usage page). Script `out/scripts/q7-pilates-photos.mjs`
       (gitignored, hard-capped at 3 calls, never regenerates). Not the real studio; labelled in the Studio.
+
+## Q7 final creative integration (2026-11-02, no paid calls)
+- [x] Reference decisions traced to the page; root causes and fixes in `docs/Q7_QUALITY_ACCEPTANCE.md` §2:
+      split panel / collage / people-as-hero drawn, corner logo placed by ink extent, two-line type-as-image,
+      rule lines and inset frame in editorial-with-picture. The trace reports baseline → informed per format and
+      labels a plan change that leaves the page unchanged (`samePage`).
+- [x] Picture layout metadata (`PictureLayoutSchema` on `AvailableAsset.layout`, MANUAL or ANALYSIS, never guessed);
+      subject-safe text planning, coverage flags, review flag when metadata is missing.
+- [x] Per-direction picture choice (measured score, owner lock, authenticity kept); `CreativeDirection.picture`.
+- [x] Pilates review notes fixed as rules: no text over the class, editorial 9:16 picture fills the lower band with
+      price grouped with the CTA, bold-type picture scale and a column held at both ends.
+- [x] Brief-only baseline rendered beside every direction (`*-base.png`, `*-reference-effect-{4x5,9x16}.jpg`).
+- [x] Regression tests: `production-engine/src/picture-layout.test.ts`, `creative-engine/src/picture-choice.test.ts`.
+- [x] Disk: Docker build cache only (`docker builder prune -a`, 33.0 GB → 0). Containers, 354 volumes and images
+      untouched. The WSL disk image is not sparse, so Windows only gains the space after compacting it, which needs
+      Docker stopped (it would stop the running publishers-dashboard-api) and admin rights: left to the owner.
+- [ ] Owner creative review (not claimed). Next priority after it: the persistent conversational Campaign Director.
