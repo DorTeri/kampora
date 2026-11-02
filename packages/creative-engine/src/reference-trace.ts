@@ -1,5 +1,5 @@
 import type { CreativeDesignSpec, CreativeDirection, CreativeDirectionSet, DesignMove } from '@kampora/shared';
-import { composeDirectionSpecs, directCreative, type DirectionInput } from './art-director-v2';
+import { allPictures, composeDirectionSpecs, directCreative, inputForDirection, type DirectionInput } from './art-director-v2';
 
 /**
  * Proof that the references shape the pixels, not just the prompt or the UI. For each direction the trace runs
@@ -40,8 +40,17 @@ export interface DirectionTrace {
   referenceOnlyMoves: DesignMove[];
   /** The same direction recomposed without every reference-only move, per format: what the references drew. */
   withoutReferenceMoves: Record<string, LayerChange[]>;
-  /** Directing with no references at all. */
-  withoutAnyReference: { method: string; moves: DesignMove[]; typeSystem: string; changed: string[] };
+  /** Directing with no references at all (the brief-only baseline); `changed` and `layers` read baseline → this direction. */
+  withoutAnyReference: {
+    method: string;
+    moves: DesignMove[];
+    typeSystem: string;
+    picture: string | null;
+    changed: string[];
+    layers: Record<string, LayerChange[]>;
+    /** Set when the references changed the plan but the page came out the same: said plainly, never shown as an effect. */
+    samePage?: string;
+  };
   originality: {
     /** Highest overlap (Jaccard) between this direction's moves and one reference's moves. */
     maxOverlap: number;
@@ -51,6 +60,12 @@ export interface DirectionTrace {
     /** Only the owner's pictures and the approved words appear on the page. */
     ownAssetsOnly: boolean;
   };
+}
+
+/** A plan change with no page change: the baseline reached the same arrangement on its own (often a safety fallback). */
+function withSamePage(w: DirectionTrace['withoutAnyReference']): DirectionTrace['withoutAnyReference'] {
+  if (!w.changed.length || Object.values(w.layers).some((l) => l.length > 0)) return w;
+  return { ...w, samePage: `The references changed the plan (${w.changed.join('; ')}) but not the page: without them the layout engine reaches the same arrangement.` };
 }
 
 const jaccard = (a: readonly string[], b: readonly string[]) => {
@@ -73,6 +88,13 @@ function compareDirections(a: CreativeDirection, b: CreativeDirection | undefine
 
 const round = (n: number) => Math.round(n);
 
+/** The picture a direction is built on (its first image layer). */
+const pictureOf = (d: CreativeDirection | undefined): string | null => {
+  const spec = d && Object.values(d.specs)[0];
+  const img = spec?.layers.find((l) => l.kind === 'image');
+  return img && img.kind === 'image' ? img.assetId : null;
+};
+
 /** The differences a viewer would see between two compositions of the same words. */
 export function diffSpecs(a: CreativeDesignSpec, b: CreativeDesignSpec): LayerChange[] {
   const out: string[] = [];
@@ -91,6 +113,8 @@ export function diffSpecs(a: CreativeDesignSpec, b: CreativeDesignSpec): LayerCh
     if (x.font.family !== y.font.family) out.push(`${role.toLowerCase()} face ${x.font.family} → ${y.font.family}`);
     if (Math.abs(x.font.size - y.font.size) >= 2) out.push(`${role.toLowerCase()} ${round(x.font.size)}px → ${round(y.font.size)}px`);
     if (x.lines.length !== y.lines.length) out.push(`${role.toLowerCase()} ${x.lines.length} → ${y.lines.length} lines`);
+    else if (x.lines.join('\n') !== y.lines.join('\n')) out.push(`${role.toLowerCase()} line breaks "${x.lines.join(' / ')}" → "${y.lines.join(' / ')}"`);
+    if (Math.abs(x.font.lineHeight - y.font.lineHeight) >= 0.05) out.push(`${role.toLowerCase()} line height ${x.font.lineHeight} → ${y.font.lineHeight}`);
     if (x.color !== y.color) out.push(`${role.toLowerCase()} colour ${x.color} → ${y.color}`);
     if (Boolean(x.box) !== Boolean(y.box)) out.push(`${role.toLowerCase()} ${x.box ? 'button/box removed' : 'set in a box'}`);
     if (Math.abs(x.rect.y - y.rect.y) > 40 || Math.abs(x.rect.x - y.rect.x) > 40) out.push(`${role.toLowerCase()} moved (${round(x.rect.x)},${round(x.rect.y)}) → (${round(y.rect.x)},${round(y.rect.y)})`);
@@ -99,7 +123,12 @@ export function diffSpecs(a: CreativeDesignSpec, b: CreativeDesignSpec): LayerCh
   const img = (s: CreativeDesignSpec) => s.layers.find((l) => l.kind === 'image');
   const ia = img(a);
   const ib = img(b);
+  const count = (s: CreativeDesignSpec) => s.layers.filter((l) => l.kind === 'image').length;
+  if (count(a) !== count(b)) out.push(`pictures on the page ${count(a)} → ${count(b)}`);
   if (ia && ib && ia.kind === 'image' && ib.kind === 'image') {
+    if (ia.assetId !== ib.assetId) out.push(`picture ${ia.assetId} → ${ib.assetId}`);
+    if (Math.abs(ia.rect.y - ib.rect.y) > 40 || Math.abs(ia.rect.x - ib.rect.x) > 40) out.push(`photo moved (${round(ia.rect.x)},${round(ia.rect.y)}) → (${round(ib.rect.x)},${round(ib.rect.y)})`);
+    if (Math.abs(ia.focal.x - ib.focal.x) > 0.05 || Math.abs(ia.focal.y - ib.focal.y) > 0.05) out.push(`photo crop focal (${ia.focal.x},${ia.focal.y}) → (${ib.focal.x},${ib.focal.y})`);
     if (ia.treatment !== ib.treatment) out.push(`photo treatment ${ia.treatment} → ${ib.treatment}`);
     if (ia.mask !== ib.mask) out.push(`photo mask ${ia.mask} → ${ib.mask}`);
     if (ia.zoom !== ib.zoom) out.push(`photo crop zoom ${ia.zoom} → ${ib.zoom}`);
@@ -119,6 +148,12 @@ export function diffSpecs(a: CreativeDesignSpec, b: CreativeDesignSpec): LayerCh
     const m = sb.get(k) ?? 0;
     if (n !== m) out.push(`${k.toLowerCase()} shapes ${n} → ${m}`);
   }
+  const la = a.layers.find((l) => l.kind === 'logo');
+  const lb = b.layers.find((l) => l.kind === 'logo');
+  if (la && lb && la.kind === 'logo' && lb.kind === 'logo') {
+    if (Math.abs(la.rect.y - lb.rect.y) > 40 || Math.abs(la.rect.x - lb.rect.x) > 40) out.push(`brand mark moved (${round(la.rect.x)},${round(la.rect.y)}) → (${round(lb.rect.x)},${round(lb.rect.y)})`);
+    if (Math.abs(la.font.size - lb.font.size) >= 2) out.push(`brand mark ${round(la.font.size)}px → ${round(lb.font.size)}px`);
+  }
   return out.map((change) => ({ change }));
 }
 
@@ -127,9 +162,10 @@ export function traceReferenceInfluence(input: DirectionInput, set: CreativeDire
   const formats = input.formats ?? ['4:5', '9:16'];
   const bare = directCreative({ ...input, references: [] });
   const leaveOneOut = new Map(input.references.map((r) => [r.reference.id, directCreative({ ...input, references: input.references.filter((x) => x !== r) })]));
-  const assetIds = new Set([input.picture?.assetId, input.logoAssetId].filter(Boolean));
+  const assetIds = new Set([...allPictures(input).map((p) => p.assetId), input.logoAssetId].filter(Boolean));
 
   return set.directions.map((d) => {
+    const own = inputForDirection(input, d);
     const moveSources: Record<string, string[]> = {};
     for (const m of d.moves) {
       const refs = input.references.filter((r) => r.reference.designMoves.includes(m)).map((r) => r.reference.id);
@@ -140,9 +176,9 @@ export function traceReferenceInfluence(input: DirectionInput, set: CreativeDire
       const r = input.references.find((x) => x.reference.id === inf.referenceId)!.reference;
       const other = leaveOneOut.get(inf.referenceId)!.directions.find((x) => x.key === d.key);
       // A move another reference also voted for stays: only what this reference alone brought is taken out.
-      const own = inf.moves.filter((m) => (moveSources[m] ?? []).filter((s) => s !== inf.referenceId).length === 0);
-      const reduced = d.moves.filter((m) => !own.includes(m));
-      const recomposed = own.length ? composeDirectionSpecs(input, d.approach, d.method, reduced, d.typeSystem, formats, d.emphasis) : null;
+      const mine = inf.moves.filter((m) => (moveSources[m] ?? []).filter((s) => s !== inf.referenceId).length === 0);
+      const reduced = d.moves.filter((m) => !mine.includes(m));
+      const recomposed = mine.length ? composeDirectionSpecs(own, d.approach, d.method, reduced, d.typeSystem, formats, d.emphasis) : null;
       return {
         referenceId: inf.referenceId,
         brand: r.brand,
@@ -154,7 +190,7 @@ export function traceReferenceInfluence(input: DirectionInput, set: CreativeDire
     });
     const referenceOnlyMoves = d.moves.filter((m) => moveSources[m]!.every((src) => src !== 'concept' && src !== 'approach default'));
     const withoutRefMoves = referenceOnlyMoves.length
-      ? composeDirectionSpecs(input, d.approach, d.method, d.moves.filter((m) => !referenceOnlyMoves.includes(m)), d.typeSystem, formats, d.emphasis)
+      ? composeDirectionSpecs(own, d.approach, d.method, d.moves.filter((m) => !referenceOnlyMoves.includes(m)), d.typeSystem, formats, d.emphasis)
       : null;
     const noRefs = bare.directions.find((x) => x.key === d.key);
     const overlaps = input.references.map((r) => ({ id: r.reference.id, o: jaccard(d.moves, r.reference.designMoves) })).sort((a, b) => b.o - a.o);
@@ -168,7 +204,16 @@ export function traceReferenceInfluence(input: DirectionInput, set: CreativeDire
       effects,
       referenceOnlyMoves: referenceOnlyMoves as DesignMove[],
       withoutReferenceMoves: Object.fromEntries(formats.map((f) => [f, withoutRefMoves ? diffSpecs(d.specs[f]!, withoutRefMoves[f]!) : []])),
-      withoutAnyReference: { method: noRefs?.method ?? '-', moves: (noRefs?.moves ?? []) as DesignMove[], typeSystem: noRefs?.typeSystem ?? '-', changed: compareDirections(d, noRefs) },
+      withoutAnyReference: withSamePage({
+        method: noRefs?.method ?? '-',
+        moves: (noRefs?.moves ?? []) as DesignMove[],
+        typeSystem: noRefs?.typeSystem ?? '-',
+        picture: pictureOf(noRefs),
+        // Read as "baseline → reference-informed", like `layers`.
+        changed: noRefs ? [...compareDirections(noRefs, d), ...(pictureOf(noRefs) !== pictureOf(d) ? [`picture ${pictureOf(noRefs)} → ${pictureOf(d)}`] : [])] : ['no baseline direction'],
+        // Read as "baseline → reference-informed": what the references changed on the page.
+        layers: Object.fromEntries(formats.map((f) => [f, noRefs?.specs[f] ? diffSpecs(noRefs.specs[f]!, d.specs[f]!) : []])),
+      }),
       originality: {
         maxOverlap: Math.round((overlaps[0]?.o ?? 0) * 100) / 100,
         closestReference: overlaps[0]?.id ?? null,

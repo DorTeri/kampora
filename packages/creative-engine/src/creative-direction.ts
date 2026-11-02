@@ -13,7 +13,7 @@ import {
   type StaticAd,
   type StaticAdFormat,
 } from '@kampora/shared';
-import { directCreative, type DirectionInput } from './art-director-v2';
+import { directCreative, type DirectionInput, type DirectionPicture } from './art-director-v2';
 
 /**
  * The bridge between the copy pipeline and Art Director 2.0. The words of a static ad are decided first (by the
@@ -26,6 +26,8 @@ export interface StaticDirectionContext {
   brief: Pick<CampaignBrief, 'goal' | 'productName' | 'audience'>;
   concept: Pick<CreativeConcept, 'key' | 'title' | 'angle' | 'copy' | 'design'>;
   assets: readonly AvailableAsset[];
+  /** Background ranker scores per picture (0–1, best = 1): how well each shows what the brief sells. */
+  pictureRelevance?: Readonly<Record<string, number>>;
   /** Injected in tests and by the Studio when the owner pins references; retrieved otherwise. */
   references?: readonly RetrievedReference[];
   formats?: readonly StaticAdFormat[];
@@ -65,15 +67,30 @@ export function referencesFor(ctx: Pick<StaticDirectionContext, 'business' | 'br
   });
 }
 
+/** A picture as the Art Director sees it: its crop point, authenticity and, when recorded, its layout metadata. */
+function directionPicture(asset: AvailableAsset | undefined, id: string, focal: { x: number; y: number }, authenticity: MediaAuthenticity, relevance?: number): DirectionPicture {
+  const layout = asset?.layout;
+  return {
+    assetId: id,
+    ...(relevance !== undefined ? { relevance } : {}),
+    focal: layout?.focal ?? focal,
+    authenticity,
+    ...(asset?.width && asset.height ? { aspect: asset.width / asset.height } : {}),
+    ...(layout ? { subject: layout.subject, negativeSpace: layout.calm, ...(layout.composition ? { composition: layout.composition } : {}), ...(layout.people ? { people: layout.people } : {}) } : {}),
+  };
+}
+
 export function directionInputFor(ad: StaticAd, ctx: StaticDirectionContext): DirectionInput {
   const { profile } = industryFor(ctx.business);
-  const picture = ad.background.assetId
-    ? {
-        assetId: ad.background.assetId,
-        focal: ad.background.focalPoint,
-        authenticity: pictureAuthenticity(ad, ctx.assets),
-      }
-    : undefined;
+  const bg = ad.background.assetId;
+  const picture = bg ? directionPicture(ctx.assets.find((a) => a.id === bg), bg, ad.background.focalPoint, pictureAuthenticity(ad, ctx.assets), ctx.pictureRelevance?.[bg]) : undefined;
+  // Alternatives: pictures the ad carries, with commercial rights and recorded layout (only those can be compared).
+  const carried = new Set(ad.assets.map((a) => a.id));
+  const pictures = bg
+    ? ctx.assets
+        .filter((a) => a.id !== bg && a.kind === 'image' && a.commercialUse && a.layout && carried.has(a.id))
+        .map((a) => directionPicture(a, a.id, { x: 0.5, y: 0.5 }, mediaAuthenticity(a), ctx.pictureRelevance?.[a.id]))
+    : [];
   return {
     conceptKey: ctx.concept.key,
     goal: ctx.brief.goal,
@@ -88,6 +105,9 @@ export function directionInputFor(ad: StaticAd, ctx: StaticDirectionContext): Di
     },
     copy: copyFromStaticAd(ad, ctx),
     ...(picture ? { picture } : {}),
+    ...(pictures.length ? { pictures } : {}),
+    // The owner's picture choice is kept by every direction.
+    ...(ad.background.selection?.chosenBy === 'OWNER' ? { pictureLocked: true } : {}),
     ...(ad.branding.logoAssetId ? { logoAssetId: ad.branding.logoAssetId } : {}),
     references: ctx.references ?? referencesFor(ctx),
     formats: ctx.formats ?? ['4:5', '9:16'],

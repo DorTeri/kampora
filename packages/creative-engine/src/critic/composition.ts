@@ -20,7 +20,7 @@ import {
   type TextLayer,
 } from '@kampora/shared';
 import { checkClaims } from '../claims';
-import { composeDirectionSpecs, MOVE_GROUPS, type DirectionInput } from '../art-director-v2';
+import { composeDirectionSpecs, inputForDirection, MOVE_GROUPS, type DirectionInput } from '../art-director-v2';
 import { measured, notMeasured, type Finding } from './report';
 
 /**
@@ -339,7 +339,7 @@ export function reviewDirectionSet(
   set: CreativeDirectionSet,
   opts: { approvedClaims?: readonly string[]; maxRounds?: number; approvedSubheadline?: string } = {},
 ): { set: CreativeDirectionSet; reviews: Record<string, Record<string, CreativeReview>>; copy: Record<string, DirectionInput['copy']> } {
-  const revised = set.directions.map((d) => reviewDirection(input, d, opts));
+  const revised = set.directions.map((d) => reviewDirection(inputForDirection(input, d), d, opts));
   const directions = revised.map((r) => r.direction);
   const reviews: Record<string, Record<string, CreativeReview>> = {};
   for (const [i, d] of directions.entries()) {

@@ -1,5 +1,5 @@
 import type { RetrievedReference } from '@kampora/agent-expertise';
-import { composeDesign, derivePalette, PICTURE_METHODS, type ComposeCopy } from '@kampora/production-engine';
+import { composeDesign, derivePalette, measurePictureUse, PICTURE_METHODS, type ComposeCopy, type ComposePicture } from '@kampora/production-engine';
 import {
   CreativeDirectionSetSchema,
   type BrandColors,
@@ -45,17 +45,26 @@ export interface DirectionInput {
     visualMoves?: readonly DesignMove[];
   };
   copy: ComposeCopy;
-  picture?: {
-    assetId: string;
-    focal: { x: number; y: number };
-    composition?: CompositionType;
-    authenticity: MediaAuthenticity;
-    negativeSpace?: 'TOP' | 'BOTTOM' | 'START' | 'END' | 'NONE';
-  };
+  /** The ranked (or owner-chosen) picture for this ad. */
+  picture?: DirectionPicture;
+  /**
+   * Other approved pictures of this ad with verified layout metadata. A direction may build on one of them when it
+   * measurably serves that direction better (see choosePicture); without metadata a picture cannot be compared.
+   */
+  pictures?: readonly DirectionPicture[];
+  /** The owner chose the picture: every direction keeps it. */
+  pictureLocked?: boolean;
   logoAssetId?: string;
   references: readonly RetrievedReference[];
   formats?: readonly StaticAdFormat[];
 }
+
+export type DirectionPicture = ComposePicture & {
+  composition?: CompositionType;
+  authenticity: MediaAuthenticity;
+  /** How well it shows what the brief sells (0–1), from the background ranker; absent when not ranked. */
+  relevance?: number;
+};
 
 const APPROACH_METHODS: Record<DirectionApproach, readonly CompositionMethod[]> = {
   IMAGE_LED: ['IMAGE_FIRST', 'LIFESTYLE', 'LAYERED', 'PRODUCT_LED', 'SPLIT'],
@@ -298,6 +307,7 @@ export function composeDirectionSpecs(
   formats: readonly StaticAdFormat[],
   emphasis: CreativeDirection['emphasis'] = emphasisFor(approach, method, input),
 ): Record<string, CreativeDesignSpec> {
+  const gallery = allPictures(input).filter((p) => p.assetId !== input.picture?.assetId);
   return Object.fromEntries(
     formats.map((format) => [
       format,
@@ -309,11 +319,78 @@ export function composeDirectionSpecs(
         palette: derivePalette(input.brand.colors, moves),
         copy: input.copy,
         ...(input.picture ? { picture: input.picture } : {}),
+        ...(input.picture && gallery.length ? { gallery } : {}),
         ...(input.logoAssetId ? { logoAssetId: input.logoAssetId } : {}),
         emphasis,
       }),
     ]),
   );
+}
+
+/** The ad's picture first, then the other approved pictures. */
+export function allPictures(input: Pick<DirectionInput, 'picture' | 'pictures'>): DirectionPicture[] {
+  return [...(input.picture ? [input.picture] : []), ...(input.pictures ?? []).filter((p) => p.assetId !== input.picture?.assetId)];
+}
+
+/** The input a direction was composed from: the same, with the direction's own picture. */
+export function inputForDirection(input: DirectionInput, d: Pick<CreativeDirection, 'picture'>): DirectionInput {
+  const own = d.picture && allPictures(input).find((p) => p.assetId === d.picture!.assetId);
+  return own ? { ...input, picture: own } : input;
+}
+
+/** How large a subject must read on the page to be legible: one person reads small, a group needs room. */
+const SUBJECT_TARGET: Record<NonNullable<ComposePicture['people']>, number> = { NONE: 0.12, ONE: 0.12, FEW: 0.2, GROUP: 0.3 };
+
+/**
+ * How well a picture serves a composed direction, from measurements of the specs (never from the picture's name):
+ * text over the subject, how large the subject reads, whether the crop keeps it whole, whether the copy fits, the
+ * picture's calm space for full-bleed methods, and its subject for the concept. A picture another direction already
+ * uses loses a little, so the same picture repeats only when it is clearly the best.
+ */
+function pictureScore(
+  pic: DirectionPicture,
+  approach: DirectionApproach,
+  method: CompositionMethod,
+  specs: Record<string, CreativeDesignSpec>,
+  input: DirectionInput,
+  usedPictures: ReadonlySet<string>,
+): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let score = 0;
+  const uses = Object.values(specs).flatMap((s) => measurePictureUse(s, [pic]));
+  if (uses.length) {
+    const covered = Math.max(...uses.map((u) => u.covered));
+    const share = uses.reduce((n, u) => n + u.subjectShare, 0) / uses.length;
+    const kept = Math.min(...uses.map((u) => u.kept));
+    const target = SUBJECT_TARGET[pic.people ?? 'NONE'];
+    score += -6 * covered + 2 * Math.min(1, share / target) + (kept >= 0.9 ? 0.5 : 0);
+    reasons.push(`subject ${Math.round(share * 100)}% of the page (wants ${Math.round(target * 100)}%${pic.people === 'GROUP' ? ' for a group' : ''})`);
+    reasons.push(covered > 0.02 ? `text covers ${Math.round(covered * 100)}% of the subject` : 'no text on the subject');
+    if (kept < 0.9) reasons.push(`crop keeps ${Math.round(kept * 100)}% of the subject`);
+  }
+  for (const s of Object.values(specs)) score -= s.fit.status === 'UNRESOLVED' ? 3 : s.fit.status === 'SHORTER_COPY_SUGGESTED' ? 1 : 0;
+  if (['IMAGE_FIRST', 'LIFESTYLE', 'LAYERED'].includes(method) && pic.negativeSpace === 'NONE') {
+    score -= 1;
+    reasons.push('no calm area for type over it');
+  }
+  if (approach === 'IMAGE_LED' && pic.composition === 'LIFESTYLE' && ['LIFESTYLE', 'EMOTIONAL', 'UGC'].includes(input.concept.angle)) {
+    score += 0.5;
+    reasons.push('people in a real moment suit the concept');
+  }
+  if (input.copy.price && emphasisFor(approach, method, input) === 'PRICE' && pic.composition === 'SINGLE_HERO') {
+    score += 0.5;
+    reasons.push('one clear product beside the price');
+  }
+  if (pic.relevance !== undefined) {
+    score += 3 * pic.relevance;
+    if (pic.relevance < 0.75) reasons.push(`shows less of the offer (relevance ${Math.round(pic.relevance * 100)}%)`);
+  }
+  if (pic.assetId === input.picture?.assetId) score += 0.6;
+  if (usedPictures.has(pic.assetId)) {
+    score -= 1.2;
+    reasons.push('already used by another direction');
+  }
+  return { score, reasons };
 }
 
 export { APPROACH_METHODS, GROUPS as MOVE_GROUPS, EXCLUDED as APPROACH_EXCLUDED_MOVES };
@@ -331,31 +408,51 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
   const usedTypes = new Set<TypeSystemId>();
   const keys = ['A', 'B', 'C'] as const;
   const approaches: DirectionApproach[] = ['IMAGE_LED', 'EDITORIAL_TYPE', 'BOLD_GRAPHIC'];
-  const directions: CreativeDirection[] = approaches.map((approach, i) => {
+  const usedPictures = new Set<string>();
+  const candidates = input.picture && !input.pictureLocked ? allPictures(input) : [input.picture];
+  /** One direction of an approach built on one picture: method, moves, type and the composed specs. */
+  const build = (approach: DirectionApproach, pic: DirectionPicture | undefined) => {
+    const inp: DirectionInput = pic ? { ...input, picture: pic } : input;
     const decisions: CreativeDirection['rationale'] = [];
-    let { method, because } = chooseMethod(approach, votes, input, usedMethods);
-    if (approach === 'IMAGE_LED' && !input.picture) decisions.push({ topic: 'picture', decision: 'No usable picture: the image-led direction is built from shapes and type', because: 'Kampora never invents a product photo silently; a picture can be added later.' });
-    let moves = pickMoves(approach, method, votes, Boolean(input.picture), usedPalettes, input);
-    let typeSystem = chooseTypeSystem(approach, moves, input.tone, usedTypes);
-    const palette = derivePalette(input.brand.colors, moves);
-    const compose = (m: CompositionMethod, mv: DesignMove[]) => composeDirectionSpecs(input, approach, m, mv, typeSystem, formats);
+    let { method, because } = chooseMethod(approach, votes, inp, usedMethods);
+    if (approach === 'IMAGE_LED' && !inp.picture) decisions.push({ topic: 'picture', decision: 'No usable picture: the image-led direction is built from shapes and type', because: 'Kampora never invents a product photo silently; a picture can be added later.' });
+    let moves = pickMoves(approach, method, votes, Boolean(inp.picture), usedPalettes, inp);
+    let typeSystem = chooseTypeSystem(approach, moves, inp.tone, usedTypes);
+    const compose = (m: CompositionMethod, mv: DesignMove[]) => composeDirectionSpecs(inp, approach, m, mv, typeSystem, formats);
     let specs = compose(method, moves);
     if (Object.values(specs).some((s) => s.fit.status === 'UNRESOLVED')) {
-      const alt = chooseMethod(approach, votes, input, new Set([...usedMethods, method]));
+      const alt = chooseMethod(approach, votes, inp, new Set([...usedMethods, method]));
       if (alt.method !== method) {
-        const altMoves = pickMoves(approach, alt.method, votes, Boolean(input.picture), usedPalettes, input);
+        const altMoves = pickMoves(approach, alt.method, votes, Boolean(inp.picture), usedPalettes, inp);
         const altSpecs = compose(alt.method, altMoves);
         const unresolved = (x: Record<string, CreativeDesignSpec>) => Object.values(x).filter((s) => s.fit.status === 'UNRESOLVED').length;
         if (unresolved(altSpecs) < unresolved(specs)) {
           decisions.push({ topic: 'fit', decision: `Changed the arrangement from ${method} to ${alt.method}`, because: 'The copy did not fit the first arrangement; a different composition beats shrinking the type.' });
           method = alt.method;
           moves = altMoves;
-          specs = altSpecs;
           because = alt.because;
-          typeSystem = chooseTypeSystem(approach, moves, input.tone, usedTypes);
+          typeSystem = chooseTypeSystem(approach, moves, inp.tone, usedTypes);
           specs = compose(method, moves);
         }
       }
+    }
+    const fit = pic ? pictureScore(pic, approach, method, specs, input, usedPictures) : { score: 0, reasons: [] as string[] };
+    return { pic, method, because, moves, typeSystem, specs, decisions, fit };
+  };
+  const directions: CreativeDirection[] = approaches.map((approach, i) => {
+    const tried = candidates.map((pic) => build(approach, pic));
+    const chosen = [...tried].sort((a, b) => b.fit.score - a.fit.score)[0]!;
+    const { pic, method, because, moves, typeSystem, specs, decisions } = chosen;
+    const palette = derivePalette(input.brand.colors, moves);
+    let picture: CreativeDirection['picture'];
+    if (pic && tried.length > 1) {
+      const others = tried.filter((t) => t !== chosen).map((t) => `${t.pic!.assetId} ${t.fit.score.toFixed(1)}`);
+      picture = { assetId: pic.assetId, because: `${chosen.fit.reasons.join('; ')} (score ${chosen.fit.score.toFixed(1)}; ${others.join(', ')})` };
+      decisions.push({ topic: 'picture', decision: pic.assetId, because: picture.because });
+      usedPictures.add(pic.assetId);
+    } else if (pic && input.pictureLocked) {
+      picture = { assetId: pic.assetId, because: 'The owner chose this picture; every direction keeps it.' };
+      decisions.push({ topic: 'picture', decision: pic.assetId, because: picture.because });
     }
     usedMethods.add(method);
     usedTypes.add(typeSystem);
@@ -379,6 +476,7 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
       emphasis: emphasisFor(approach, method, input),
       rationale: decisions,
       references: refs,
+      ...(picture ? { picture } : {}),
       specs: finalSpecs,
       copyRequests: copyRequests.filter((r, j) => copyRequests.findIndex((x) => x.role === r.role) === j),
     };

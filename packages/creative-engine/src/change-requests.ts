@@ -9,7 +9,7 @@ import {
   type StaticAdFormat,
   type TypeSystemId,
 } from '@kampora/shared';
-import { APPROACH_EXCLUDED_MOVES, APPROACH_METHODS, MOVE_GROUPS, composeDirectionSpecs, type DirectionInput } from './art-director-v2';
+import { APPROACH_EXCLUDED_MOVES, APPROACH_METHODS, MOVE_GROUPS, composeDirectionSpecs, inputForDirection, type DirectionInput } from './art-director-v2';
 import { technicalChecks } from './critic/composition';
 
 /**
@@ -194,10 +194,12 @@ function request(component: RevisionRequest['component'], criteria: string[], in
  * Applies a Hebrew change request to one direction of a set. Free changes (art direction and layout) are applied
  * and re-checked; changes that need new words or a new picture are recorded as paid requests awaiting approval.
  */
-export function applyCreativeChange(input: DirectionInput, set: CreativeDirectionSet, key: CreativeDirection['key'], text: string): ChangeOutcome {
+export function applyCreativeChange(setInput: DirectionInput, set: CreativeDirectionSet, key: CreativeDirection['key'], text: string): ChangeOutcome {
   const parsed = parseChangeRequest(text);
   const original = set.directions.find((d) => d.key === key);
   if (!original) throw new Error(`No direction ${key}`);
+  // A direction is changed on its own picture, not the set's first one.
+  const input = inputForDirection(setInput, original);
   const approach = original.approach;
   const excluded = APPROACH_EXCLUDED_MOVES[approach];
   const formats = Object.keys(original.specs) as StaticAdFormat[];
