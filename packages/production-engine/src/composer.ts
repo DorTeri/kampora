@@ -56,6 +56,19 @@ export interface ComposeCopy {
   brandName: string;
 }
 
+export interface ComposePicture {
+  assetId: string;
+  focal: { x: number; y: number };
+  composition?: CompositionType;
+  /** Where the picture has calm space for text. */
+  negativeSpace?: 'TOP' | 'BOTTOM' | 'START' | 'END' | 'NONE';
+  /** Source width / height. With `subject`, the engine can measure where a crop puts the subject. */
+  aspect?: number;
+  /** The box (fractions of the source) that holds the people or the product. Verified metadata only, never guessed. */
+  subject?: { x: number; y: number; w: number; h: number };
+  people?: 'NONE' | 'ONE' | 'FEW' | 'GROUP';
+}
+
 export interface ComposeInput {
   format: StaticAdFormat;
   method: CompositionMethod;
@@ -63,13 +76,9 @@ export interface ComposeInput {
   typeSystem: TypeSystemId;
   palette: SpecPalette;
   copy: ComposeCopy;
-  picture?: {
-    assetId: string;
-    focal: { x: number; y: number };
-    composition?: CompositionType;
-    /** Where the picture has calm space for text. */
-    negativeSpace?: 'TOP' | 'BOTTOM' | 'START' | 'END' | 'NONE';
-  };
+  picture?: ComposePicture;
+  /** Other approved pictures for this ad: a grid (COLLAGE_GRID) may use one beside the main picture. */
+  gallery?: readonly ComposePicture[];
   logoAssetId?: string;
   /** What the viewer must notice first. */
   emphasis: 'HEADLINE' | 'PRICE' | 'IMAGE' | 'BRAND';
@@ -122,6 +131,8 @@ class Ctx {
   readonly suggestions: CreativeDesignSpec['fit']['suggestions'] = [];
   readonly decisions: { topic: string; decision: string; because: string }[] = [];
   readonly path: string[] = [];
+  /** Things a person should check that the engine cannot measure (they do not change the fit status). */
+  readonly flags: string[] = [];
   overflow = 0;
   headlineRatio = 1;
   n = 0;
@@ -174,8 +185,7 @@ class Ctx {
     return { family: a.family, weight: a.weight, size, lineHeight: 1.2, letterSpacing: a.letterSpacing, ...overrides };
   }
 
-  image(rect: Rect, extra: Partial<ImageLayer> = {}): void {
-    const p = this.input.picture;
+  image(rect: Rect, extra: Partial<ImageLayer> = {}, p: ComposePicture | undefined = this.input.picture): void {
     if (!p) return;
     const id = this.id('image');
     const treatment: ImageLayer['treatment'] = this.has('HIGH_CONTRAST_DUOTONE')
@@ -231,14 +241,23 @@ class Ctx {
 
   /** Height the blocks need in a column of this width (measured, nothing placed). */
   measure(width: number, blocks: Block[]): number {
-    const saved = { overflow: this.overflow, ratio: this.headlineRatio, notes: this.notes.length, layers: this.layers.length, n: this.n };
+    const saved = this.snapshot();
     const used = this.stack({ x: 0, y: 0, w: width, h: 100000 }, blocks).used;
+    this.restore(saved);
+    return used;
+  }
+
+  /** The drawing state, so an arrangement can be tried and taken back. */
+  snapshot() {
+    return { overflow: this.overflow, ratio: this.headlineRatio, notes: this.notes.length, layers: this.layers.length, n: this.n };
+  }
+
+  restore(saved: ReturnType<Ctx['snapshot']>): void {
     this.overflow = saved.overflow;
     this.headlineRatio = saved.ratio;
     this.notes.length = saved.notes;
     this.layers.length = saved.layers;
     this.n = saved.n;
-    return used;
   }
 
   /**
@@ -317,7 +336,7 @@ class Ctx {
     return [{ role: 'EYEBROW', text: t, font, color, align, gap: 0, maxLines: 2 }];
   }
 
-  headline(color: string, align: Block['align'], opts: { scale?: number; fill?: { min: number; max: number }; maxLines?: number; gap?: number; maxWidth?: number; box?: Block['box'] } = {}): Block {
+  headline(color: string, align: Block['align'], opts: { scale?: number; fill?: { min: number; max: number }; maxLines?: number; gap?: number; maxWidth?: number; box?: Block['box']; twoLines?: boolean } = {}): Block {
     let text = this.input.copy.headline;
     const words = text.split(' ');
     // Stacked: one word per line for up to three words, pairs for four. Stacking is a style, not a size: it is the
@@ -325,6 +344,15 @@ class Ctx {
     const stacked = this.has('STACKED_HEADLINE') && this.relax === 0;
     if (stacked && words.length <= 3) text = words.join('\n');
     else if (stacked && words.length === 4) text = `${words[0]} ${words[1]}\n${words[2]} ${words[3]}`;
+    // Type as image: the headline is set as a block of two balanced lines, so the fill can grow it across the width
+    // twice instead of running it as one thin line.
+    const two = !stacked && opts.twoLines && words.length >= 2;
+    if (two) {
+      const diff = (k: number) => Math.abs(words.slice(0, k).join(' ').length - words.slice(k).join(' ').length);
+      let cut = 1;
+      for (let k = 2; k < words.length; k++) if (diff(k) < diff(cut)) cut = k;
+      text = `${words.slice(0, cut).join(' ')}\n${words.slice(cut).join(' ')}`;
+    }
     // When the price leads, the headline is planned to stop short of the price numeral: two heroes is no hero.
     const cap = this.input.emphasis === 'PRICE' && this.input.copy.price && !this.has('BADGE_STAMP') ? this.B.price * 1.25 * 0.82 : Infinity;
     const size = Math.round(Math.min(cap, this.B.headline * (opts.scale ?? 1) * (this.has('OVERSIZED_HEADLINE') ? 1.18 : 1)));
@@ -336,7 +364,7 @@ class Ctx {
       color,
       align,
       gap: opts.gap ?? this.gap(24),
-      maxLines: opts.maxLines ?? 4,
+      maxLines: two ? 2 : opts.maxLines ?? 4,
       ...(fill ? { fill } : {}),
       ...(opts.maxWidth ? { maxWidth: opts.maxWidth } : {}),
       ...(opts.box ? { box: opts.box, tight: true } : {}),
@@ -354,13 +382,20 @@ class Ctx {
     const p = this.input.copy.price;
     if (!p || this.has('BADGE_STAMP')) return [];
     const graphic = this.has('PRICE_AS_GRAPHIC') || this.input.emphasis === 'PRICE';
+    // Three weights of price: a graphic numeral, a clear figure in the display face (the default), or, when the
+    // references ask for restraint, a quiet line in the text face.
+    const quiet = !graphic && this.has('PRICE_UNDERSTATED');
     const blocks: Block[] = [];
     if (p.label)
-      blocks.push({ role: 'PRICE_LABEL', text: p.label, font: this.accent(this.B.label * (graphic ? 0.9 : 0.8)), color: labelColor, align, gap: this.gap(graphic ? 30 : 20), maxLines: 2 });
+      blocks.push({ role: 'PRICE_LABEL', text: p.label, font: this.accent(this.B.label * (graphic ? 0.9 : quiet ? 0.72 : 0.8)), color: labelColor, align, gap: this.gap(graphic ? 30 : 20), maxLines: 2 });
     blocks.push({
       role: 'PRICE',
       text: p.price,
-      font: graphic ? this.display(Math.round(this.B.price * 1.1), { lineHeight: 0.96 }) : this.text(Math.round(this.B.sub * 1.25), true),
+      font: graphic
+        ? this.display(Math.round(this.B.price * 1.1), { lineHeight: 0.96 })
+        : quiet
+          ? this.text(Math.round(this.B.sub * 1.05), true)
+          : this.display(Math.round(this.B.sub * 1.5), { lineHeight: 1 }),
       color,
       align,
       gap: p.label ? this.gap(6) : this.gap(graphic ? 30 : 18),
@@ -417,6 +452,94 @@ class Ctx {
 
 const round = (r: Rect): Rect => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.max(1, Math.round(r.w)), h: Math.max(1, Math.round(r.h)) });
 
+/** Blocks stacked as a new group: the first one needs no space before it. */
+const first0 = (blocks: Block[]): Block[] => blocks.map((b, i) => (i === 0 ? { ...b, gap: 0 } : b));
+
+/** The part of a text layer that carries ink: as wide as its longest line, on its alignment side (START is right in RTL). */
+function inkRect(l: Extract<DesignLayer, { kind: 'text' }>): Rect {
+  const extra = (l.box ? 2 * l.box.padX : 0) + (l.arrow ? l.font.size * 1.1 : 0);
+  const w = Math.min(l.rect.w, Math.max(...l.lines.map((t) => measureText(t, l.font))) + extra);
+  const x = l.align === 'START' ? l.rect.x + l.rect.w - w : l.align === 'CENTER' ? l.rect.x + (l.rect.w - w) / 2 : l.rect.x;
+  return { x, y: l.rect.y, w, h: l.rect.h };
+}
+
+const overlapArea = (a: Rect, b: Rect) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+/* ------------------------------------------------------------------------------------------------------------ */
+/* Picture geometry                                                                                            */
+/* ------------------------------------------------------------------------------------------------------------ */
+
+/**
+ * Where a box of the source picture lands on the page, drawn as the renderer draws it (object-fit cover at the
+ * focal point, then scaled by `zoom` around it). `full` is the box unclipped; `visible` is what the frame shows.
+ * Undefined without the picture's proportions: the engine does not guess.
+ */
+export function pictureBoxOnPage(
+  pic: Pick<ComposePicture, 'aspect'>,
+  rect: Rect,
+  focal: { x: number; y: number },
+  zoom: number,
+  box: { x: number; y: number; w: number; h: number },
+): { full: Rect; visible: Rect | null } | undefined {
+  if (!pic.aspect) return undefined;
+  const s = Math.max(rect.w / pic.aspect, rect.h);
+  const rw = pic.aspect * s;
+  const rh = s;
+  const ox = (rect.w - rw) * focal.x;
+  const oy = (rect.h - rh) * focal.y;
+  const cx = focal.x * rect.w;
+  const cy = focal.y * rect.h;
+  const map = (u: number, v: number) => ({ x: rect.x + cx + (ox + u * rw - cx) * zoom, y: rect.y + cy + (oy + v * rh - cy) * zoom });
+  const a = map(box.x, box.y);
+  const b = map(box.x + box.w, box.y + box.h);
+  const full = { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+  const x0 = Math.max(rect.x, a.x);
+  const y0 = Math.max(rect.y, a.y);
+  const x1 = Math.min(rect.x + rect.w, b.x);
+  const y1 = Math.min(rect.y + rect.h, b.y);
+  return { full, visible: x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null };
+}
+
+/** The crop that centres the subject in a frame as far as the picture allows (responsive cropping). */
+export function subjectFocal(pic: ComposePicture, rect: Rect): { x: number; y: number } {
+  if (!pic.aspect || !pic.subject) return pic.focal;
+  const s = Math.max(rect.w / pic.aspect, rect.h);
+  const axis = (frame: number, rendered: number, centre: number, fallback: number) =>
+    Math.abs(frame - rendered) < 1 ? fallback : Math.min(1, Math.max(0, (frame / 2 - centre * rendered) / (frame - rendered)));
+  return {
+    x: Math.round(axis(rect.w, pic.aspect * s, pic.subject.x + pic.subject.w / 2, pic.focal.x) * 100) / 100,
+    y: Math.round(axis(rect.h, s, pic.subject.y + pic.subject.h / 2, pic.focal.y) * 100) / 100,
+  };
+}
+
+export interface PictureUse {
+  assetId: string;
+  /** Share of the subject's visible area that text covers (0–1). */
+  covered: number;
+  /** Visible subject area as a share of the page: how large the people or product read. */
+  subjectShare: number;
+  /** Share of the subject the crop keeps in frame. */
+  kept: number;
+}
+
+/** Measures how a composed spec treats each picture's subject. Pictures without subject metadata are not measured. */
+export function measurePictureUse(spec: Pick<CreativeDesignSpec, 'layers' | 'width' | 'height'>, pictures: readonly ComposePicture[]): PictureUse[] {
+  const out: PictureUse[] = [];
+  const texts = spec.layers.flatMap((l) => (l.kind === 'text' ? [inkRect(l)] : []));
+  for (const l of spec.layers) {
+    if (l.kind !== 'image') continue;
+    const pic = pictures.find((p) => p.assetId === l.assetId);
+    if (!pic?.subject) continue;
+    const at = pictureBoxOnPage(pic, l.rect, l.focal, l.zoom, pic.subject);
+    if (!at) continue;
+    const vis = at.visible;
+    const area = vis ? vis.w * vis.h : 0;
+    const covered = vis && area ? Math.min(1, texts.reduce((n, t) => n + overlapArea(t, vis), 0) / area) : 0;
+    out.push({ assetId: l.assetId, covered: Math.round(covered * 100) / 100, subjectShare: Math.round((area / (spec.width * spec.height)) * 100) / 100, kept: Math.round((area / Math.max(1, at.full.w * at.full.h)) * 100) / 100 });
+  }
+  return out;
+}
+
 function clampTo(r: Rect, f: Rect): Rect {
   const w = Math.min(r.w, f.w);
   const h = Math.min(r.h, f.h);
@@ -435,36 +558,251 @@ function calmSide(c: Ctx): 'TOP' | 'BOTTOM' {
   return ns === 'TOP' ? 'TOP' : 'BOTTOM';
 }
 
-const IMAGE_FIRST: Method = (c) => {
+/**
+ * A picture area as one picture or, with COLLAGE_GRID and a second approved picture, a grid: the main picture on the
+ * reading side and a tile beside it. Every picture is cropped to keep its subject in frame.
+ */
+function pictureArea(c: Ctx, rect: Rect, extra: Partial<ImageLayer> = {}): void {
+  const main = c.input.picture;
+  if (!main) return;
+  const second = c.has('COLLAGE_GRID') ? pickTile(main, c.input.gallery ?? []) : undefined;
+  if (c.has('COLLAGE_GRID') && !second) c.decide('collage', 'One picture, no grid', 'A grid needs a second approved picture of this business; there is only one.');
+  if (!second || rect.w < 400) {
+    c.image(rect, { focal: subjectFocal(main, rect), ...extra });
+    return;
+  }
+  const gutter = 12;
+  const mainW = Math.round(rect.w * 0.62);
+  const a = { x: rect.x + rect.w - mainW, y: rect.y, w: mainW, h: rect.h };
+  const b = { x: rect.x, y: rect.y, w: rect.w - mainW - gutter, h: rect.h };
+  c.image(a, { focal: subjectFocal(main, a), ...extra });
+  c.image(b, { focal: subjectFocal(second, b), ...extra }, second);
+  c.decide('collage', `Two pictures in a grid: ${main.assetId} and ${second.assetId}`, 'Two views of the same place (the whole and a detail) tell more than one, without inventing anything.');
+}
+
+/** The grid's second picture: the one that shows something the main picture does not (a detail beside a scene). */
+function pickTile(main: ComposePicture, gallery: readonly ComposePicture[]): ComposePicture | undefined {
+  const others = gallery.filter((p) => p.assetId !== main.assetId);
+  return others.find((p) => p.composition === 'DETAIL' && main.composition !== 'DETAIL') ?? others.find((p) => p.composition !== main.composition) ?? others[0];
+}
+
+interface OverPlan {
+  focal: { x: number; y: number };
+  zoom: number;
+  /** ONE: all the copy in the calm band. SPLIT: the message in the calm band, the action on a band under the subject. */
+  mode: 'ONE' | 'SPLIT';
+  side: 'TOP' | 'BOTTOM';
+  /** Top of the subject and its bottom on the page. */
+  subjectTop: number;
+  subjectBottom: number;
+}
+
+/**
+ * Text over a full-bleed picture without covering its subject. Tries crops (focal points, and with PEOPLE_AS_HERO a
+ * closer crop on the people) and measures, for each, the calm bands above and below the subject. The copy goes
+ * where it fits: all in one band, or the message above and the action below. Returns null when no crop leaves
+ * room, and 'UNKNOWN' when the picture has no verified subject box.
+ */
+function planOverPicture(c: Ctx, colW: number, all: Block[], message: Block[], action: Block[], prefer: 'TOP' | 'BOTTOM'): OverPlan | null | 'UNKNOWN' {
+  const pic = c.input.picture!;
+  if (!pic.subject || !pic.aspect) return 'UNKNOWN';
+  const { F, W, H } = c;
+  const page = { x: 0, y: 0, w: W, h: H };
+  const m = c.gap(32);
+  const hAll = c.measure(colW, first0(all));
+  const hMessage = c.measure(colW, first0(message));
+  const hAction = c.measure(F.w, first0(action));
+  const centred = subjectFocal(pic, page);
+  const ys = [...new Set([pic.focal.y, centred.y, 0, 0.25, 0.5, 0.75, 1])];
+  const zooms = c.has('PEOPLE_AS_HERO') ? [1, 1.12] : [1];
+  let best: (OverPlan & { score: number }) | null = null;
+  for (const zoom of zooms)
+    for (const y of ys) {
+      const focal = { x: centred.x, y };
+      const at = pictureBoxOnPage(pic, page, focal, zoom, pic.subject)!;
+      // Heads stay in: the crop may cut feet, not the top of the subject.
+      if (!at.visible || at.full.y < -2 || (at.visible.w * at.visible.h) / (at.full.w * at.full.h) < 0.72) continue;
+      const S = at.visible;
+      const top = S.y - m - F.y;
+      const bottom = F.y + F.h - (S.y + S.h) - m;
+      const options: { mode: OverPlan['mode']; side: OverPlan['side']; spare: number }[] = [];
+      if (top >= hAll) options.push({ mode: 'ONE', side: 'TOP', spare: top - hAll });
+      if (bottom >= hAll) options.push({ mode: 'ONE', side: 'BOTTOM', spare: bottom - hAll });
+      if (top >= hMessage && bottom >= hAction) options.push({ mode: 'SPLIT', side: 'TOP', spare: Math.min(top - hMessage, bottom - hAction) });
+      for (const o of options) {
+        const score = (o.mode === 'ONE' ? 3 : 1.5) + (o.side === prefer ? 0.5 : 0) + o.spare / H + (c.has('PEOPLE_AS_HERO') ? (2 * S.w * S.h) / (W * H) : 0);
+        if (!best || score > best.score) best = { ...o, focal, zoom, score, subjectTop: S.y, subjectBottom: S.y + S.h };
+      }
+    }
+  return best;
+}
+
+/**
+ * The picture and the message in two panels: the picture takes what the copy leaves (never an empty field), and
+ * bleeds through the larger of the safe bands, where platform buttons sit and type must not.
+ */
+function picturePanel(c: Ctx, scale: number, because: string): void {
   const { F, W, H, pal } = c;
-  const side = calmSide(c);
-  const scrim = mixHex(pal.background, '#000000', 0.55);
-  c.image({ x: 0, y: 0, w: W, h: H }, { overlay: { color: scrim, from: 0.82, to: 0, direction: side } });
+  const ink = pal.ink;
+  const blocks = [...c.eyebrow(pal.accent), c.headline(ink, 'START', { scale, gap: c.input.copy.eyebrow ? c.gap(18) : 0 }), ...c.sub(pal.muted, 'START'), ...c.price(ink, 'START', pal.muted), ...c.cta('AUTO', 'START', ink)];
+  const textH = c.measure(F.w, first0(blocks));
+  const pad = c.gap(48);
+  const minPic = H * (c.tall ? 0.34 : 0.4);
+  const sa = STATIC_AD_FORMATS[c.input.format].safeArea;
+  const pictureLow = sa.bottomPx > sa.topPx;
+  if (pictureLow) {
+    let picTop = F.y + textH + pad;
+    if (H - picTop < minPic) {
+      c.overflow += minPic - (H - picTop);
+      picTop = H - minPic;
+    }
+    pictureArea(c, { x: 0, y: picTop, w: W, h: H - picTop });
+    c.shape({ shape: 'RECT', rect: { x: F.x + F.w - 160, y: picTop - 6, w: 160, h: 12 }, fill: pal.accent });
+    c.path.push(...c.stack({ x: F.x, y: F.y, w: F.w, h: picTop - pad - F.y }, first0(blocks), 'TOP').ids);
+  } else {
+    let panelTop = F.y + F.h - textH - pad;
+    if (panelTop < minPic) {
+      c.overflow += minPic - panelTop;
+      panelTop = minPic;
+    }
+    pictureArea(c, { x: 0, y: 0, w: W, h: panelTop });
+    c.shape({ shape: 'RECT', rect: { x: F.x + F.w - 160, y: panelTop - 6, w: 160, h: 12 }, fill: pal.accent });
+    c.path.push(...c.stack({ x: F.x, y: panelTop + pad, w: F.w, h: F.y + F.h - panelTop - pad }, first0(blocks), 'TOP').ids);
+  }
+  c.logo({ x: F.x, y: pictureLow ? F.y : F.y + F.h - c.B.brand * 1.2, w: F.w * 0.4, h: c.B.brand * 1.2 }, 'WORDMARK', pal.muted);
+  c.decide('composition', 'The picture and the message in two panels', because);
+}
+
+/**
+ * Full-bleed picture with the copy beside its subject. With verified subject metadata the engine measures the crop
+ * and keeps the text off the people or product; without it the old calm-side rule applies and a review flag says so.
+ */
+function textOverPicture(c: Ctx, opts: { scale: number; prefer: 'TOP' | 'BOTTOM'; ctaStyle: 'AUTO' | 'BUTTON' | 'TEXT_LINE'; colW: number; scrimMix: number; what: string }): void {
+  const { F, W, H, pal } = c;
   const ink = '#ffffff';
-  const colW = c.has('GENEROUS_NEGATIVE_SPACE') ? F.w * 0.74 : F.w;
-  const share = c.relax >= 1 ? 0.6 : 0.5;
-  const region = { x: F.x + F.w - colW, y: side === 'TOP' ? F.y : F.y + F.h * (1 - share), w: colW, h: F.h * share };
-  const logoTop = side === 'BOTTOM';
-  const logoH = c.B.brand * 1.4;
-  c.logo({ x: F.x + F.w * 0.5, y: logoTop ? F.y : F.y + F.h - logoH, w: F.w * 0.5, h: logoH }, 'WORDMARK', ink);
-  if (side === 'TOP') region.y += 0;
-  const s = c.stack(region, [...c.eyebrow(ink), c.headline(ink, 'START', { gap: c.input.copy.eyebrow ? c.gap(18) : 0 }), ...c.sub(ink, 'START'), ...c.price(ink, 'START', ink), ...c.cta('AUTO', 'START', ink)], side === 'TOP' ? 'TOP' : 'BOTTOM');
-  c.path.push(...s.ids);
-  c.decide('composition', 'The photograph fills the frame; the copy sits in its calm area', 'The picture carries the idea, so nothing covers the subject.');
+  const eb = Boolean(c.input.copy.eyebrow);
+  const message = [...c.eyebrow(ink), c.headline(ink, 'START', { scale: opts.scale, gap: eb ? c.gap(18) : 0 }), ...c.sub(ink, 'START')];
+  const action = [...c.price(ink, 'START', ink), ...c.cta(opts.ctaStyle, 'START', ink)];
+  const scrim = mixHex(pal.background, '#000000', opts.scrimMix);
+  const colX = F.x + F.w - opts.colW;
+  const plan = planOverPicture(c, opts.colW, [...message, ...action], message, action, opts.prefer);
+  if (plan === null) {
+    picturePanel(c, 0.86, 'No crop of this picture leaves room for the copy beside the subject: the text moves onto a panel instead of covering it.');
+    return;
+  }
+  if (plan === 'UNKNOWN') {
+    const side = opts.prefer === 'BOTTOM' ? 'BOTTOM' : calmSide(c);
+    c.image({ x: 0, y: 0, w: W, h: H }, { overlay: { color: scrim, from: 0.82, to: 0, direction: side } });
+    const share = c.relax >= 1 ? 0.6 : 0.5;
+    const region = { x: colX, y: side === 'TOP' ? F.y : F.y + F.h * (1 - share), w: opts.colW, h: F.h * share };
+    c.logo({ x: F.x, y: side === 'BOTTOM' ? F.y : F.y + F.h - c.B.brand * 1.4, w: F.w * 0.5, h: c.B.brand * 1.4 }, 'WORDMARK', ink);
+    c.path.push(...c.stack(region, [...message, ...action], side === 'TOP' ? 'TOP' : 'BOTTOM').ids);
+    c.flags.push('Where the subject is in this picture is not recorded: check that the text does not cover the people or the product.');
+    c.decide('composition', opts.what, 'The subject position is not recorded, so the copy uses the calm side; flagged for review.');
+    return;
+  }
+  const m = c.gap(32);
+  if (plan.mode === 'ONE') {
+    c.image({ x: 0, y: 0, w: W, h: H }, { focal: plan.focal, zoom: plan.zoom, overlay: { color: scrim, from: 0.82, to: 0, direction: plan.side } });
+    const region = plan.side === 'TOP' ? { x: colX, y: F.y, w: opts.colW, h: plan.subjectTop - m - F.y } : { x: colX, y: plan.subjectBottom + m, w: opts.colW, h: F.y + F.h - plan.subjectBottom - m };
+    c.path.push(...c.stack(region, first0([...message, ...action]), plan.side === 'TOP' ? 'TOP' : 'BOTTOM').ids);
+    c.logo({ x: F.x, y: plan.side === 'TOP' ? F.y + F.h - c.B.brand * 1.4 : F.y, w: F.w * 0.5, h: c.B.brand * 1.4 }, 'WORDMARK', ink);
+  } else {
+    // The message on the calm band over the picture; the action on a band of brand colour under the subject.
+    c.image({ x: 0, y: 0, w: W, h: H }, { focal: plan.focal, zoom: plan.zoom, overlay: { color: scrim, from: 0.82, to: 0, direction: 'TOP' } });
+    const bandTop = plan.subjectBottom + Math.round(m / 2);
+    c.shape({ shape: 'RECT', rect: { x: 0, y: bandTop, w: W, h: H - bandTop }, fill: pal.background, opacity: 0.96 });
+    const top = c.stack({ x: colX, y: F.y, w: opts.colW, h: plan.subjectTop - m - F.y }, first0(message), 'TOP');
+    const actionInk = readableOn(pal.background, [pal.ink, '#ffffff', '#111111']);
+    const recoloured = action.map((b) => (b.role === 'CTA' && b.box ? b : { ...b, color: b.role === 'PRICE_LABEL' ? pal.muted : actionInk }));
+    const bottom = c.stack({ x: F.x, y: bandTop + m / 2, w: F.w, h: F.y + F.h - bandTop - m / 2 }, first0(recoloured), 'BOTTOM');
+    c.path.push(...top.ids, ...bottom.ids);
+    c.logo({ x: F.x, y: F.y + F.h - c.B.brand * 1.2, w: F.w * 0.4, h: c.B.brand * 1.2 }, 'WORDMARK', pal.muted);
+  }
+  c.decide('composition', opts.what, `The crop was measured: the copy sits ${plan.mode === 'ONE' ? `in the calm band ${plan.side === 'TOP' ? 'above' : 'below'} the subject` : 'above the subject, the action on a band below it'}, so no text covers it.`);
+}
+
+const IMAGE_FIRST: Method = (c) => {
+  const { F } = c;
+  if (c.has('SPLIT_PANEL') || c.has('COLLAGE_GRID')) {
+    picturePanel(c, 0.9, c.has('COLLAGE_GRID') ? 'A grid of the business\'s own pictures above a clean message panel.' : 'A hard split keeps the picture whole and the message clear: nothing is printed over the subject.');
+    return;
+  }
+  textOverPicture(c, { scale: 1, prefer: calmSide(c), ctaStyle: 'AUTO', colW: c.has('GENEROUS_NEGATIVE_SPACE') ? F.w * 0.74 : F.w, scrimMix: 0.55, what: 'The photograph fills the frame; the copy sits in its calm area' });
 };
 
 const LIFESTYLE: Method = (c) => {
-  const { F, W, H, pal } = c;
-  c.image({ x: 0, y: 0, w: W, h: H }, { overlay: { color: mixHex(pal.background, '#000000', 0.6), from: 0.78, to: 0, direction: 'BOTTOM' } });
-  const ink = '#ffffff';
-  c.logo({ x: F.x, y: F.y, w: F.w, h: c.B.brand * 1.3 }, 'WORDMARK', ink);
-  const region = { x: F.x + F.w * 0.12, y: F.y + F.h * (c.relax >= 1 ? 0.4 : 0.52), w: F.w * 0.88, h: F.h * (c.relax >= 1 ? 0.6 : 0.48) };
-  const s = c.stack(region, [...c.eyebrow(ink), c.headline(ink, 'START', { scale: 0.86, gap: c.input.copy.eyebrow ? c.gap(14) : 0 }), ...c.sub(ink, 'START', 0.95), ...c.price(ink, 'START', ink), ...c.cta(c.has('CTA_BUTTON') ? 'BUTTON' : 'TEXT_LINE', 'START', ink)], 'BOTTOM');
-  c.path.push(...s.ids);
-  c.decide('composition', 'A real moment full bleed, message low and to the reading edge', 'People connect with the moment first; a quiet message keeps it believable.');
+  if (c.has('SPLIT_PANEL') || c.has('COLLAGE_GRID')) {
+    picturePanel(c, 0.86, 'The moment stays whole above the message.');
+    return;
+  }
+  textOverPicture(c, { scale: 0.86, prefer: 'BOTTOM', ctaStyle: c.has('CTA_BUTTON') ? 'BUTTON' : 'TEXT_LINE', colW: c.F.w * 0.88, scrimMix: 0.6, what: 'A real moment full bleed, message to the reading edge' });
 };
 
-const EDITORIAL: Method = (c) => {
+const EDITORIAL: Method = (c) => (c.input.picture ? EDITORIAL_WITH_PICTURE(c) : EDITORIAL_TYPE_ONLY(c));
+
+/**
+ * Editorial with a picture. The picture panel takes the height the copy leaves (no empty field under the action),
+ * and bleeds through the larger safe band. The price belongs to the action: label, price and button read as one
+ * group on the reading edge; only when that does not fit does the price move beside the button, on its row.
+ */
+const EDITORIAL_WITH_PICTURE: Method = (c) => {
+  const { F, W, H, pal } = c;
+  const ink = pal.ink;
+  const eb = Boolean(c.input.copy.eyebrow);
+  const sa = STATIC_AD_FORMATS[c.input.format].safeArea;
+  const pictureLow = sa.bottomPx > sa.topPx;
+  const inset = c.has('IMAGE_INSET_FRAME') || c.has('FRAME_BORDER');
+  const message = [...c.eyebrow(pal.accent), c.headline(ink, 'START', { scale: 0.84, gap: eb ? c.gap(30) : 0 }), ...c.sub(pal.muted, 'START')];
+  const priceBlocks = c.price(ink, 'START', pal.muted);
+  const ctaBlocks = c.cta('AUTO', 'START', ink);
+  const gapPic = c.gap(44);
+  const minPic = H * (c.tall ? 0.34 : 0.36);
+  const maxPic = H * (c.tall ? 0.6 : 0.56);
+  const groupedH = c.measure(F.w, first0([...message, ...priceBlocks, ...ctaBlocks]));
+  const rowH = c.measure(F.w, first0(message)) + c.gap(34) + Math.max(c.measure(F.w * 0.6, first0(ctaBlocks)), priceBlocks.length ? c.measure(F.w * 0.38, first0(priceBlocks)) : 0);
+  // Height the picture leaves for text, measured from the picture's edge to the far edge of the frame.
+  const textRoom = (pic: number) => (pictureLow ? H - pic - gapPic - F.y : F.y + F.h - pic - gapPic);
+  const grouped = !priceBlocks.length || textRoom(minPic) >= groupedH;
+  const need = grouped ? groupedH : rowH;
+  const pic = Math.max(minPic, Math.min(maxPic, pictureLow ? H - F.y - need - gapPic : F.y + F.h - need - gapPic));
+  if (textRoom(pic) < need) c.overflow += need - textRoom(pic);
+  const picRect = pictureLow
+    ? inset ? { x: F.x, y: H - pic, w: F.w, h: pic - F.x } : { x: 0, y: H - pic, w: W, h: pic }
+    : inset ? { x: F.x, y: F.y, w: F.w, h: pic - F.y } : { x: 0, y: 0, w: W, h: pic };
+  pictureArea(c, picRect, inset ? { mask: 'ROUNDED', radius: 6 } : {});
+  const region = pictureLow ? { x: F.x, y: F.y, w: F.w, h: H - pic - gapPic - F.y } : { x: F.x, y: pic + gapPic, w: F.w, h: F.y + F.h - pic - gapPic };
+  const ids: string[] = [];
+  if (grouped) {
+    // Message on top; the action group follows it or, when the picture is at its largest, sits at the far edge.
+    const top = c.stack(region, first0(message), 'TOP');
+    const actionBlocks = first0([...priceBlocks, ...ctaBlocks]);
+    const actionH = c.measure(F.w, actionBlocks);
+    const slack = region.h - top.used - actionH;
+    const actionY = slack > c.gap(34) * 2.5 ? region.y + region.h - actionH : region.y + top.used + c.gap(34);
+    const act = c.stack({ x: F.x, y: actionY, w: F.w, h: actionH }, actionBlocks, 'TOP');
+    ids.push(...top.ids, ...act.ids);
+    if (c.has('RULE_LINES')) c.shape({ shape: 'LINE', rect: { x: F.x + F.w - 120, y: actionY - c.gap(20), w: 120, h: 2 }, fill: mixHex(ink, pal.background, 0.6) });
+  } else {
+    const top = c.stack(region, first0(message), 'TOP');
+    const bottomH = Math.max(c.measure(F.w * 0.6, first0(ctaBlocks)), c.measure(F.w * 0.38, first0(priceBlocks)));
+    const bottom = { x: F.x, y: region.y + region.h - bottomH, w: F.w, h: bottomH };
+    if (c.has('RULE_LINES')) c.shape({ shape: 'LINE', rect: { x: F.x, y: bottom.y - c.gap(22), w: F.w, h: 2 }, fill: mixHex(ink, pal.background, 0.7) });
+    // On one row the price and the button share a baseline: one action, not two islands.
+    const cta = c.stack({ ...bottom, w: F.w * 0.6, x: F.x + F.w * 0.4 }, first0(ctaBlocks), 'BOTTOM');
+    const price = c.stack({ ...bottom, w: F.w * 0.38 }, first0(priceBlocks), 'BOTTOM');
+    ids.push(...top.ids, ...price.ids, ...cta.ids);
+  }
+  if (c.has('RULE_LINES') && eb) {
+    const ebLayer = c.layers.find((l) => l.kind === 'text' && l.role === 'EYEBROW');
+    if (ebLayer) c.shape({ shape: 'LINE', rect: { x: F.x + F.w - 120, y: ebLayer.rect.y + ebLayer.rect.h + c.gap(12), w: 120, h: 3 }, fill: pal.accent });
+  }
+  c.logo({ x: F.x, y: region.y - 4, w: F.w * 0.36, h: c.B.brand * 1.1 }, 'WORDMARK', pal.muted);
+  c.path.push(...ids);
+  c.decide('composition', `Picture panel ${pictureLow ? 'below' : 'above'} an editorial text column`, `The picture takes the height the copy leaves${pictureLow ? ' and fills the bottom band, where Stories buttons sit' : ''}; ${grouped ? 'price and action read as one group' : 'price and action share one row'}.`);
+};
+
+const EDITORIAL_TYPE_ONLY: Method = (c) => {
   const { F, W, H, pal } = c;
   const hasPic = Boolean(c.input.picture);
   const share = hasPic ? (c.tall ? 0.5 : c.square ? 0.46 : 0.54) - (c.relax >= 1 ? 0.08 : 0) : 0;
@@ -499,6 +837,71 @@ const EDITORIAL: Method = (c) => {
   c.decide('composition', 'Large picture panel above an editorial text column', 'A calm reading order (picture, headline, detail, action) suits a considered purchase.');
 };
 
+/**
+ * Bold type with a picture. The headline is set first; the picture takes the height the type leaves (at least a
+ * third of the page, so it reads), and the action group goes beside it when it measurably fits there, else under it.
+ * The picture is never a small stamp floating in an empty field.
+ */
+function boldTypePicture(c: Ctx, topY: number, headBlocks: Block[], bottomBlocks: Block[]): void {
+  const { F, H } = c;
+  const g = c.gap(32);
+  const action = first0(bottomBlocks);
+  const minPic = H * (c.tall ? 0.24 : 0.3);
+  // Beside: the widest line of the action group must fit next to a picture at least half the frame wide.
+  const actionW = Math.max(
+    ...action.map((b) => measureText(b.text, b.font) + (b.box ? 2 * b.box.padX : 0) + (b.arrow ? b.font.size * 1.1 : 0)),
+  );
+  const besideW = F.w - actionW - g;
+  const beside = besideW >= F.w * 0.5;
+  // Beside a tall picture the action alone leaves the column mostly empty: the supporting line moves into the column
+  // and opens it, level with the picture's top, so the column is held at both ends (only when it fits there).
+  const sub = headBlocks.filter((b) => b.role === 'SUBHEADLINE');
+  const headRegion = { x: F.x, y: topY, w: F.w, h: F.y + F.h - topY - minPic - g - c.measure(F.w, action) - g };
+  let moveSub = beside && sub.length > 0;
+  const saved = c.snapshot();
+  let head = c.stack(headRegion, moveSub ? headBlocks.filter((b) => !sub.includes(b)) : headBlocks, 'TOP');
+  if (moveSub) {
+    // Tried with the supporting line beside the picture; taken back when the column cannot hold it with the action.
+    const h = F.y + F.h - (topY + head.used + g);
+    const colW = F.w - Math.min(besideW, h * 0.86) - g;
+    if (c.measure(colW, [...sub, ...action]) + g > h) {
+      c.restore(saved);
+      moveSub = false;
+      head = c.stack(headRegion, headBlocks, 'TOP');
+    }
+  }
+  const picTop = topY + head.used + g;
+  const overlap = c.has('OVERLAPPING_ELEMENTS');
+  const mask: ImageLayer['mask'] = c.has('CUTOUT_PRODUCT_ON_COLOR') ? 'CIRCLE' : 'ARCH';
+  let rect: Rect;
+  let actionRegion: Rect;
+  let subIds: string[] = [];
+  if (beside) {
+    const h = F.y + F.h - picTop;
+    const w = mask === 'CIRCLE' ? Math.min(besideW, h) : Math.min(besideW, h * 0.86);
+    rect = { x: F.x, y: F.y + F.h - (mask === 'CIRCLE' ? w : h), w, h: mask === 'CIRCLE' ? w : h };
+    actionRegion = { x: F.x + w + g, y: picTop, w: F.w - w - g, h: F.y + F.h - picTop };
+    if (moveSub) {
+      const top = c.stack({ ...actionRegion, y: rect.y }, first0(sub), 'TOP');
+      subIds = top.ids;
+      actionRegion = { ...actionRegion, y: rect.y + top.used + g, h: F.y + F.h - rect.y - top.used - g };
+    }
+  } else {
+    const actionH = c.measure(F.w, action);
+    const h = Math.max(minPic * 0.8, F.y + F.h - actionH - g - picTop);
+    const w = mask === 'CIRCLE' ? Math.min(F.w, h) : F.w;
+    rect = { x: F.x + (F.w - w) / 2, y: picTop, w, h: mask === 'CIRCLE' ? w : h };
+    actionRegion = { x: F.x, y: picTop + rect.h + g, w: F.w, h: F.y + F.h - picTop - rect.h - g };
+  }
+  if (overlap) rect = { ...rect, x: rect.x - 40, y: Math.max(topY, rect.y - Math.round(rect.h * 0.12)) };
+  const pic = c.input.picture!;
+  c.image(rect, { mask, radius: Math.min(rect.w / 2, rect.h), focal: subjectFocal(pic, rect) });
+  if (rect.h < minPic * 0.8) c.overflow += minPic * 0.8 - rect.h;
+  const b = c.stack(actionRegion, action, 'BOTTOM');
+  c.path.push(...head.ids, ...subIds, ...b.ids);
+  c.decide('composition', 'The headline is set as large as the frame allows; the picture takes the rest', `The picture fills the height the type leaves (${Math.round((rect.h / H) * 100)}% of the page), with the action ${besideW >= F.w * 0.5 ? 'beside it' : 'under it'}.`);
+}
+
 const BOLD_TYPE: Method = (c) => {
   const { F, W, pal } = c;
   const ink = readableOn(pal.background, [pal.ink, '#ffffff', '#111111']);
@@ -507,18 +910,21 @@ const BOLD_TYPE: Method = (c) => {
     c.shape({ shape: 'RING', rect: { x: -d * 0.3, y: c.H - d * 0.7, w: d, h: d }, stroke: { color: pal.accent, width: 18 }, radius: d / 2, opacity: 0.9 });
   }
   const hasPic = Boolean(c.input.picture);
-  const picD = hasPic ? Math.round(W * (c.tall ? 0.5 : 0.4) * (c.relax >= 3 ? 0.6 : c.relax >= 2 ? 0.72 : c.relax >= 1 ? 0.85 : 1)) : 0;
   c.logo({ x: F.x, y: F.y, w: F.w, h: c.B.brand * 1.3 }, 'WORDMARK', ink);
   const topY = F.y + c.B.brand * 1.3 + c.gap(36);
   const bottomBlocks = [...c.price(ink, 'START', pal.accent), ...c.cta(c.has('CTA_AS_TEXT_LINE') ? 'TEXT_LINE' : 'BUTTON', 'START', ink)];
-  const bottomReserve = c.measure(F.w - (hasPic ? picD * 0.55 : 0), bottomBlocks) + c.gap(36) + (c.input.copy.price && c.has('BADGE_STAMP') && !hasPic ? Math.min(270, F.w * 0.3) + c.gap(20) : 0);
-  const headRegion = { x: F.x, y: topY, w: F.w, h: F.h - (topY - F.y) - (hasPic && !c.has('OVERLAPPING_ELEMENTS') ? picD + c.gap(28) : 0) - bottomReserve };
-  const head = c.stack(headRegion, [...c.eyebrow(pal.accent), { ...c.headline(ink, 'START', { fill: { min: c.B.headline, max: c.B.headline * (c.tall ? 2.6 : 2.3) }, maxLines: c.has('STACKED_HEADLINE') ? 5 : 4 }), gap: c.input.copy.eyebrow ? c.gap(20) : 0 }, ...c.sub(ink, 'START')], 'TOP');
+  // Type as image: the headline is set as one tight block, larger and with closed-up lines.
+  const asImage = c.has('TYPE_AS_IMAGE');
+  const headline = c.headline(ink, 'START', { fill: { min: c.B.headline, max: c.B.headline * (c.tall ? 2.6 : 2.3) * (asImage ? 1.12 : 1) }, maxLines: c.has('STACKED_HEADLINE') ? 5 : 4, twoLines: asImage && c.relax === 0 });
+  const headBlocks = [...c.eyebrow(pal.accent), { ...headline, font: asImage ? { ...headline.font, lineHeight: Math.min(headline.font.lineHeight, 0.9) } : headline.font, gap: c.input.copy.eyebrow ? c.gap(20) : 0 }, ...c.sub(ink, 'START')];
   if (hasPic) {
-    const y = c.has('OVERLAPPING_ELEMENTS') ? Math.min(F.y + F.h - picD, topY + head.used - picD * 0.25) : topY + head.used + c.gap(28);
-    c.image({ x: F.x - (c.has('OVERLAPPING_ELEMENTS') ? 40 : 0), y, w: picD, h: picD }, { mask: c.has('CUTOUT_PRODUCT_ON_COLOR') ? 'CIRCLE' : 'ARCH', radius: picD / 2 });
+    boldTypePicture(c, topY, headBlocks, bottomBlocks);
+    return;
   }
-  const b = c.stack({ x: F.x + (hasPic ? picD * 0.55 : 0), y: F.y, w: F.w - (hasPic ? picD * 0.55 : 0), h: F.h }, bottomBlocks, 'BOTTOM');
+  const bottomReserve = c.measure(F.w, bottomBlocks) + c.gap(36) + (c.input.copy.price && c.has('BADGE_STAMP') ? Math.min(270, F.w * 0.3) + c.gap(20) : 0);
+  const headRegion = { x: F.x, y: topY, w: F.w, h: F.h - (topY - F.y) - bottomReserve };
+  const head = c.stack(headRegion, headBlocks, 'TOP');
+  const b = c.stack({ x: F.x, y: F.y, w: F.w, h: F.h }, bottomBlocks, 'BOTTOM');
   // A stamp sits on the far (left) side above the action, clear of the right-aligned type.
   const stampD = Math.min(270, F.w * 0.3);
   const stamp = hasPic ? undefined : c.stamp(F.x + stampD / 2 + 10, F.y + F.h - b.used - stampD / 2 - c.gap(30), stampD);
@@ -723,6 +1129,7 @@ export function composeDesign(input: ComposeInput): CreativeDesignSpec {
       METHODS[method](ctx);
       if (ctx.overflow <= 1) break;
     }
+    brandMark(ctx);
     return ctx;
   };
   let c = build();
@@ -772,11 +1179,65 @@ export function composeDesign(input: ComposeInput): CreativeDesignSpec {
     focal: input.emphasis,
     readingPath: [...new Set(c.path)].filter((id) => c.layers.some((l) => l.id === id)),
     safeArea: fmt.safeArea,
-    fit: { status, headlineRatio: Math.round(c.headlineRatio * 100) / 100, notes: [...notes, ...c.notes], suggestions: c.suggestions },
+    fit: { status, headlineRatio: Math.round(c.headlineRatio * 100) / 100, notes: [...notes, ...c.notes, ...coverageFlags(c, input), ...c.flags], suggestions: c.suggestions },
     rationale: { decisions: [...(input.decisions ?? []), ...c.decisions], references: input.references ?? [] },
   };
   if (spec.readingPath.length < 2) spec.readingPath = spec.layers.filter((l) => l.kind === 'text').map((l) => l.id).slice(0, 3);
   return CreativeDesignSpecSchema.parse(spec);
+}
+
+/** A review flag when, despite the planning, text covers part of a picture's recorded subject. */
+function coverageFlags(c: Ctx, input: ComposeInput): string[] {
+  const pictures = [input.picture, ...(input.gallery ?? [])].filter((p): p is ComposePicture => Boolean(p));
+  return measurePictureUse({ layers: c.layers, width: c.W, height: c.H }, pictures)
+    .filter((u) => u.covered >= 0.03)
+    .map((u) => `Text covers ${Math.round(u.covered * 100)}% of the subject of ${u.assetId}: check that no face or product is hidden.`);
+}
+
+/**
+ * Where the brand mark goes is a design move. LOGO_SMALL_CORNER: a smaller wordmark in the top far corner;
+ * LOGO_AS_SIGNOFF: the wordmark signs off at the bottom far corner, after the action. The mark only moves to a spot
+ * that no text uses and where it can be read (on the page or a solid shape, not on an unprotected photo).
+ */
+function brandMark(c: Ctx): void {
+  const corner = c.has('LOGO_SMALL_CORNER');
+  const signoff = c.has('LOGO_AS_SIGNOFF');
+  if (!corner && !signoff) return;
+  const i = c.layers.findIndex((l) => l.kind === 'logo');
+  const logo = c.layers[i];
+  if (!logo || logo.kind !== 'logo') return;
+  const { F } = c;
+  const font = { ...logo.font, size: Math.max(corner ? 26 : 14, Math.round(logo.font.size * (corner ? 0.8 : 1.1))) };
+  const w = Math.min(F.w * 0.4, measureText(logo.text, font) + 4);
+  const h = Math.round(font.size * 1.25);
+  const spots = corner ? [{ x: F.x, y: F.y }, { x: F.x, y: F.y + F.h - h }] : [{ x: F.x, y: F.y + F.h - h }];
+  const page = c.input.palette.background;
+  for (const s of spots) {
+    const r = { x: s.x, y: s.y, w, h };
+    const padded = { x: r.x - 16, y: r.y - 16, w: r.w + 32, h: r.h + 32 };
+    if (c.layers.some((l, j) => j !== i && ((l.kind === 'text' && overlapArea(inkRect(l), padded) > 0) || (l.kind === 'logo' && overlapArea(l.rect, padded) > 0)))) continue;
+    // What is behind the spot: the topmost picture or solid shape under most of it, else the page.
+    let behind: string | null = page;
+    for (let j = c.layers.length - 1; j >= 0; j--) {
+      const u = c.layers[j]!;
+      if (j === i || overlapArea(u.rect, r) < r.w * r.h * 0.5) continue;
+      if (u.kind === 'shape' && u.fill && u.opacity >= 0.85 && u.shape !== 'LINE' && u.shape !== 'RING') {
+        behind = u.fill;
+        break;
+      }
+      if (u.kind === 'image') {
+        const o = u.overlay;
+        const strong = o && ((o.direction === 'TOP' && r.y < c.H * 0.3) || (o.direction === 'BOTTOM' && r.y > c.H * 0.7) || o.direction === 'EVEN') && o.from >= 0.5;
+        behind = strong ? mixHex('#808080', o.color, o.from) : null;
+        break;
+      }
+    }
+    if (!behind) continue;
+    c.layers[i] = { ...logo, rect: round(r), font: { ...font, weight: nearestWeight(font.family, font.weight) }, color: readableOn(behind, [c.input.palette.muted, c.input.palette.ink, '#ffffff', '#111111']) };
+    c.decide('brand mark', corner ? 'A small wordmark in the top far corner' : 'The wordmark signs off at the bottom far corner', corner ? 'The references keep the brand quiet so the message leads.' : 'The brand closes the reading path, after the action.');
+    return;
+  }
+  c.decide('brand mark', 'The wordmark stays where the composition put it', 'The corner the references suggest is taken by copy or sits on an unprotected photo.');
 }
 
 /**

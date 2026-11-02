@@ -309,6 +309,8 @@ export const CreativeDirectionSchema = z.object({
   emphasis: z.enum(['HEADLINE', 'PRICE', 'IMAGE', 'BRAND']),
   rationale: z.array(z.object({ topic: z.string(), decision: z.string(), because: z.string() })),
   references: z.array(ReferenceInfluenceSchema),
+  /** The picture this direction is built on, when it chose among several approved ones, and why. */
+  picture: z.object({ assetId: z.string(), because: z.string() }).optional(),
   specs: z.record(z.string().regex(/^(1:1|4:5|9:16)$/), CreativeDesignSpecSchema).refine((s) => Object.keys(s).length > 0, 'at least one format'),
   /** Copy changes the composition would like the Copywriter to consider (never applied automatically). */
   copyRequests: z.array(z.object({ role: TextRoleSchema, maxChars: z.number().int().positive(), reason: z.string() })),

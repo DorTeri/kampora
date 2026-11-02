@@ -40,6 +40,26 @@ export const BusinessProfileSchema = z.object({
 });
 export type BusinessProfile = z.infer<typeof BusinessProfileSchema>;
 
+const UnitSchema = z.number().min(0).max(1);
+
+/**
+ * Picture layout metadata: what the layout engine needs to keep text off the subject and to crop a picture for a
+ * frame. Boxes are fractions of the source picture (0–1). Never guessed: it comes from a person who looked at the
+ * picture (MANUAL) or an image analysis (ANALYSIS); without it the engine flags text over a picture for review.
+ */
+export const PictureLayoutSchema = z.object({
+  /** The box that holds the people or the product: text must not cover it. */
+  subject: z.object({ x: UnitSchema, y: UnitSchema, w: UnitSchema.positive(), h: UnitSchema.positive() }),
+  /** Where the picture has calm space for type. */
+  calm: z.enum(['TOP', 'BOTTOM', 'START', 'END', 'NONE']),
+  focal: z.object({ x: UnitSchema, y: UnitSchema }).optional(),
+  composition: z.enum(['SINGLE_HERO', 'ASSORTMENT', 'LIFESTYLE', 'DETAIL', 'ENVIRONMENT', 'DEMONSTRATION']).optional(),
+  /** One person, a few, or a group: a group needs a large frame to be read. */
+  people: z.enum(['NONE', 'ONE', 'FEW', 'GROUP']).optional(),
+  source: z.enum(['MANUAL', 'ANALYSIS']),
+});
+export type PictureLayout = z.infer<typeof PictureLayoutSchema>;
+
 /** A media asset the business owns or licensed, as seen by planning code (no storage details). */
 export const AvailableAssetSchema = z.object({
   id: z.string(),
@@ -54,6 +74,8 @@ export const AvailableAssetSchema = z.object({
   /** Where the file came from; decides whether it may stand for the real product (see mediaAuthenticity). */
   source: AssetSourceSchema.optional(),
   commercialUse: z.boolean(),
+  /** Where the subject and the calm space are in a picture, when someone (or an analysis) recorded it. */
+  layout: PictureLayoutSchema.optional(),
 });
 export type AvailableAsset = z.infer<typeof AvailableAssetSchema>;
 
