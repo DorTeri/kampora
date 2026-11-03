@@ -8,3 +8,4 @@ export * from './creative-references';
 export * from './evaluation-rubrics';
 export * from './context';
 export * from './references';
+export * from './marketing-skills';

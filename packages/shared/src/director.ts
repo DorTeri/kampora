@@ -74,6 +74,14 @@ export const FACT_KEYS = [
   'budget.monthlyIls',
   'goal.primary',
   'preferences.style',
+  /** A region rather than a city ("השרון"): enough to advise; a local ad asks for the city once, saying why. */
+  'location.region',
+  /** true: no room for more customers now (a full calendar, a waiting list); false: the owner said there is room. */
+  'capacity.full',
+  /** The owner's words for what stops customers who already want to buy (an unanswered phone, a broken link). */
+  'conversion.problem',
+  /** What the owner saw from earlier marketing, in their words ("הרבה צפיות, כמעט אין הזמנות"). Never a number we made up. */
+  'performance.notes',
 ] as const;
 export const FactKeySchema = z.enum(FACT_KEYS);
 export type FactKey = z.infer<typeof FactKeySchema>;
@@ -216,6 +224,7 @@ export const DIRECTOR_TOOLS = [
   'GetProductionStatus',
   'PresentCreativeForApproval',
   'RequestTargetedRevision',
+  'ProposeMarketingDecision',
 ] as const;
 export const DirectorToolNameSchema = z.enum(DIRECTOR_TOOLS);
 export type DirectorToolName = z.infer<typeof DirectorToolNameSchema>;
@@ -274,6 +283,68 @@ export const MarketingRecommendationSchema = z.object({
 });
 export type MarketingRecommendation = z.infer<typeof MarketingRecommendationSchema>;
 
+// ── Marketing decision ────────────────────────────────────────────────
+
+/**
+ * What the business should do next. Paid advertising is one action among several, chosen only when customers can
+ * complete the purchase, the business has room for them and there is money to spend.
+ */
+export const MARKETING_ACTIONS = [
+  'PAID_ADVERTISING',
+  'ORGANIC_CONTENT',
+  'CONVERSION_PROCESS_FIX',
+  'LOCAL_VISIBILITY',
+  'CUSTOMER_RETENTION',
+  'BRAND_AWARENESS',
+  'OFFER_OPTIMIZATION',
+  'BUSINESS_RESEARCH',
+  'DEFER_SPENDING',
+  'COMBINED_STRATEGY',
+] as const;
+export const MarketingActionSchema = z.enum(MARKETING_ACTIONS);
+export type MarketingAction = z.infer<typeof MarketingActionSchema>;
+
+/** Whether paid ads make sense now. OWNER_CHOICE: advised against, and the owner chose to go ahead. */
+export const PaidVerdictSchema = z.enum(['RECOMMENDED', 'LATER', 'NOT_NOW', 'OWNER_CHOICE']);
+export type PaidVerdict = z.infer<typeof PaidVerdictSchema>;
+
+/** The workflow a decision leads to. Only existing Kampora workflows; nothing outside Kampora is changed. */
+export const DecisionNextSchema = z.enum(['PAID_CONCEPTS', 'ORGANIC_CONCEPTS', 'CHECKLIST', 'QUESTION', 'NONE']);
+export type DecisionNext = z.infer<typeof DecisionNextSchema>;
+
+export const MarketingDecisionSchema = z.object({
+  /** The decision logic version, recorded with every decision so a change can be evaluated and rolled back. */
+  version: z.string().max(40),
+  /** The first thing to do. A COMBINED_STRATEGY lists its parts in `sequence`. */
+  action: MarketingActionSchema,
+  title: z.string().max(120),
+  goal: z.string().max(200),
+  /** What stops customers now, in the owner's words; null when nothing does. */
+  blocker: z.string().max(240).nullable(),
+  why: z.string().max(700),
+  /** What the decision rests on: the owner's words, confirmed memory, campaign history, the model's reading, a skill. */
+  evidence: z.array(z.object({ source: z.enum(['OWNER', 'MEMORY', 'HISTORY', 'MODEL', 'SKILL']), text: z.string().max(240) })).max(8),
+  sequence: z.array(z.object({ action: MarketingActionSchema, step: z.string().max(240), when: z.string().max(160).nullable() })).min(1).max(5),
+  /** blockedBy: the situation that rules paid ads out for now (a contraindication), null when nothing does. */
+  paid: z.object({ verdict: PaidVerdictSchema, why: z.string().max(400), condition: z.string().max(240).nullable(), blockedBy: z.string().max(40).nullable() }),
+  /** Whether customers have somewhere working to go (an order link, a booking page, WhatsApp, an address). */
+  destination: z.object({ ready: z.boolean(), label: z.string().max(160), why: z.string().max(300) }),
+  /** Concrete steps the owner does themselves (a conversion fix, a pricing check). Kampora does not change them. */
+  checklist: z.array(z.string().max(240)).max(8),
+  /** Only questions whose answer changes the decision, each with why it matters. */
+  questions: z.array(z.object({ key: FactKeySchema.nullable(), question: z.string().max(240), why: z.string().max(240) })).max(3),
+  measurement: z.object({ primaryMetric: z.string().max(160), secondaryMetrics: z.array(z.string().max(160)).max(4), method: z.string().max(400) }),
+  confidence: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+  /** The rule that decided (for tests and evaluation; the owner reads `why`). */
+  rule: z.string().max(60),
+  /** Skills (id@version) whose principles shaped the decision. */
+  skills: z.array(z.string().max(60)).max(8),
+  /** The LLM's suggestion, when there was one, and whether it was used. */
+  model: z.object({ action: MarketingActionSchema.nullable(), used: z.boolean(), note: z.string().max(240) }).nullable(),
+  next: DecisionNextSchema,
+});
+export type MarketingDecision = z.infer<typeof MarketingDecisionSchema>;
+
 // ── Conversation ──────────────────────────────────────────────────────
 
 export const DirectorCardSchema = z.discriminatedUnion('kind', [
@@ -313,6 +384,7 @@ export const DirectorCardSchema = z.discriminatedUnion('kind', [
     question: z.string().max(200),
     options: z.array(z.object({ id: z.string().max(80), label: z.string().max(160) })).min(2).max(5),
   }),
+  z.object({ kind: z.literal('DECISION'), decision: MarketingDecisionSchema }),
   z.object({ kind: z.literal('FACTS'), facts: z.array(z.object({ key: FactKeySchema, label: z.string(), value: z.string(), status: FactStatusSchema })).max(20) }),
   z.object({
     kind: z.literal('STATUS'),
@@ -345,10 +417,13 @@ export interface DirectorConversationState {
   /** The open workflow the conversation is in (resumed when the owner answers). */
   activeTaskId?: string;
   awaiting?:
-    | { kind: 'FACTS'; keys: FactKey[]; taskId?: string }
+    /** advice: the answer completes a request for advice, which is answered next. */
+    | { kind: 'FACTS'; keys: FactKey[]; taskId?: string; advice?: boolean }
     | { kind: 'CLARIFY'; taskId: string; options: { id: string; label: string }[] }
     | { kind: 'CONCEPT'; taskId: string; campaignId: string; conceptIds: string[]; recommendedId?: string }
-    | { kind: 'INSTRUCTION'; taskId: string };
+    | { kind: 'INSTRUCTION'; taskId: string }
+    /** A decision was presented: "כן" runs its next workflow; "בכל זאת קמפיין" is the owner's choice to advertise. */
+    | { kind: 'DECISION'; action: MarketingAction; next: DecisionNext; paid: PaidVerdict; against?: boolean; taskId?: string; questionKeys?: FactKey[] };
   /** Non-essential questions the owner chose to skip: not asked again in this conversation. */
   skipped: FactKey[];
   focus?: { campaignId?: string; projectId?: string };
@@ -384,6 +459,10 @@ export interface DirectorTaskParams {
   failedStep?: string;
   /** "יותר לקוחות": a goal without a channel; the business's playbook decides, or asks when it depends. */
   growth?: boolean;
+  /** ORGANIC: content for the business's own channels, not paid promotion (the decision said not to buy reach now). */
+  channel?: 'PAID' | 'ORGANIC';
+  /** The owner chose paid ads after the Director advised against them now. */
+  ownerChoice?: boolean;
 }
 
 export interface DirectorTask {
