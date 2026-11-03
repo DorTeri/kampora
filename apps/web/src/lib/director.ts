@@ -86,6 +86,7 @@ export const TOOL_LABELS: Record<DirectorToolName, string> = {
   GetProductionStatus: 'בדקתי סטטוס הפקה',
   PresentCreativeForApproval: 'הכנתי כרטיס לאישור שלך',
   RequestTargetedRevision: 'ביצעתי שינוי ממוקד',
+  ProposeMarketingDecision: 'החלטתי מה הצעד הבא',
 };
 
 export const FACT_STATE_LABELS: Record<MemoryItem['state'], { label: string; tone: 'success' | 'warn' | 'accent' | 'neutral' }> = {

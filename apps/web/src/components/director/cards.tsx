@@ -37,6 +37,16 @@ const FORMAT: Record<string, string> = {
   CAROUSEL: 'קרוסלה',
 };
 
+const PAID: Record<string, { label: string; tone: 'primary' | 'success' | 'warn' | 'neutral' }> = {
+  RECOMMENDED: { label: 'מומלץ עכשיו', tone: 'success' },
+  LATER: { label: 'בהמשך', tone: 'neutral' },
+  NOT_NOW: { label: 'לא עכשיו', tone: 'warn' },
+  OWNER_CHOICE: { label: 'לפי בחירתך', tone: 'warn' },
+};
+
+const EVIDENCE: Record<string, string> = { OWNER: 'אמרת', MEMORY: 'מהזיכרון', HISTORY: 'מקמפיינים קודמים', MODEL: 'מהשיחה', SKILL: 'עיקרון מקצועי' };
+const CONFIDENCE: Record<string, string> = { LOW: 'נמוך', MEDIUM: 'בינוני', HIGH: 'גבוה' };
+
 export interface CardActions {
   /** Sends text as the owner's message. */
   say(text: string): void;
@@ -144,6 +154,62 @@ export function DirectorCardView({ card, actions, latest }: { card: DirectorCard
             </details>
           )}
           {r.approvalRequired && <p className="mt-2 text-xs font-semibold text-warn">ידרוש אישור שלך לפני ביצוע</p>}
+        </div>
+      );
+    }
+
+    case 'DECISION': {
+      const d = card.decision;
+      const paid = PAID[d.paid.verdict];
+      return (
+        <div className={box}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="primary">החלטה שיווקית</Badge>
+            <span className="font-bold">{d.title}</span>
+            <Badge tone={paid.tone}>פרסום ממומן: {paid.label}</Badge>
+          </div>
+          <dl className="mt-3 grid gap-2 text-sm">
+            {d.blocker && <Row label="מה תוקע">{d.blocker}</Row>}
+            <Row label="למה">{d.why}</Row>
+            <Row label="פרסום ממומן">
+              {d.paid.why}
+              {d.paid.condition && <span className="block text-xs text-muted">נחזור לזה {d.paid.condition}</span>}
+            </Row>
+            <Row label="הצעדים">
+              <ol className="list-inside list-decimal">
+                {d.sequence.map((x) => (
+                  <li key={x.step}>
+                    {x.step}
+                    {x.when && <span className="text-muted"> ({x.when})</span>}
+                  </li>
+                ))}
+              </ol>
+            </Row>
+            {d.checklist.length > 0 && (
+              <Row label="לבדוק">
+                <ul className="list-inside list-disc">
+                  {d.checklist.map((x) => (
+                    <li key={x}>{x}</li>
+                  ))}
+                </ul>
+              </Row>
+            )}
+            <Row label="איך נמדוד">{d.measurement.primaryMetric}</Row>
+          </dl>
+          <details className="mt-3 rounded-xl border border-line bg-surface p-3 text-sm">
+            <summary className="cursor-pointer font-semibold">על מה ההחלטה מבוססת</summary>
+            <ul className="mt-2 grid gap-1">
+              {d.evidence.map((e) => (
+                <li key={e.text}>
+                  <span className="font-semibold text-muted">{EVIDENCE[e.source] ?? e.source}:</span> {e.text}
+                </li>
+              ))}
+            </ul>
+            {d.model && <p className="mt-2 text-xs text-muted">הצעת המודל: {d.model.note}</p>}
+            <p className="mt-2 text-xs text-muted" dir="ltr">
+              {d.rule} · {d.skills.join(', ')} · {d.version} · ביטחון {CONFIDENCE[d.confidence]}
+            </p>
+          </details>
         </div>
       );
     }
