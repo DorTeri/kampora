@@ -1,0 +1,1279 @@
+{
+  "set": "dev",
+  "ranAt": "2026-11-03T10:48:24.876Z",
+  "brain": "rules",
+  "providers": "sandbox",
+  "scenarios": [
+    {
+      "id": "A",
+      "title": "פיצרייה, הטלפון לא נענה בערב",
+      "passed": 11,
+      "total": 11,
+      "checks": [
+        {
+          "name": "action ∈ {CONVERSION_PROCESS_FIX}",
+          "ok": true,
+          "detail": "CONVERSION_PROCESS_FIX"
+        },
+        {
+          "name": "paid ∈ {NOT_NOW, LATER}",
+          "ok": true,
+          "detail": "LATER"
+        },
+        {
+          "name": "decision on the first turn",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /טלפון/",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "checklist given",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "CONVERSION_PROCESS_FIX",
+        "title": "קודם לתקן את הדרך שבה לקוחות קונים",
+        "goal": "יותר הזמנות",
+        "blocker": "בערב אף אחד לא עונה לטלפון ואנשים מתייאשים",
+        "why": "לקוחות שכבר רוצים להזמין נתקעים (\"בערב אף אחד לא עונה לטלפון ואנשים מתייאשים\") והולכים למקום אחר. פרסום עכשיו יביא עוד הזמנות לאותה נקודה, אז קודם סוגרים את זה.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "\"בערב אף אחד לא עונה לטלפון ואנשים מתייאשים\""
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: עוד לא ברור לאן לשלוח לקוחות"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: יותר הזמנות"
+          },
+          {
+            "source": "SKILL",
+            "text": "מסעדה מקומית: מנה אחת בולטת מוכרת יותר ממודעה על כל התפריט."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "CONVERSION_PROCESS_FIX",
+            "step": "מענה בשעות העומס: מישהו שאחראי על ההזמנות, או הודעה קולית שמפנה להזמנה אונליין",
+            "when": null
+          },
+          {
+            "action": "CONVERSION_PROCESS_FIX",
+            "step": "קישור להזמנה אונליין בביו, בגוגל ובהודעה הקולית, כדי שאפשר יהיה להזמין בלי לחכות",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה קטנה ברדיוס המשלוחים, ונמדוד",
+            "when": "אחרי שבוע שבו ההזמנות נענות"
+          }
+        ],
+        "paid": {
+          "verdict": "LATER",
+          "why": "פרסום יביא עוד אנשים לאותה נקודה שבה לקוחות נתקעים, ויבזבז כסף.",
+          "condition": "כשהדרך לקנות עובדת גם בשעות העומס",
+          "blockedBy": "CONVERSION_BLOCKER"
+        },
+        "destination": {
+          "ready": false,
+          "label": "עוד לא ברור לאן לשלוח לקוחות",
+          "why": "צריך לדעת איך לקוחות קונים או יוצרים קשר היום."
+        },
+        "checklist": [
+          "לבדוק ביומן השיחות כמה שיחות לא נענו בערב אחד",
+          "מי אחראי לענות בשעות העומס",
+          "יש הודעה קולית או מענה אוטומטי שמפנה להזמנה אונליין?",
+          "הקישור להזמנה מופיע בגוגל ובאינסטגרם?"
+        ],
+        "questions": [
+          {
+            "key": "conversion.ordering",
+            "question": "יש לכם הזמנה אונליין (וולט, תן ביס או אתר) שאפשר להפנות אליה במקום הטלפון?",
+            "why": "אם יש, אפשר להפנות לשם לקוחות כבר עכשיו, וגם מודעה תשלח לשם ולא לטלפון."
+          }
+        ],
+        "measurement": {
+          "primaryMetric": "הזמנות שהושלמו בערב, לעומת שיחות שלא נענו",
+          "secondaryMetrics": [],
+          "method": "שבוע אחד לספור שיחות שלא נענו (ביומן השיחות) והזמנות שהושלמו, לתקן, ולספור שוב שבוע אחרי."
+        },
+        "confidence": "HIGH",
+        "rule": "CONVERSION_BLOCKER",
+        "skills": [
+          "local-restaurant@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "CHECKLIST"
+      }
+    },
+    {
+      "id": "B",
+      "title": "קליניקת יופי, היומן מלא",
+      "passed": 9,
+      "total": 9,
+      "checks": [
+        {
+          "name": "action ∈ {OFFER_OPTIMIZATION, CUSTOMER_RETENTION}",
+          "ok": true,
+          "detail": "OFFER_OPTIMIZATION"
+        },
+        {
+          "name": "paid ∈ {NOT_NOW}",
+          "ok": true,
+          "detail": "NOT_NOW"
+        },
+        {
+          "name": "decision on the first turn",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "OFFER_OPTIMIZATION",
+        "title": "מחיר והצעה, לא עוד חשיפה",
+        "goal": "הרשמות",
+        "blocker": null,
+        "why": "היומן מלא, אז הבעיה היא לא שאנשים לא מכירים אתכם. כשהביקוש גבוה מהקיבולת, מחיר ורשימת המתנה מנצלים אותו טוב יותר מעוד פניות.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "אמרת שאין כרגע מקום ללקוחות חדשים"
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: עוד לא ברור לאן לשלוח לקוחות"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: הרשמות"
+          },
+          {
+            "source": "SKILL",
+            "text": "יופי ותורים: יומן מלא אומר שהביקוש גבוה מהקיבולת: זה זמן למחיר ולרשימת המתנה, לא לעוד חשיפה."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "OFFER_OPTIMIZATION",
+            "step": "לבדוק העלאת מחיר ללקוחות חדשות: יומן מלא הוא בדיוק הסימן לזה",
+            "when": null
+          },
+          {
+            "action": "OFFER_OPTIMIZATION",
+            "step": "רשימת המתנה, עם עדכון כשמתפנה תור",
+            "when": null
+          },
+          {
+            "action": "CUSTOMER_RETENTION",
+            "step": "לקבוע את התור הבא כבר ביציאה, כדי שהיומן יישאר יציב",
+            "when": null
+          }
+        ],
+        "paid": {
+          "verdict": "NOT_NOW",
+          "why": "אין כרגע מקום ללקוחות חדשים. פרסום יביא פניות שאי אפשר לקבל, ייצור המתנה ותסכול, ולא יוסיף הכנסה.",
+          "condition": null,
+          "blockedBy": "FULL_CAPACITY"
+        },
+        "destination": {
+          "ready": false,
+          "label": "עוד לא ברור לאן לשלוח לקוחות",
+          "why": "צריך לדעת איך לקוחות קונים או יוצרים קשר היום."
+        },
+        "checklist": [
+          "כמה שבועות קדימה היומן מלא",
+          "כמה פניות לא קיבלו תור החודש",
+          "מתי עודכן המחיר בפעם האחרונה"
+        ],
+        "questions": [
+          {
+            "key": null,
+            "question": "יש ימים או שעות שעדיין לא מלאים?",
+            "why": "אם יש, אפשר למלא דווקא אותם, גם בפרסום קטן וממוקד. אם אין, פרסום רק יאריך את ההמתנה."
+          }
+        ],
+        "measurement": {
+          "primaryMetric": "מחיר ממוצע לטיפול, וכמה אנשים ברשימת ההמתנה",
+          "secondaryMetrics": [],
+          "method": "להשוות את החודש שלפני השינוי לחודש שאחריו, מהיומן."
+        },
+        "confidence": "HIGH",
+        "rule": "FULL_CAPACITY",
+        "skills": [
+          "beauty-appointments@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "CHECKLIST"
+      }
+    },
+    {
+      "id": "C",
+      "title": "עגלת קפה, אף אחד לא מכיר",
+      "passed": 8,
+      "total": 8,
+      "checks": [
+        {
+          "name": "action ∈ {LOCAL_VISIBILITY, ORGANIC_CONTENT, BRAND_AWARENESS, COMBINED_STRATEGY}",
+          "ok": true,
+          "detail": "COMBINED_STRATEGY"
+        },
+        {
+          "name": "decision on the first turn",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "2"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "COMBINED_STRATEGY",
+        "title": "כמה צעדים, לפי הסדר",
+        "goal": "חשיפה באזור",
+        "blocker": null,
+        "why": "כדי שיכירו אתכם באזור, הדבר הראשון הוא שיידעו איפה אתם ומתי, וזה לא עולה כסף. פרסום קטן ברדיוס הליכה יכול להאיץ את זה, אבל הוא לא הבסיס.",
+        "evidence": [
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: עוד לא ברור לאן לשלוח לקוחות"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: חשיפה באזור"
+          },
+          {
+            "source": "SKILL",
+            "text": "עגלת קפה ובית קפה: עגלה או בית קפה חיים מאנשים שעוברים בדרך ומלקוחות שחוזרים."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "LOCAL_VISIBILITY",
+            "step": "לסמן את המקום: שלט בולט, ופרופיל גוגל עם המיקום והשעות",
+            "when": null
+          },
+          {
+            "action": "ORGANIC_CONTENT",
+            "step": "סטורי קבוע \"איפה אנחנו היום\" ושיתוף בקבוצות השכונה",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה ברדיוס הליכה בשעות הבוקר",
+            "when": "אם יש תקציב קטן לניסיון"
+          }
+        ],
+        "paid": {
+          "verdict": "LATER",
+          "why": "הבסיס לא דורש תקציב; פרסום כאן מאיץ, לא מחליף.",
+          "condition": "אם יש תקציב קטן לניסיון",
+          "blockedBy": null
+        },
+        "destination": {
+          "ready": false,
+          "label": "עוד לא ברור לאן לשלוח לקוחות",
+          "why": "צריך לדעת איך לקוחות קונים או יוצרים קשר היום."
+        },
+        "checklist": [],
+        "questions": [
+          {
+            "key": "location.serviceArea",
+            "question": "איפה העגלה עומדת בדרך כלל? מקום קבוע, או שהמיקום מתחלף?",
+            "why": "המודעה צריכה לשלוח לקוחות למקום שקיים. אני לא ממציא קישורים."
+          },
+          {
+            "key": "budget.monthlyIls",
+            "question": "יש תקציב חודשי קטן שאפשר לנסות בו פרסום? גם \"אין\" זו תשובה.",
+            "why": "עם תקציב, מודעה ממוקדת תאיץ את זה; בלי תקציב, נבנה הכול על תוכן ונוכחות."
+          }
+        ],
+        "measurement": {
+          "primaryMetric": "כוסות בבוקר לעומת השבועות שלפני",
+          "secondaryMetrics": [
+            "לקוחות חדשים שאומרים איך שמעו עליכם"
+          ],
+          "method": "לספור כוסות בכל בוקר (או מהקופה), ולשאול לקוחות חדשים איך שמעו עליכם."
+        },
+        "confidence": "MEDIUM",
+        "rule": "AWARENESS_GOAL",
+        "skills": [
+          "coffee-cart-cafe@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "ORGANIC_CONCEPTS"
+      }
+    },
+    {
+      "id": "D",
+      "title": "המבורגריה עם קישור וולט ותקציב (ממומן מתאים)",
+      "passed": 8,
+      "total": 8,
+      "checks": [
+        {
+          "name": "action ∈ {PAID_ADVERTISING, COMBINED_STRATEGY}",
+          "ok": true,
+          "detail": "PAID_ADVERTISING"
+        },
+        {
+          "name": "paid ∈ {RECOMMENDED}",
+          "ok": true,
+          "detail": "RECOMMENDED"
+        },
+        {
+          "name": "next ∈ {PAID_CONCEPTS}",
+          "ok": true,
+          "detail": "PAID_CONCEPTS"
+        },
+        {
+          "name": "concepts prepared",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1,1,1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "PAID_ADVERTISING",
+        "title": "פרסום ממומן קטן ומדוד",
+        "goal": "יותר הזמנות: המבורגר הדאבל",
+        "blocker": null,
+        "why": "יש לאן לשלוח לקוחות (דף ההזמנה (https://wolt.com/he/isr/rishon/restaurant/burger-house)) ולא סיפרת על משהו שעוצר אותם, אז הצעד עם ההשפעה הכי גדולה הוא חשיפה ממוקדת לאנשים שעוד לא מכירים אתכם, בהיקף קטן שנמדוד.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "תקציב לפרסום: 2,000 ₪"
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: דף ההזמנה (https://wolt.com/he/isr/rishon/restaurant/burger-house)"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: יותר הזמנות"
+          },
+          {
+            "source": "SKILL",
+            "text": "כלכלת פרסום ממומן: פרסום ממומן מגביר את מה שכבר עובד; הוא לא מתקן דרך שבורה."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה ממוקדת לאנשים באזור שעוד לא מכירים אתכם, בהיקף קטן ובזמן מוגבל",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "המודעה שולחת ישר לדף ההזמנה (https://wolt.com/he/isr/rishon/restaurant/burger-house), בלי דף נחיתה באמצע",
+            "when": null
+          },
+          {
+            "action": "ORGANIC_CONTENT",
+            "step": "במקביל: אותו תוכן גם בערוצים שלכם, בחינם",
+            "when": null
+          }
+        ],
+        "paid": {
+          "verdict": "RECOMMENDED",
+          "why": "ממומן מתאים כשיש לאן לשלוח, יש מקום ללקוחות ויש תקציב לניסיון.",
+          "condition": null,
+          "blockedBy": null
+        },
+        "destination": {
+          "ready": true,
+          "label": "דף ההזמנה (https://wolt.com/he/isr/rishon/restaurant/burger-house)",
+          "why": "ההזמנות שלכם עוברות דרך Wolt, אז המודעה שולחת ישר לשם, בלי דף נחיתה באמצע."
+        },
+        "checklist": [],
+        "questions": [],
+        "measurement": {
+          "primaryMetric": "כמה לקוחות הגיעו מהמודעה לעומת השבועיים שלפני",
+          "secondaryMetrics": [],
+          "method": "להשוות לשבועיים שלפני הקמפיין, מהקופה, מהיומן או מדוח אפליקציית ההזמנות."
+        },
+        "confidence": "HIGH",
+        "rule": "DESTINATION_READY",
+        "skills": [
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "PAID_CONCEPTS"
+      }
+    },
+    {
+      "id": "E",
+      "title": "חנות אונליין, יש כניסות ואין מכירות",
+      "passed": 10,
+      "total": 10,
+      "checks": [
+        {
+          "name": "action ∈ {CONVERSION_PROCESS_FIX}",
+          "ok": true,
+          "detail": "CONVERSION_PROCESS_FIX"
+        },
+        {
+          "name": "paid ∈ {NOT_NOW, LATER}",
+          "ok": true,
+          "detail": "LATER"
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "never says /נרות ריחניים בעבודת יד דרך/",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "checklist given",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "2"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "CONVERSION_PROCESS_FIX",
+        "title": "קודם לתקן את הדרך שבה לקוחות קונים",
+        "goal": "מכירות באתר: נרות ריחניים בעבודת יד",
+        "blocker": "יש הרבה כניסות לאתר אבל כמעט אף אחד לא קונה",
+        "why": "אנשים כבר מגיעים לאתר (\"יש הרבה כניסות לאתר אבל כמעט אף אחד לא קונה\"), אבל לא קונים. זה המקום עם ההשפעה הכי גדולה: כל שיפור בהמרה מכפיל את מה שכבר משלמים עליו, ופרסום עכשיו רק יביא עוד מבקרים שלא יקנו.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "\"יש הרבה כניסות לאתר אבל כמעט אף אחד לא קונה\""
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: עוד לא ברור לאן לשלוח לקוחות"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: מכירות באתר"
+          },
+          {
+            "source": "SKILL",
+            "text": "משפך חנות אונליין: קודם המרה, אחר כך תנועה: עוד מבקרים לאתר שלא ממיר זה כסף שנשרף."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "CONVERSION_PROCESS_FIX",
+            "step": "לעבור על קנייה מהטלפון כמו לקוח, מדף המוצר ועד התשלום",
+            "when": null
+          },
+          {
+            "action": "CONVERSION_PROCESS_FIX",
+            "step": "להציג דמי משלוח וזמן אספקה כבר בדף המוצר",
+            "when": null
+          },
+          {
+            "action": "CONVERSION_PROCESS_FIX",
+            "step": "תמונות אמיתיות, פרטים מלאים וביקורות בדף המוצר",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "פרסום קטן לדף המוצר, ומדידת קניות",
+            "when": "כשיותר מהמבקרים יקנו"
+          }
+        ],
+        "paid": {
+          "verdict": "LATER",
+          "why": "עוד תנועה לאתר שלא ממיר תעלה כסף ולא תביא מכירות.",
+          "condition": "כשיותר מהמבקרים יקנו",
+          "blockedBy": "CONVERSION_BLOCKER"
+        },
+        "destination": {
+          "ready": false,
+          "label": "עוד לא ברור לאן לשלוח לקוחות",
+          "why": "צריך לדעת איך לקוחות קונים או יוצרים קשר היום."
+        },
+        "checklist": [
+          "כמה שלבים יש עד התשלום",
+          "יש אמצעי תשלום מוכרים (כרטיס, ביט, פייפאל)?",
+          "כמה זמן לוקח לדף להיטען בטלפון",
+          "מחיר המשלוח מופיע לפני הקופה?",
+          "יש דרך לשאול שאלה (וואטסאפ) לפני שקונים?"
+        ],
+        "questions": [
+          {
+            "key": "channel.website",
+            "question": "יש לכם אתר? אם כן, מה הכתובת?",
+            "why": "המודעה צריכה לשלוח לקוחות למקום שקיים. אני לא ממציא קישורים."
+          },
+          {
+            "key": null,
+            "question": "איפה רוב האנשים עוזבים: בדף המוצר, בעגלה או בתשלום? אם יש לך את הנתונים של האתר (למשל בשופיפיי), הם יגידו לנו.",
+            "why": "כל שלב מתוקן אחרת, ובלי לדעת איפה זה קורה אנחנו מנחשים."
+          }
+        ],
+        "measurement": {
+          "primaryMetric": "אחוז המבקרים שקונים, לפי נתוני האתר",
+          "secondaryMetrics": [
+            "עגלות שננטשו"
+          ],
+          "method": "להשוות את אחוז ההמרה בנתוני האתר שבועיים לפני התיקון ושבועיים אחריו."
+        },
+        "confidence": "HIGH",
+        "rule": "CONVERSION_BLOCKER",
+        "skills": [
+          "ecommerce-funnel@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "CHECKLIST"
+      }
+    },
+    {
+      "id": "F",
+      "title": "אין תקציב",
+      "passed": 9,
+      "total": 9,
+      "checks": [
+        {
+          "name": "action ∈ {ORGANIC_CONTENT, LOCAL_VISIBILITY, CUSTOMER_RETENTION, COMBINED_STRATEGY}",
+          "ok": true,
+          "detail": "COMBINED_STRATEGY"
+        },
+        {
+          "name": "paid ∈ {NOT_NOW, LATER}",
+          "ok": true,
+          "detail": "NOT_NOW"
+        },
+        {
+          "name": "decision on the first turn",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "COMBINED_STRATEGY",
+        "title": "כמה צעדים, לפי הסדר",
+        "goal": "הגעה אליכם",
+        "blocker": null,
+        "why": "בלי תקציב לפרסום מתחילים במה שעולה זמן ולא כסף: תוכן מהעסק עצמו ונוכחות מקומית. זה איטי יותר מפרסום, אבל בונה בסיס.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "תקציב לפרסום: אין תקציב"
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: עוד לא ברור לאן לשלוח לקוחות"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: הגעה אליכם"
+          },
+          {
+            "source": "SKILL",
+            "text": "תוכן אורגני: תוכן אורגני עולה זמן, לא כסף: עקביות חשובה יותר מהפקה."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "ORGANIC_CONTENT",
+            "step": "2–3 תכנים קצרים בשבוע מהעסק עצמו: המוצר, ההכנה, הלקוחות (באישורם)",
+            "when": null
+          },
+          {
+            "action": "LOCAL_VISIBILITY",
+            "step": "פרופיל גוגל מעודכן, וביקורות מלקוחות מרוצים",
+            "when": null
+          },
+          {
+            "action": "LOCAL_VISIBILITY",
+            "step": "שיתוף פעולה עם עסק שכן או עם קבוצת השכונה",
+            "when": null
+          }
+        ],
+        "paid": {
+          "verdict": "NOT_NOW",
+          "why": "אמרת שאין תקציב לפרסום, אז לא נבנה תוכנית שתלויה במודעות ממומנות.",
+          "condition": null,
+          "blockedBy": "NO_BUDGET"
+        },
+        "destination": {
+          "ready": false,
+          "label": "עוד לא ברור לאן לשלוח לקוחות",
+          "why": "צריך לדעת איך לקוחות קונים או יוצרים קשר היום."
+        },
+        "checklist": [],
+        "questions": [],
+        "measurement": {
+          "primaryMetric": "לקוחות חדשים שאומרים שראו אתכם ברשת או בגוגל",
+          "secondaryMetrics": [
+            "צפיות ושמירות של התכנים"
+          ],
+          "method": "לשאול כל לקוח חדש איך שמע עליכם, ולספור פעם בשבוע."
+        },
+        "confidence": "HIGH",
+        "rule": "NO_BUDGET",
+        "skills": [
+          "organic-social@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "ORGANIC_CONCEPTS"
+      }
+    },
+    {
+      "id": "G",
+      "title": "מסעדה משיקה מנה חדשה",
+      "passed": 7,
+      "total": 7,
+      "checks": [
+        {
+          "name": "action ∈ {ORGANIC_CONTENT, PAID_ADVERTISING, COMBINED_STRATEGY, CUSTOMER_RETENTION, LOCAL_VISIBILITY}",
+          "ok": true,
+          "detail": "COMBINED_STRATEGY"
+        },
+        {
+          "name": "decision on the first turn",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "COMBINED_STRATEGY",
+        "title": "כמה צעדים, לפי הסדר",
+        "goal": "השקת מוצר",
+        "blocker": null,
+        "why": "מנה חדשה כדאי להכריז קודם למי שכבר מכיר אתכם, בחינם, ואז להראות אותה לאנשים חדשים באזור.",
+        "evidence": [
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: עוד לא ברור לאן לשלוח לקוחות"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: השקת מוצר"
+          },
+          {
+            "source": "SKILL",
+            "text": "מסעדה מקומית: מנה אחת בולטת מוכרת יותר ממודעה על כל התפריט."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "ORGANIC_CONTENT",
+            "step": "להכריז ללקוחות הקיימים: סטורי, פוסט ושלט בקופה",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה קטנה ברדיוס המשלוחים עם המוצר החדש בתקריב, שולחת ליעד שתבחרו",
+            "when": "כשנדע לאן לשלוח לקוחות"
+          },
+          {
+            "action": "BUSINESS_RESEARCH",
+            "step": "לבדוק כמה מהמנה החדשה נמכרה בשבועיים הראשונים",
+            "when": "אחרי שבועיים"
+          }
+        ],
+        "paid": {
+          "verdict": "LATER",
+          "why": "עוד לא ברור לאן מודעה תשלח.",
+          "condition": "כשנדע לאן לשלוח לקוחות",
+          "blockedBy": null
+        },
+        "destination": {
+          "ready": false,
+          "label": "עוד לא ברור לאן לשלוח לקוחות",
+          "why": "צריך לדעת איך לקוחות קונים או יוצרים קשר היום."
+        },
+        "checklist": [],
+        "questions": [
+          {
+            "key": "conversion.ordering",
+            "question": "איך לקוחות מזמינים היום? אם רוב ההזמנות מגיעות מוולט, למשל, המודעה תשלח ישר לשם. לא חייבים דף נחיתה.",
+            "why": "המודעה צריכה לשלוח לקוחות למקום שקיים. אני לא ממציא קישורים."
+          }
+        ],
+        "measurement": {
+          "primaryMetric": "כמה מנות של המוצר החדש נמכרו בשבועיים הראשונים",
+          "secondaryMetrics": [
+            "הזמנות בשבוע בערוץ שהמודעה שולחת אליו"
+          ],
+          "method": "לספור מהקופה או מדוח אפליקציית ההזמנות, ולהשוות למנה דומה."
+        },
+        "confidence": "MEDIUM",
+        "rule": "LAUNCH",
+        "skills": [
+          "local-restaurant@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "ORGANIC_CONCEPTS"
+      }
+    },
+    {
+      "id": "H",
+      "title": "סטודיו כושר עם מקומות פנויים לשיעור ניסיון",
+      "passed": 7,
+      "total": 7,
+      "checks": [
+        {
+          "name": "action ∈ {PAID_ADVERTISING, COMBINED_STRATEGY, ORGANIC_CONTENT, LOCAL_VISIBILITY}",
+          "ok": true,
+          "detail": "PAID_ADVERTISING"
+        },
+        {
+          "name": "decision on the first turn",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "PAID_ADVERTISING",
+        "title": "פרסום ממומן קטן ומדוד",
+        "goal": "הרשמות",
+        "blocker": null,
+        "why": "יש מקום בשיעורים, אז יש מה למכור. ההרשמה כבר קיימת (דף ההרשמה (https://studio-pilates.co.il/trial)), ומודעה לשיעור ניסיון היא הצעד הישיר ביותר למלא אותם.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "אמרת שיש מקום ללקוחות חדשים"
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: דף ההרשמה (https://studio-pilates.co.il/trial)"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: הרשמות"
+          },
+          {
+            "source": "SKILL",
+            "text": "סטודיו ומנויים: מוכרים שיעור ניסיון, לא מנוי."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה לשיעור ניסיון, עם השעות שיש בהן מקום",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "הרשמה בלחיצה: דף ההרשמה (https://studio-pilates.co.il/trial)",
+            "when": null
+          },
+          {
+            "action": "CUSTOMER_RETENTION",
+            "step": "הודעת מעקב לכל מי שהגיע לשיעור ניסיון, באותו יום",
+            "when": null
+          }
+        ],
+        "paid": {
+          "verdict": "RECOMMENDED",
+          "why": "ממומן מתאים כשיש לאן לשלוח, יש מקום ללקוחות ויש תקציב לניסיון.",
+          "condition": null,
+          "blockedBy": null
+        },
+        "destination": {
+          "ready": true,
+          "label": "דף ההרשמה (https://studio-pilates.co.il/trial)",
+          "why": "הרשמה היא הפעולה שאתם רוצים, וקישור ההרשמה הקיים מספיק. לא צריך דף נחיתה חדש."
+        },
+        "checklist": [],
+        "questions": [],
+        "measurement": {
+          "primaryMetric": "הרשמות לשיעור ניסיון בשבוע",
+          "secondaryMetrics": [
+            "כמה מהנרשמים הגיעו",
+            "כמה עברו למנוי"
+          ],
+          "method": "רשימה פשוטה של מי נרשם, מי הגיע ומי המשיך, לעומת החודש שלפני."
+        },
+        "confidence": "MEDIUM",
+        "rule": "ROOM_AVAILABLE",
+        "skills": [
+          "fitness-membership@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "PAID_CONCEPTS"
+      }
+    },
+    {
+      "id": "I",
+      "title": "בעלת עסק חוזרת, משפרים קמפיין קודם",
+      "passed": 10,
+      "total": 10,
+      "checks": [
+        {
+          "name": "action ∈ {OFFER_OPTIMIZATION}",
+          "ok": true,
+          "detail": "OFFER_OPTIMIZATION"
+        },
+        {
+          "name": "paid ∈ {RECOMMENDED}",
+          "ok": true,
+          "detail": "RECOMMENDED"
+        },
+        {
+          "name": "next ∈ {PAID_CONCEPTS}",
+          "ok": true,
+          "detail": "PAID_CONCEPTS"
+        },
+        {
+          "name": "decision on the first turn",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1,1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "OFFER_OPTIMIZATION",
+        "title": "מחיר והצעה, לא עוד חשיפה",
+        "goal": "יותר הזמנות: שווארמה בלאפה",
+        "blocker": "ראו את המודעה הרבה אנשים, אבל כמעט לא לחצו",
+        "why": "אנשים ראו את המודעה ולא הגיבו, אז ההיקף לא הבעיה: המסר או ההצעה לא שכנעו. עוד תקציב על אותה מודעה לא ישנה את זה; מודעה חדשה עם הצעה ברורה יותר כן.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "על הקמפיין הקודם: \"ראו את המודעה הרבה אנשים, אבל כמעט לא לחצו\""
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: דף ההזמנה (https://order.example.co.il/shawarma)"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: יותר הזמנות"
+          },
+          {
+            "source": "HISTORY",
+            "text": "קמפיין קודם: שווארמה בלאפה"
+          },
+          {
+            "source": "SKILL",
+            "text": "כלכלת פרסום ממומן: פרסום ממומן מגביר את מה שכבר עובד; הוא לא מתקן דרך שבורה."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "OFFER_OPTIMIZATION",
+            "step": "הצעה אחת ברורה במקום כמה: מוצר אחד, מחיר או הטבה, ומה עושים עכשיו",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה חדשה שפותחת במוצר עצמו ובהצעה, בהיקף קטן כמו הקודמת",
+            "when": null
+          },
+          {
+            "action": "BUSINESS_RESEARCH",
+            "step": "להשוות את הלחיצות למודעה הקודמת אחרי שבוע",
+            "when": null
+          }
+        ],
+        "paid": {
+          "verdict": "RECOMMENDED",
+          "why": "ממומן מתאים כשיש לאן לשלוח, יש מקום ללקוחות ויש תקציב לניסיון.",
+          "condition": null,
+          "blockedBy": null
+        },
+        "destination": {
+          "ready": true,
+          "label": "דף ההזמנה (https://order.example.co.il/shawarma)",
+          "why": "ההזמנות שלכם עוברות דרך דף ההזמנה, אז המודעה שולחת ישר לשם, בלי דף נחיתה באמצע."
+        },
+        "checklist": [],
+        "questions": [],
+        "measurement": {
+          "primaryMetric": "לחיצות על המודעה החדשה לעומת הקודמת, באותו היקף",
+          "secondaryMetrics": [],
+          "method": "אותו תקציב ואותו אזור כמו הקמפיין הקודם, כדי שההבדל יהיה רק במסר."
+        },
+        "confidence": "HIGH",
+        "rule": "LOW_ENGAGEMENT",
+        "skills": [
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "PAID_CONCEPTS"
+      }
+    },
+    {
+      "id": "J",
+      "title": "בעל העסק מתעקש על ממומן למרות חסם",
+      "passed": 7,
+      "total": 7,
+      "checks": [
+        {
+          "name": "paid ∈ {OWNER_CHOICE}",
+          "ok": true,
+          "detail": "OWNER_CHOICE"
+        },
+        {
+          "name": "rule ∈ {OWNER_CHOICE}",
+          "ok": true,
+          "detail": "OWNER_CHOICE"
+        },
+        {
+          "name": "mentions /טלפון/",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1,1,1,1,1,1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "PAID_ADVERTISING",
+        "title": "פרסום ממומן קטן ומדוד",
+        "goal": "יותר הזמנות: פיצה משפחתית",
+        "blocker": "בערב אף אחד לא עונה לטלפון",
+        "why": "בחרת להתקדם עם פרסום ממומן למרות מה שאמרתי, וזו החלטה שלך.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "\"בערב אף אחד לא עונה לטלפון\""
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: שיחת טלפון (03-5551234)"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: יותר הזמנות"
+          },
+          {
+            "source": "SKILL",
+            "text": "מסעדה מקומית: מנה אחת בולטת מוכרת יותר ממודעה על כל התפריט."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה עם מנת הדגל בתקריב, ברדיוס המשלוחים, בשעות שלפני הארוחות",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "המודעה שולחת ישר לשיחת טלפון (03-5551234)",
+            "when": null
+          },
+          {
+            "action": "ORGANIC_CONTENT",
+            "step": "אותו סרטון גם בערוצים שלכם",
+            "when": null
+          }
+        ],
+        "paid": {
+          "verdict": "OWNER_CHOICE",
+          "why": "פרסום יביא עוד אנשים לאותה נקודה שבה לקוחות נתקעים, ויבזבז כסף.",
+          "condition": "כשהדרך לקנות עובדת גם בשעות העומס",
+          "blockedBy": "CONVERSION_BLOCKER"
+        },
+        "destination": {
+          "ready": true,
+          "label": "שיחת טלפון (03-5551234)",
+          "why": "שיחה היא הדרך המהירה לסגור עבודה או הזמנה."
+        },
+        "checklist": [],
+        "questions": [],
+        "measurement": {
+          "primaryMetric": "הזמנות בשבוע בערוץ שהמודעה שולחת אליו",
+          "secondaryMetrics": [],
+          "method": "להשוות לשבועיים שלפני, מדוח אפליקציית ההזמנות או מהקופה."
+        },
+        "confidence": "MEDIUM",
+        "rule": "OWNER_CHOICE",
+        "skills": [
+          "local-restaurant@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "PAID_CONCEPTS"
+      }
+    }
+  ],
+  "summary": {
+    "scenarios": 10,
+    "fullyPassed": 10,
+    "checks": 86,
+    "passed": 86
+  }
+}

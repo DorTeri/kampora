@@ -1,0 +1,606 @@
+{
+  "set": "holdout",
+  "ranAt": "2026-11-03T10:38:18.047Z",
+  "brain": "rules",
+  "providers": "sandbox",
+  "scenarios": [
+    {
+      "id": "HA",
+      "title": "סושי באשדוד - הזמנות בוואטסאפ לא נענות",
+      "passed": 8,
+      "total": 8,
+      "checks": [
+        {
+          "name": "action ∈ {CONVERSION_PROCESS_FIX, COMBINED_STRATEGY}",
+          "ok": true,
+          "detail": "CONVERSION_PROCESS_FIX"
+        },
+        {
+          "name": "paid ∈ {LATER, NOT_NOW}",
+          "ok": true,
+          "detail": "LATER"
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "CONVERSION_PROCESS_FIX",
+        "title": "קודם לתקן את הדרך שבה לקוחות קונים",
+        "goal": "יותר הזמנות",
+        "blocker": "הבעיה שבערבים מגיעות המון הודעות בוואטסאפ ואין מי שיענה",
+        "why": "לקוחות שכבר רוצים להזמין נתקעים (\"הבעיה שבערבים מגיעות המון הודעות בוואטסאפ ואין מי שיענה\") והולכים למקום אחר. פרסום עכשיו יביא עוד הזמנות לאותה נקודה, אז קודם סוגרים את זה.",
+        "evidence": [
+          {
+            "source": "OWNER",
+            "text": "\"הבעיה שבערבים מגיעות המון הודעות בוואטסאפ ואין מי שיענה\""
+          },
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: עוד לא ברור לאן לשלוח לקוחות"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: יותר הזמנות"
+          },
+          {
+            "source": "SKILL",
+            "text": "מסעדה מקומית: מנה אחת בולטת מוכרת יותר ממודעה על כל התפריט."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "CONVERSION_PROCESS_FIX",
+            "step": "מענה בשעות העומס: מישהו שאחראי על ההזמנות, או הודעה קולית שמפנה להזמנה אונליין",
+            "when": null
+          },
+          {
+            "action": "CONVERSION_PROCESS_FIX",
+            "step": "קישור להזמנה אונליין בביו, בגוגל ובהודעה הקולית, כדי שאפשר יהיה להזמין בלי לחכות",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה קטנה ברדיוס המשלוחים, ונמדוד",
+            "when": "אחרי שבוע שבו ההזמנות נענות"
+          }
+        ],
+        "paid": {
+          "verdict": "LATER",
+          "why": "פרסום יביא עוד אנשים לאותה נקודה שבה לקוחות נתקעים, ויבזבז כסף.",
+          "condition": "כשהדרך לקנות עובדת גם בשעות העומס",
+          "blockedBy": "CONVERSION_BLOCKER"
+        },
+        "destination": {
+          "ready": false,
+          "label": "עוד לא ברור לאן לשלוח לקוחות",
+          "why": "צריך לדעת איך לקוחות קונים או יוצרים קשר היום."
+        },
+        "checklist": [
+          "לבדוק ביומן השיחות כמה שיחות לא נענו בערב אחד",
+          "מי אחראי לענות בשעות העומס",
+          "יש הודעה קולית או מענה אוטומטי שמפנה להזמנה אונליין?",
+          "הקישור להזמנה מופיע בגוגל ובאינסטגרם?"
+        ],
+        "questions": [
+          {
+            "key": "conversion.ordering",
+            "question": "יש לכם הזמנה אונליין (וולט, תן ביס או אתר) שאפשר להפנות אליה במקום הטלפון?",
+            "why": "אם יש, אפשר להפנות לשם לקוחות כבר עכשיו, וגם מודעה תשלח לשם ולא לטלפון."
+          }
+        ],
+        "measurement": {
+          "primaryMetric": "הזמנות שהושלמו בערב, לעומת שיחות שלא נענו",
+          "secondaryMetrics": [],
+          "method": "שבוע אחד לספור שיחות שלא נענו (ביומן השיחות) והזמנות שהושלמו, לתקן, ולספור שוב שבוע אחרי."
+        },
+        "confidence": "HIGH",
+        "rule": "CONVERSION_BLOCKER",
+        "skills": [
+          "local-restaurant@1.0.0",
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "CHECKLIST"
+      }
+    },
+    {
+      "id": "HB",
+      "title": "פיזיותרפיסטית במודיעין - רשימת המתנה",
+      "passed": 6,
+      "total": 8,
+      "checks": [
+        {
+          "name": "action ∈ {DEFER_SPENDING, OFFER_OPTIMIZATION, CUSTOMER_RETENTION, BUSINESS_RESEARCH}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "paid ∈ {NOT_NOW, LATER}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": null
+    },
+    {
+      "id": "HC",
+      "title": "חומוסייה חדשה בעפולה שאף אחד לא מכיר",
+      "passed": 4,
+      "total": 6,
+      "checks": [
+        {
+          "name": "action ∈ {LOCAL_VISIBILITY, BRAND_AWARENESS, ORGANIC_CONTENT, COMBINED_STRATEGY}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "paid ∈ {LATER, RECOMMENDED}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "2"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": null
+    },
+    {
+      "id": "HD",
+      "title": "מסעדה גאורגית באשקלון - קמפיין לחצ'אפורי",
+      "passed": 3,
+      "total": 7,
+      "checks": [
+        {
+          "name": "action ∈ {PAID_ADVERTISING, COMBINED_STRATEGY}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "paid ∈ {RECOMMENDED}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "concepts prepared",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1,1,1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": false,
+          "detail": "2"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": null
+    },
+    {
+      "id": "HE",
+      "title": "חנות תכשיטים אונליין - הרבה עגלות מעט רכישות",
+      "passed": 5,
+      "total": 8,
+      "checks": [
+        {
+          "name": "action ∈ {CONVERSION_PROCESS_FIX, OFFER_OPTIMIZATION, BUSINESS_RESEARCH}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "paid ∈ {LATER, NOT_NOW}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "2"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": null
+    },
+    {
+      "id": "HF",
+      "title": "מאלף כלבים ברחובות - אין כסף לפרסום",
+      "passed": 6,
+      "total": 8,
+      "checks": [
+        {
+          "name": "action ∈ {ORGANIC_CONTENT, LOCAL_VISIBILITY, CUSTOMER_RETENTION, COMBINED_STRATEGY, BRAND_AWARENESS}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "paid ∈ {NOT_NOW, LATER}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": null
+    },
+    {
+      "id": "HG",
+      "title": "גלידרייה בנהריה משיקה קו טבעוני",
+      "passed": 4,
+      "total": 6,
+      "checks": [
+        {
+          "name": "action ∈ {CUSTOMER_RETENTION, ORGANIC_CONTENT, BRAND_AWARENESS, COMBINED_STRATEGY, PAID_ADVERTISING, LOCAL_VISIBILITY}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "paid ∈ {LATER, RECOMMENDED}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "2"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": null
+    },
+    {
+      "id": "HH",
+      "title": "סטודיו ספינינג בקריית אונו - מקומות ריקים",
+      "passed": 4,
+      "total": 6,
+      "checks": [
+        {
+          "name": "action ∈ {PAID_ADVERTISING, CUSTOMER_RETENTION, OFFER_OPTIMIZATION, COMBINED_STRATEGY, LOCAL_VISIBILITY, ORGANIC_CONTENT}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "paid ∈ {RECOMMENDED, LATER}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "1"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": null
+    },
+    {
+      "id": "HI",
+      "title": "חנות פרחים בירושלים - קמפיין קודם שלא הביא תוצאות",
+      "passed": 5,
+      "total": 8,
+      "checks": [
+        {
+          "name": "action ∈ {CONVERSION_PROCESS_FIX, OFFER_OPTIMIZATION}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "paid ∈ {LATER, NOT_NOW}",
+          "ok": false,
+          "detail": "no decision"
+        },
+        {
+          "name": "no ad concepts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "2,2"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": true,
+          "detail": "0"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": null
+    },
+    {
+      "id": "HJ",
+      "title": "ג'חנון בבת ים - טלפון תפוס והבעלים מתעקש על ממומן",
+      "passed": 4,
+      "total": 7,
+      "checks": [
+        {
+          "name": "action ∈ {PAID_ADVERTISING, CONVERSION_PROCESS_FIX, COMBINED_STRATEGY}",
+          "ok": true,
+          "detail": "PAID_ADVERTISING"
+        },
+        {
+          "name": "paid ∈ {OWNER_CHOICE}",
+          "ok": false,
+          "detail": "RECOMMENDED"
+        },
+        {
+          "name": "no \"נכין קמפיין\" push when a problem is described",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "name": "at most 2 questions per reply",
+          "ok": true,
+          "detail": "2,2,1,1,1"
+        },
+        {
+          "name": "\"רשמתי\" at most once",
+          "ok": false,
+          "detail": "2"
+        },
+        {
+          "name": "nothing claimed as published, paid or approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no invented numbers (₪ or %) beyond the owner's",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "decision": {
+        "version": "decision@2.1.0",
+        "action": "PAID_ADVERTISING",
+        "title": "פרסום ממומן קטן ומדוד",
+        "goal": "יותר הזמנות: ג'חנון",
+        "blocker": null,
+        "why": "יש לאן לשלוח לקוחות (הודעת וואטסאפ (050-0000000)) ולא סיפרת על משהו שעוצר אותם, אז הצעד עם ההשפעה הכי גדולה הוא חשיפה ממוקדת לאנשים שעוד לא מכירים אתכם, בהיקף קטן שנמדוד.",
+        "evidence": [
+          {
+            "source": "MEMORY",
+            "text": "לאן לקוחות ממשיכים: הודעת וואטסאפ (050-0000000)"
+          },
+          {
+            "source": "MEMORY",
+            "text": "מטרה: יותר הזמנות"
+          },
+          {
+            "source": "SKILL",
+            "text": "כלכלת פרסום ממומן: פרסום ממומן מגביר את מה שכבר עובד; הוא לא מתקן דרך שבורה."
+          }
+        ],
+        "sequence": [
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "מודעה ממוקדת לאנשים באזור שעוד לא מכירים אתכם, בהיקף קטן ובזמן מוגבל",
+            "when": null
+          },
+          {
+            "action": "PAID_ADVERTISING",
+            "step": "המודעה שולחת ישר להודעת וואטסאפ (050-0000000), בלי דף נחיתה באמצע",
+            "when": null
+          },
+          {
+            "action": "ORGANIC_CONTENT",
+            "step": "במקביל: אותו תוכן גם בערוצים שלכם, בחינם",
+            "when": null
+          }
+        ],
+        "paid": {
+          "verdict": "RECOMMENDED",
+          "why": "ממומן מתאים כשיש לאן לשלוח, יש מקום ללקוחות ויש תקציב לניסיון.",
+          "condition": null,
+          "blockedBy": null
+        },
+        "destination": {
+          "ready": true,
+          "label": "הודעת וואטסאפ (050-0000000)",
+          "why": "הודעת וואטסאפ מתאימה לשאלות לפני שמחליטים, והיא כבר קיימת אצלכם."
+        },
+        "checklist": [],
+        "questions": [],
+        "measurement": {
+          "primaryMetric": "כמה לקוחות הגיעו מהמודעה לעומת השבועיים שלפני",
+          "secondaryMetrics": [],
+          "method": "להשוות לשבועיים שלפני הקמפיין, מהקופה, מהיומן או מדוח אפליקציית ההזמנות."
+        },
+        "confidence": "LOW",
+        "rule": "DESTINATION_READY",
+        "skills": [
+          "paid-ads-economics@1.0.0"
+        ],
+        "model": null,
+        "next": "PAID_CONCEPTS"
+      }
+    }
+  ],
+  "summary": {
+    "scenarios": 10,
+    "fullyPassed": 1,
+    "checks": 72,
+    "passed": 49
+  }
+}

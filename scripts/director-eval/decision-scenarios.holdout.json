@@ -1,0 +1,146 @@
+{
+  "about": "Held-out set, written independently before running; not tuned against.",
+  "scenarios": [
+    {
+      "id": "HA",
+      "title": "סושי באשדוד - הזמנות בוואטסאפ לא נענות",
+      "turns": [
+        "היי, יש לי מסעדת סושי קטנה באשדוד, עושים בעיקר משלוחים. הבעיה שבערבים מגיעות המון הודעות בוואטסאפ ואין מי שיענה, לפעמים אנשים מחכים חצי שעה לתשובה ופשוט מזמינים ממקום אחר. כבר קיבלתי כמה ביקורות על זה בגוגל. מה כדאי לי לעשות?"
+      ],
+      "expect": {
+        "action": ["CONVERSION_PROCESS_FIX", "COMBINED_STRATEGY"],
+        "paid": ["LATER", "NOT_NOW"],
+        "concepts": false,
+        "noPaidPush": 1
+      }
+    },
+    {
+      "id": "HB",
+      "title": "פיזיותרפיסטית במודיעין - רשימת המתנה",
+      "turns": [
+        "אני פיזיותרפיסטית עצמאית במודיעין, הקליניקה מלאה לגמרי, יש רשימת המתנה של בערך 3 שבועות ואני לבד בלי עוד מטפלים. חברה אמרה לי שכדאי להתחיל לפרסם בפייסבוק כדי לגדול. שווה לפרסם עכשיו?"
+      ],
+      "expect": {
+        "action": ["DEFER_SPENDING", "OFFER_OPTIMIZATION", "CUSTOMER_RETENTION", "BUSINESS_RESEARCH"],
+        "paid": ["NOT_NOW", "LATER"],
+        "concepts": false,
+        "noPaidPush": 1
+      }
+    },
+    {
+      "id": "HC",
+      "title": "חומוסייה חדשה בעפולה שאף אחד לא מכיר",
+      "turns": [
+        "פתחנו לפני חודש חומוסייה קטנה בעפולה, ליד השוק. האוכל טוב, מי שמגיע חוזר, אבל רוב האנשים בעיר בכלל לא יודעים שאנחנו קיימים. אין לנו עדיין אפילו עמוד בגוגל. מאיפה מתחילים?"
+      ],
+      "expect": {
+        "action": ["LOCAL_VISIBILITY", "BRAND_AWARENESS", "ORGANIC_CONTENT", "COMBINED_STRATEGY"],
+        "paid": ["LATER", "RECOMMENDED"]
+      }
+    },
+    {
+      "id": "HD",
+      "title": "מסעדה גאורגית באשקלון - קמפיין לחצ'אפורי",
+      "turns": [
+        "שלום, יש לי מסעדה גאורגית באשקלון. יש לנו אתר הזמנות שעובד מצוין https://savta-nino.co.il/order עם משלוחים ואיסוף עצמי. בצהריים המטבח די ריק ויש לנו מקום להרבה יותר הזמנות. התקציב שלי לפרסום הוא בערך 2,500 ש\"ח בחודש. אני רוצה קמפיין ממומן לחצ'אפורי אג'ארולי, זו המנה הכי נמכרת שלנו.",
+        "קוראים למסעדה \"סבתא נינו\"",
+        "כן יש לי תמונות אמיתיות של המנות, צילמנו במסעדה לפני חודשיים"
+      ],
+      "expect": {
+        "action": ["PAID_ADVERTISING", "COMBINED_STRATEGY"],
+        "paid": ["RECOMMENDED"],
+        "concepts": true
+      }
+    },
+    {
+      "id": "HE",
+      "title": "חנות תכשיטים אונליין - הרבה עגלות מעט רכישות",
+      "turns": [
+        "יש לי חנות אונליין של תכשיטים בעבודת יד. נכנסים לאתר בערך 4,000 איש בחודש, הרבה מוסיפים לסל, אבל בסוף יש אולי 10-12 הזמנות בחודש. המשלוח אצלי עולה 35 ש\"ח והתשלום רק בהעברה בנקאית. אני שוקלת להגדיל את התקציב בפייסבוק ואינסטגרם, זה יעזור?"
+      ],
+      "expect": {
+        "action": ["CONVERSION_PROCESS_FIX", "OFFER_OPTIMIZATION", "BUSINESS_RESEARCH"],
+        "paid": ["LATER", "NOT_NOW"],
+        "concepts": false,
+        "noPaidPush": 1
+      }
+    },
+    {
+      "id": "HF",
+      "title": "מאלף כלבים ברחובות - אין כסף לפרסום",
+      "turns": [
+        "אני מאלף כלבים ברחובות והסביבה, עובד לבד כבר שנה. אין לי שקל לפרסום כרגע, באמת שאין. רוב הלקוחות הגיעו מפה לאוזן אבל זה לא מספיק. איך אני משיג עוד לקוחות בלי לשלם על מודעות?"
+      ],
+      "expect": {
+        "action": ["ORGANIC_CONTENT", "LOCAL_VISIBILITY", "CUSTOMER_RETENTION", "COMBINED_STRATEGY", "BRAND_AWARENESS"],
+        "paid": ["NOT_NOW", "LATER"],
+        "concepts": false,
+        "noPaidPush": 1
+      }
+    },
+    {
+      "id": "HG",
+      "title": "גלידרייה בנהריה משיקה קו טבעוני",
+      "turns": [
+        "יש לנו גלידרייה בנהריה כבר 6 שנים, יש קהל קבוע ועמוד אינסטגרם עם כמה אלפי עוקבים. בעוד שלושה שבועות אנחנו משיקים קו של גלידות טבעוניות על בסיס קוקוס. איך הכי נכון לספר לאנשים על זה?"
+      ],
+      "expect": {
+        "action": ["CUSTOMER_RETENTION", "ORGANIC_CONTENT", "BRAND_AWARENESS", "COMBINED_STRATEGY", "PAID_ADVERTISING", "LOCAL_VISIBILITY"],
+        "paid": ["LATER", "RECOMMENDED"]
+      }
+    },
+    {
+      "id": "HH",
+      "title": "סטודיו ספינינג בקריית אונו - מקומות ריקים",
+      "turns": [
+        "יש לי סטודיו ספינינג בקריית אונו. השיעורים של הבוקר מלאים אבל בערב יש כמעט חצי אופניים ריקים. יש לנו קישור הרשמה לשיעור ניסיון https://spinono.co.il/trial שעובד טוב. מה הצעד הבא?"
+      ],
+      "expect": {
+        "action": ["PAID_ADVERTISING", "CUSTOMER_RETENTION", "OFFER_OPTIMIZATION", "COMBINED_STRATEGY", "LOCAL_VISIBILITY", "ORGANIC_CONTENT"],
+        "paid": ["RECOMMENDED", "LATER"]
+      }
+    },
+    {
+      "id": "HI",
+      "title": "חנות פרחים בירושלים - קמפיין קודם שלא הביא תוצאות",
+      "memory": [
+        ["business.name", "פרחי הגבעה"],
+        ["business.model", "OTHER"],
+        ["business.category", "חנות פרחים"],
+        ["location.city", "ירושלים"],
+        ["offering.main", "זרי פרחים במשלוח"],
+        ["conversion.orderUrl", "https://pirchei-hagiva.co.il/shop"],
+        ["budget.monthlyIls", 1500]
+      ],
+      "campaigns": [
+        { "title": "זרים לשישי", "product": "זר שישי במשלוח" }
+      ],
+      "turns": [
+        "חזרתי. הקמפיין של זרי שישי שעשינו בפעם הקודמת הביא ממש מעט הזמנות, אולי 5 בכל החודש. מה לשנות הפעם?",
+        "היו לא מעט קליקים, אנשים נכנסו לאתר, אבל כמעט אף אחד לא השלים הזמנה. אני חושב שאולי זה בגלל שהמשלוח עולה 45 ש\"ח ומופיע רק בסוף"
+      ],
+      "expect": {
+        "action": ["CONVERSION_PROCESS_FIX", "OFFER_OPTIMIZATION"],
+        "paid": ["LATER", "NOT_NOW"],
+        "concepts": false,
+        "noPaidPush": 1
+      }
+    },
+    {
+      "id": "HJ",
+      "title": "ג'חנון בבת ים - טלפון תפוס והבעלים מתעקש על ממומן",
+      "turns": [
+        "יש לי עסק של ג'חנון ומלאווח בבת ים, בעיקר הזמנות לשישי בבוקר. הבעיה שבשישי הטלפון לא מפסיק לצלצל ואני לבד, אז הרבה אנשים לא מצליחים להשיג אותי ומוותרים. בכל מקרה אני רוצה שתעשה לי קמפיין לג'חנון, שיבואו עוד לקוחות",
+        "אני מבין מה אתה אומר, ובכל זאת אני רוצה קמפיין ממומן. אני אסתדר עם הטלפונים",
+        "קוראים לעסק \"הג'חנון של אבא\"",
+        "מזמינים בטלפון או בוואטסאפ 050-0000000, אין לי אתר",
+        "יש לי כמה תמונות שצילמתי בטלפון, לא מקצועיות אבל אמיתיות"
+      ],
+      "expect": {
+        "action": ["PAID_ADVERTISING", "CONVERSION_PROCESS_FIX", "COMBINED_STRATEGY"],
+        "paid": ["OWNER_CHOICE"],
+        "noPaidPush": 1
+      }
+    }
+  ]
+}

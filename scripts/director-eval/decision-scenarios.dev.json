@@ -1,0 +1,239 @@
+{
+  "about": "Development set for the marketing decision (A-J). Used while building; the held-out set is written separately and not tuned against.",
+  "scenarios": [
+    {
+      "id": "A",
+      "title": "פיצרייה, הטלפון לא נענה בערב",
+      "turns": [
+        "יש לי פיצרייה בחולון, ובערב אף אחד לא עונה לטלפון ואנשים מתייאשים. מה לעשות?"
+      ],
+      "expect": {
+        "action": [
+          "CONVERSION_PROCESS_FIX"
+        ],
+        "paid": [
+          "NOT_NOW",
+          "LATER"
+        ],
+        "concepts": false,
+        "noPaidPush": 1,
+        "checklist": true,
+        "firstTurnDecision": true,
+        "mention": [
+          "טלפון"
+        ]
+      }
+    },
+    {
+      "id": "B",
+      "title": "קליניקת יופי, היומן מלא",
+      "turns": [
+        "יש לי קליניקה לטיפולי פנים ברמת גן, היומן מלא לחודש קדימה. כדאי לי לפרסם?"
+      ],
+      "expect": {
+        "action": [
+          "OFFER_OPTIMIZATION",
+          "CUSTOMER_RETENTION"
+        ],
+        "paid": [
+          "NOT_NOW"
+        ],
+        "concepts": false,
+        "noPaidPush": 1,
+        "firstTurnDecision": true
+      }
+    },
+    {
+      "id": "C",
+      "title": "עגלת קפה, אף אחד לא מכיר",
+      "turns": [
+        "יש לי עגלת קפה בפארק בכפר סבא, אנשים פשוט לא יודעים שאני קיימת. מה הכי נכון לעשות?"
+      ],
+      "expect": {
+        "action": [
+          "LOCAL_VISIBILITY",
+          "ORGANIC_CONTENT",
+          "BRAND_AWARENESS",
+          "COMBINED_STRATEGY"
+        ],
+        "concepts": false,
+        "noPaidPush": 1,
+        "firstTurnDecision": true
+      }
+    },
+    {
+      "id": "D",
+      "title": "המבורגריה עם קישור וולט ותקציב (ממומן מתאים)",
+      "turns": [
+        "יש לי המבורגריה בראשון לציון, מזמינים אצלנו דרך וולט: https://wolt.com/he/isr/rishon/restaurant/burger-house. תקציב 2000 שקל לחודש לפרסום. תכין לי קמפיין להמבורגר הדאבל שלנו",
+        "בורגר האוס",
+        "כן"
+      ],
+      "expect": {
+        "action": [
+          "PAID_ADVERTISING",
+          "COMBINED_STRATEGY"
+        ],
+        "paid": [
+          "RECOMMENDED"
+        ],
+        "next": [
+          "PAID_CONCEPTS"
+        ],
+        "concepts": true
+      }
+    },
+    {
+      "id": "E",
+      "title": "חנות אונליין, יש כניסות ואין מכירות",
+      "turns": [
+        "אני מוכרת נרות ריחניים בעבודת יד דרך האתר שלי. יש הרבה כניסות לאתר אבל כמעט אף אחד לא קונה. להגדיל פרסום?"
+      ],
+      "expect": {
+        "action": [
+          "CONVERSION_PROCESS_FIX"
+        ],
+        "paid": [
+          "NOT_NOW",
+          "LATER"
+        ],
+        "concepts": false,
+        "noPaidPush": 1,
+        "checklist": true,
+        "notMention": [
+          "נרות ריחניים בעבודת יד דרך"
+        ]
+      }
+    },
+    {
+      "id": "F",
+      "title": "אין תקציב",
+      "turns": [
+        "יש לי מאפייה קטנה בפתח תקווה ואין לי שקל לפרסום. איך משיגים עוד לקוחות?"
+      ],
+      "expect": {
+        "action": [
+          "ORGANIC_CONTENT",
+          "LOCAL_VISIBILITY",
+          "CUSTOMER_RETENTION",
+          "COMBINED_STRATEGY"
+        ],
+        "paid": [
+          "NOT_NOW",
+          "LATER"
+        ],
+        "concepts": false,
+        "noPaidPush": 1,
+        "firstTurnDecision": true
+      }
+    },
+    {
+      "id": "G",
+      "title": "מסעדה משיקה מנה חדשה",
+      "turns": [
+        "יש לנו מסעדה איטלקית בהרצליה ואנחנו משיקים בשבוע הבא פסטה כמהין חדשה. מה כדאי לעשות כדי שידעו עליה?"
+      ],
+      "expect": {
+        "action": [
+          "ORGANIC_CONTENT",
+          "PAID_ADVERTISING",
+          "COMBINED_STRATEGY",
+          "CUSTOMER_RETENTION",
+          "LOCAL_VISIBILITY"
+        ],
+        "concepts": false,
+        "firstTurnDecision": true
+      }
+    },
+    {
+      "id": "H",
+      "title": "סטודיו כושר עם מקומות פנויים לשיעור ניסיון",
+      "turns": [
+        "יש לי סטודיו לפילאטיס בנתניה, יש לנו מקומות פנויים בשיעורי ניסיון ואפשר להירשם דרך הקישור https://studio-pilates.co.il/trial. מה הצעד הבא?"
+      ],
+      "expect": {
+        "action": [
+          "PAID_ADVERTISING",
+          "COMBINED_STRATEGY",
+          "ORGANIC_CONTENT",
+          "LOCAL_VISIBILITY"
+        ],
+        "concepts": false,
+        "firstTurnDecision": true
+      }
+    },
+    {
+      "id": "I",
+      "title": "בעלת עסק חוזרת, משפרים קמפיין קודם",
+      "memory": [
+        [
+          "business.model",
+          "RESTAURANT"
+        ],
+        [
+          "business.category",
+          "שווארמה"
+        ],
+        [
+          "location.city",
+          "באר שבע"
+        ],
+        [
+          "offering.main",
+          "שווארמה בלאפה"
+        ],
+        [
+          "conversion.orderUrl",
+          "https://order.example.co.il/shawarma"
+        ]
+      ],
+      "campaigns": [
+        {
+          "title": "שווארמה בלאפה",
+          "product": "שווארמה בלאפה"
+        }
+      ],
+      "turns": [
+        "הקמפיין הקודם לא הביא הרבה הזמנות. מה היית עושה אחרת?",
+        "ראו את המודעה הרבה אנשים, אבל כמעט לא לחצו"
+      ],
+      "expect": {
+        "concepts": false,
+        "noPaidPush": 1,
+        "firstTurnDecision": true,
+        "action": [
+          "OFFER_OPTIMIZATION"
+        ],
+        "paid": [
+          "RECOMMENDED"
+        ],
+        "next": [
+          "PAID_CONCEPTS"
+        ]
+      }
+    },
+    {
+      "id": "J",
+      "title": "בעל העסק מתעקש על ממומן למרות חסם",
+      "turns": [
+        "יש לי פיצרייה בחולון. בערב אף אחד לא עונה לטלפון. תכין לי קמפיין לפיצה משפחתית",
+        "בכל זאת תכין לי קמפיין ממומן",
+        "פיצה של שמעון",
+        "בטלפון",
+        "03-5551234",
+        "אין"
+      ],
+      "expect": {
+        "rule": [
+          "OWNER_CHOICE"
+        ],
+        "paid": [
+          "OWNER_CHOICE"
+        ],
+        "mention": [
+          "טלפון"
+        ]
+      }
+    }
+  ]
+}
