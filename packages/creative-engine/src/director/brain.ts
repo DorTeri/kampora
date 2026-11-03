@@ -72,7 +72,8 @@ function understandingSchema(bounded: boolean) {
       .object({
         text: str(160).nullable(),
         price: str(40).nullable(),
-        validUntil: str(10).nullable(),
+        // Room for "2026-11-15T23:59:59": a long date must not reject the whole reading (only the day is used).
+        validUntil: str(40).nullable(),
         ongoing: z.boolean(),
         evidence: str(300),
       })
@@ -344,9 +345,11 @@ export class LlmDirectorBrain implements DirectorBrain {
     const price = o.price ? parsePrice(o.price) ?? (digits(o.price) ? { price: `${digits(o.price)} ₪` } : undefined) : undefined;
     if (price && !patch.price && digits(m).includes(digits(price.price))) patch.price = price.price;
     // Dates come from the deterministic parser (it resolves "עד סוף החודש"); a model date needs its digits in the message.
-    if (o.validUntil && !patch.validUntil && /^\d{4}-\d{2}-\d{2}$/.test(o.validUntil)) {
-      const [, mm, dd] = o.validUntil.split('-');
-      if (new RegExp(`\\b0?${Number(dd)}[./]0?${Number(mm)}\\b`).test(m)) patch.validUntil = o.validUntil;
+    // Only the day counts: "2026-11-15T23:59:59" is 2026-11-15.
+    const day = o.validUntil?.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+    if (day && !patch.validUntil) {
+      const [, mm, dd] = day.split('-');
+      if (new RegExp(`\\b0?${Number(dd)}[./]0?${Number(mm)}\\b`).test(m)) patch.validUntil = day;
     }
     if (o.ongoing && !patch.validUntil && /קבוע|ללא (הגבלת זמן|תאריך)|אין (לו )?(תאריך|הגבלה)|כל הזמן|תמיד/.test(m)) patch.ongoing = true;
     return Object.keys(patch).length ? patch : undefined;

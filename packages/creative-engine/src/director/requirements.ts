@@ -52,6 +52,16 @@ export function namesOnlyAKind(text: string): boolean {
   return text.replace(/^ה/, '').split(' ').length <= 2 && /חדש|חדשה/.test(text);
 }
 
+/**
+ * Whether the ad needs a city: an online shop does not, and a local service that comes to its clients may name an
+ * area instead ("השרון"). Asking for a city again after that answer only repeats the question.
+ */
+export function needsCity(memory: Memory, now: Date): boolean {
+  const model = usable(memory, 'business.model', now);
+  if (model === 'ECOMMERCE') return false;
+  return !(model === 'LOCAL_SERVICE' && usableText(memory, 'location.serviceArea', now));
+}
+
 /** Every unmet requirement of the task, most important first. */
 export function requirementsFor(task: DirectorTask, memory: Memory, now: Date): Requirement[] {
   const out: Requirement[] = [];
@@ -66,7 +76,7 @@ export function requirementsFor(task: DirectorTask, memory: Memory, now: Date): 
         : req('business.model', true, 'סוג העסק קובע לאן המודעה שולחת לקוחות.'),
     );
   const model = usable(memory, 'business.model', now) as BusinessModel | undefined;
-  if (model !== 'ECOMMERCE' && missing('location.city')) out.push(req('location.city', true, 'מודעה מקומית מוצגת רק לאנשים באזור שלך.'));
+  if (needsCity(memory, now) && missing('location.city')) out.push(req('location.city', true, 'מודעה מקומית מוצגת רק לאנשים באזור שלך.'));
 
   const product = task.params.product;
   // A new product named only generically ("ההמבורגר החדש") needs its real name, whether the task is a launch or not.

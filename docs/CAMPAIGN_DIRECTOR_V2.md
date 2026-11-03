@@ -146,7 +146,7 @@ paid validation run measures.
 ## 7. Still open (needs a decision)
 
 - The open items from the LLM validation ([report](DIRECTOR_LLM_VALIDATION_REPORT.md), section 8): playbooks that
-  always include paid ads, the repeated question when an answer does not fill the key, and a separate paid switch
+  always include paid ads, the rules-only question that repeats without limit, and a separate paid switch
   for the Director's LLM.
 - The pilot hosting: Railway Pro + R2 recommended ([proposal](PILOT_INFRASTRUCTURE.md)).
 - The identity provider for OIDC, and the web sign-in flow that goes with it.

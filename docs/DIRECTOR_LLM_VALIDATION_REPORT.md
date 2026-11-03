@@ -31,8 +31,8 @@ Raw results, one JSON per run: `docs/director/llm-validation/<stage>/`. Every pa
   answers, no budget). A separate probe shows both models can pick the right first step, but both lean too far
   towards organic content.
 - **Spend:** 1,243 calls. $0.49 as reported by the provider, $0.61 conservative (12% of the $5 cap).
-- **12 defects found and fixed during the run** (11 in the product, 1 in the test harness). 6 more are open
-  (section 8).
+- **15 defects fixed:** 12 during the run (11 in the product, 1 in the test harness), and 3 more from the report's
+  open list. 4 items are still open (section 8).
 
 ## 2. Spend
 
@@ -261,24 +261,34 @@ Full transcripts: [CONVERSATIONS.md](director/llm-validation/CONVERSATIONS.md).
 | 11 | API re-check | The name question read "איך קוראים למבורגר החדש": the article was stripped from text that had none | Reworded to "מה השם של …", with no prefix to strip |
 | 12 | harness | Scripted-owner gaps, a weak organic check, a wrong failNext tool name | Fixed before the sets were frozen |
 
-**Open (not fixed in this experiment):**
+**Fixed after this report (2026-11-03).** Each fix has a regression test in `llm-brain.test.ts`. The held-out scores
+above were measured before these fixes, and no paid run was repeated for them.
+
+| Defect | Cause | Fix |
+| --- | --- | --- |
+| Region answer to "באיזו עיר?" re-asked up to 8 times | "השרון" was stored as the service area, but the city stayed required | A local service with a service area no longer needs a city (`needsCity`), in campaigns and onboarding |
+| "תזכיר לי מה אתה יודע עליי" read as STATUS | The profile reply depended on the model's intent | The rules parser marks "what do you know/remember about me" (`asksProfile`); the engine shows the profile whatever intent the model picked |
+| A long `offer.validUntil` rejected the whole reading (5 fallbacks) | The schema allowed 10 characters | The field takes up to 40 characters, and only the `YYYY-MM-DD` day is kept (and must still appear in the message) |
+
+The rules-only evaluation after the fixes (free, `free-after-fixes/`) shows no regression on any set. It gains one
+conversation on v2 (20/31) and one on v3 (8/16).
+
+**Still open:**
 
 1. **Playbooks always include paid ads** (section 6). Proposed fix: an LLM strategist step, or rules for full
-   capacity, a broken conversion path and no budget, with its own human-graded evaluation.
-2. **Repeated question when an answer does not fill the key.** A region answer to "באיזו עיר?" was re-asked up to
-   8 times. Proposed fix: after a second unfilled ask, accept a service area or explain what is missing differently.
-3. **"תזכיר לי מה אתה יודע עליי" read as STATUS.** The profile reply only covers some intents.
-4. **An explicit correction of a confirmed business type** is applied without the confirmation the engine uses for
+   capacity, a broken conversion path and no budget, with its own human-graded evaluation. This is in progress in a
+   separate session.
+2. **An explicit correction of a confirmed business type** is applied without the confirmation the engine uses for
    other contradictions. This needs a product decision.
-5. **Template polish:**
+3. **Template polish:**
    - the "בשמחה" opener;
    - the repeated photo explanation;
    - service-business wording in restaurant recommendations;
    - a doubled label when both the rules and the model record the same key ("רשמתי: מוצרים – …, מוצרים – …").
-6. **A long `offer.validUntil` rejects the whole reading** (5 fallbacks). Proposed fix: drop only the bad field,
-   and keep the rest of the model's reading.
-
-Open items 2–4 were found on held-out sets. They are reported, not tuned against.
+4. **Rules-only fallback: an essential question can repeat without limit.** If the rules do not recognize the
+   business ("מוכרת נרות דרך האתר") and the owner keeps answering "תמשיך בלי זה", the type-and-city question repeats
+   every turn: 7 repeats in the marketing set. The model brain does not hit this. Proposed fix: on the second ask,
+   offer business-type choices.
 
 ## 9. Model comparison and recommendation
 
@@ -310,7 +320,7 @@ Open items 2–4 were found on held-out sets. They are reported, not tuned again
   unlock image, voice or video spend.
 - **Pilot cap:** at about $0.00014 per turn, 100 businesses × 50 turns a month is about $0.70. A
   `DIRECTOR_LLM_MONTHLY_USD_CAP` of $5 leaves room for 5× that with the rules fallback behind it.
-- **Keep the demo on the rules** until open items 1–3 are fixed.
+- **Keep the demo on the rules** until the paid-ads playbook (open item 1) is fixed.
 
 ## 10. Automated pass rates vs. subjective quality
 

@@ -18,7 +18,7 @@ import type { DirectorBrain } from './brain';
 import { FACT_SPECS, decideFacts, factState, formatDay, isOffer, mergeFacts, memoryOf, usable, usableText, type Memory } from './facts';
 import { parseProductAnswer, type Understanding } from './hebrew';
 import { campaignLabel, resolveReference } from './references';
-import { nextQuestion, requirementsFor, taskObjective, taskProduct } from './requirements';
+import { needsCity, nextQuestion, requirementsFor, taskObjective, taskProduct } from './requirements';
 import { GROWTH_MEANING, marketingRecommendation } from './playbooks';
 import { ACTION_LABELS, OBJECTIVE_LABELS, displayFact, proposeCampaign, recommend, type CostContext } from './strategy';
 import {
@@ -413,9 +413,10 @@ export class DirectorEngine {
     }
     if (u.intent === 'FORBIDDEN') return this.refuse(t, u.forbidden!);
     if (await this.resolveConflict(t, u)) return this.continueOrFallback(t, { ...u, yes: false, no: false });
-    // "What do you remember about my business?": the profile the model asked to read is shown, not just looked up.
-    if (lookups.has('ReadBusinessProfile') && ['HISTORY', 'UNKNOWN', 'PROVIDE_INFO', 'GREETING'].includes(u.intent) && !u.facts.length && !u.offerPatch)
-      return this.profileReply(t);
+    // "What do you remember about my business?": the profile is shown, not just looked up. The wording decides it,
+    // whatever intent the model picked ("תזכיר לי מה אתה יודע עליי" was read as a status question).
+    const profileAsked = u.asksProfile || (lookups.has('ReadBusinessProfile') && ['HISTORY', 'UNKNOWN', 'PROVIDE_INFO', 'GREETING'].includes(u.intent));
+    if (profileAsked && !u.facts.length && !u.offerPatch) return this.profileReply(t);
     if (['UNKNOWN', 'PROVIDE_INFO'].includes(u.intent) && !u.facts.length && !t.state.awaiting) {
       if (lookups.has('GetProductionStatus')) return this.status(t);
       if (lookups.has('GetCampaignHistory')) return this.historyReply(t);
@@ -918,8 +919,7 @@ export class DirectorEngine {
 
   /** Without an open task: keep learning the essentials, then recommend. */
   private async onboardingNext(t: Turn) {
-    const model = usable(t.memory, 'business.model', t.now);
-    const missing = ONBOARDING_KEYS.filter((k) => !(k === 'location.city' && model === 'ECOMMERCE') && !['USABLE', 'DECLINED'].includes(factState(t.memory[k], t.now)));
+    const missing = ONBOARDING_KEYS.filter((k) => !(k === 'location.city' && !needsCity(t.memory, t.now)) && !['USABLE', 'DECLINED'].includes(factState(t.memory[k], t.now)));
     const proposed = missing.filter((k) => t.memory[k]?.status === 'PROPOSED');
     if (proposed.length) {
       t.state.awaiting = { kind: 'FACTS', keys: proposed };

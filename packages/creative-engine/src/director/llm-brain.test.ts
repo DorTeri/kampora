@@ -426,3 +426,44 @@ describe('contacts and links must have their shape (defect found in the marketin
     expect(stored['channel.website']).toBe('https://or-rach-candles.co.il');
   });
 });
+
+describe('open items from the validation report', () => {
+  it('a local service that names its service area is not asked for a city again', async () => {
+    const { provider } = scripted(
+      { intent: 'CAMPAIGN' },
+      { intent: 'PROVIDE_INFO', facts: [{ key: 'location.serviceArea', value: 'השרון', evidence: 'השרון' }] },
+    );
+    const data = {
+      facts: [fact('business.name', 'חשמל השרון'), fact('business.model', 'LOCAL_SERVICE'), fact('offering.main', 'התקנת עמדות טעינה'), fact('goal.primary', 'LEADS')],
+      campaigns: [],
+      approvals: [],
+    };
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider), data });
+    const first = await s.send('תכין לי קמפיין');
+    expect(first.text).toContain('באיזו עיר');
+    const second = await s.send('השרון');
+    expect(second.text).not.toContain('באיזו עיר');
+  });
+
+  it('"תזכיר לי מה אתה יודע עליי" shows the profile even when the model reads a status question', async () => {
+    const { provider } = scripted({ intent: 'STATUS', toolRequests: [{ tool: 'ReadBusinessProfile', argsJson: '{}' }, { tool: 'GetProductionStatus', argsJson: '{}' }] });
+    const data = { facts: [fact('business.name', 'ברזל'), fact('location.city', 'חדרה')], campaigns: [], approvals: [] };
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider), data });
+    const r = await s.send('תזכיר לי מה אתה יודע עליי');
+    expect(r.text).toContain('ברזל');
+    expect(r.cards.some((c) => c.kind === 'FACTS')).toBe(true);
+  });
+
+  it('an offer date the model writes in a long form does not throw away the whole reading', async () => {
+    const { provider } = scripted({
+      intent: 'PROVIDE_INFO',
+      facts: [{ key: 'business.name', value: 'פיצה מרגריטה', evidence: 'פיצה מרגריטה' }],
+      offer: { text: 'פיצה משפחתית ושתייה', price: '79', validUntil: '2026-11-15T23:59:59', ongoing: false, evidence: 'ב-79 שקל עד ה-15.11' },
+    });
+    const brain = new LlmDirectorBrain(provider);
+    const u = await brain.interpret({ text: 'פיצה מרגריטה, יש לנו פיצה משפחתית ושתייה ב-79 שקל עד ה-15.11', now: NOW, state: new DirectorSandbox().state, knownFacts: [], recentWork: [] });
+    expect(u.fallbackReason).toBeUndefined();
+    expect(u.brain).toBe('llm');
+    expect(u.offerPatch?.validUntil).toBe('2026-11-15');
+  });
+});

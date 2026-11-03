@@ -65,6 +65,8 @@ export interface Understanding {
   guessed?: FactKey[];
   /** Why the model's reading was not used (schema or provider error), for logs and evaluation. */
   fallbackReason?: string;
+  /** "מה אתה זוכר עליי?": the owner asks what the Director knows about the business. */
+  asksProfile?: boolean;
 }
 
 /** Hebrew without niqqud, single spaces, Latin lower-cased; punctuation kept (URLs, prices). */
@@ -499,6 +501,8 @@ export function understand(raw: string, ctx: UnderstandContext): Understanding {
   const styleChange = /(משהו|גרסה|עיצוב|כיוון|סגנון)\s+(יותר\s+)?(יוקרתי|יוקרתית|נועז|נועזת|רגוע|נקי|מינימליסטי|אלגנטי)|יותר (יוקרתי|יוקרתית|נועז|רגוע|נקי|אלגנטי|מעודן)|תבליט את המחיר|להבליט את המחיר|כותרת גדולה יותר|פחות טקסט|כיוון (עיצובי )?אחר|נסה כיוון|הטיפוגרפיה פשוטה/;
   const opening = /פתיחה|הפתיחה|התחלה|ההתחלה|הוק|השניות הראשונות|פתיח|(ת|שי|י)פתח (ב|עם)|(ת|שי|י)תחיל (ב|עם)/;
   const openWith = /^(תפתח|שיפתח|יפתח|תתחיל|שיתחיל|יתחיל) (ב|עם)|שהפתיחה תהיה|שההתחלה תהיה/;
+  // "מה אתה יודע לעשות?" asks about the Director, not the business: "יודע" needs an object.
+  if (/(מה|תזכיר לי מה|ספר לי מה) (אתה )?(זוכר|רשמת|שמרת)|(מה|תזכיר לי מה|ספר לי מה) (אתה )?יודע (עליי|עלי|עלינו|על ה?עסק)/.test(t)) u.asksProfile = true;
   if (u.forbidden) u.intent = 'FORBIDDEN';
   else if (/^(נסה שוב|תנסה שוב|שוב|retry|נסה עוד פעם)(\s|$|[.!])/.test(t)) u.intent = 'RETRY';
   else if (/^(מאשר|מאשרת|אני מאשר|אני מאשרת|מאושר|אשר|approved?|approve)(\s|$|[.!])/i.test(t)) u.intent = 'APPROVE_TEXT';
