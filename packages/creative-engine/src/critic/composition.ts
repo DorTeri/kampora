@@ -19,8 +19,9 @@ import {
   type StaticAdFormat,
   type TextLayer,
 } from '@kampora/shared';
+import { measurePictureUse, type ComposePicture } from '@kampora/production-engine';
 import { checkClaims } from '../claims';
-import { composeDirectionSpecs, inputForDirection, MOVE_GROUPS, type DirectionInput } from '../art-director-v2';
+import { composeDirectionSpecs, inputForDirection, MOVE_GROUPS, repeatedBrand, type DirectionInput } from '../art-director-v2';
 import { measured, notMeasured, type Finding } from './report';
 
 /**
@@ -34,6 +35,8 @@ export interface CompositionCritiqueContext {
   /** The other directions of the same concept, to judge whether this one is genuinely different. */
   siblings?: readonly CreativeDesignSpec[];
   target?: string;
+  /** The picture behind the ad. Subject cover and crop are measured only when its subject box was recorded. */
+  picture?: ComposePicture;
 }
 
 const texts = (spec: CreativeDesignSpec) => spec.layers.filter((l): l is TextLayer => l.kind === 'text');
@@ -44,6 +47,7 @@ const intersect = (a: Rect, b: Rect): number => {
   const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
   return w > 0 && h > 0 ? w * h : 0;
 };
+const words = (s: string) => s.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 const digits = (s: string) => (s.match(/\d+(?:[.,]\d+)?/g) ?? []).map((d) => d.replace(',', '.'));
 const isLight = (hex: string) => contrastRatio(hex, '#000000') > contrastRatio(hex, '#ffffff');
 
@@ -110,7 +114,24 @@ export function technicalChecks(spec: CreativeDesignSpec, ctx: CompositionCritiq
       if (shared > Math.min(area(t[i]!.rect), area(t[j]!.rect)) * 0.08)
         overlap.push({ severity: 'MAJOR', explanation: `${t[i]!.role} overlaps ${t[j]!.role}.`, component: 'LAYOUT_ENGINE', target });
     }
-  results.push(measured('LAYOUT_BALANCE', overlap, 'No text layers collide.'));
+  // Alignment: RTL text that starts at the same edge must start exactly there; a near miss reads as a mistake.
+  const loose = t.filter((l) => l.align === 'START' && !l.box && !l.rotation);
+  for (let i = 0; i < loose.length; i++)
+    for (let j = i + 1; j < loose.length; j++) {
+      const [a, b] = [loose[i]!, loose[j]!];
+      const column = Math.min(a.rect.x + a.rect.w, b.rect.x + b.rect.w) - Math.max(a.rect.x, b.rect.x) > Math.min(a.rect.w, b.rect.w) * 0.5;
+      const off = Math.abs(a.rect.x + a.rect.w - (b.rect.x + b.rect.w));
+      if (column && off > 1.5 && off <= 12)
+        overlap.push({ severity: 'MINOR', explanation: `${a.role} and ${b.role} start ${Math.round(off)} px apart on the same edge.`, evidence: [`right edges ${Math.round(a.rect.x + a.rect.w)} / ${Math.round(b.rect.x + b.rect.w)}`], correction: 'Align both to one edge.', component: 'LAYOUT_ENGINE', target });
+    }
+  // The picture's subject, when its box was recorded: text must not cover it and the crop must keep it.
+  for (const use of ctx.picture?.subject ? measurePictureUse(spec, [ctx.picture]) : []) {
+    if (use.covered > 0.05)
+      overlap.push({ severity: use.covered > 0.15 ? 'MAJOR' : 'MINOR', explanation: `Text covers ${Math.round(use.covered * 100)}% of the picture's subject.`, correction: 'Move the type to the calm area or use another arrangement.', component: 'ART_DIRECTOR', target });
+    if (use.kept < 0.8)
+      overlap.push({ severity: 'MINOR', explanation: `The crop keeps ${Math.round(use.kept * 100)}% of the subject.`, evidence: [`subject ${Math.round(use.subjectShare * 100)}% of the page`], correction: 'Zoom out or move the focal point.', component: 'ART_DIRECTOR', target });
+  }
+  results.push(measured('LAYOUT_BALANCE', overlap, ctx.picture?.subject ? 'No text layers collide, edges align, and the subject is clear of text.' : 'No text layers collide and edges align.'));
 
   // Hierarchy: the emphasised element is the largest; the reading path starts where the design says.
   const hier: Finding[] = [];
@@ -123,6 +144,19 @@ export function technicalChecks(spec: CreativeDesignSpec, ctx: CompositionCritiq
     hier.push({ severity: 'MINOR', explanation: `${largestText.role} is larger than the headline.`, component: 'ART_DIRECTOR', target });
   const cta = byRole(spec, 'CTA');
   if (cta && spec.readingPath.indexOf(cta.id) === 0) hier.push({ severity: 'MAJOR', explanation: 'The reading path starts with the action.', component: 'LAYOUT_ENGINE', target });
+  const repeated = repeatedBrand(spec);
+  // In the eyebrow it is a layout defect; in approved copy (a CTA "נשימה | השאירו פרטים") it is the Copywriter's call.
+  if (repeated)
+    hier.push(
+      repeated.layer.role === 'EYEBROW'
+        ? { severity: 'MAJOR', explanation: 'The brand name is set twice: as the signature and in the eyebrow.', evidence: [repeated.layer.text], correction: 'Keep the brand in one place.', component: 'ART_DIRECTOR', target }
+        : { severity: 'MINOR', explanation: `The ${repeated.layer.role.toLowerCase()} repeats the brand name the signature already carries.`, evidence: [repeated.layer.text], correction: 'Consider leaving the brand out of this line.', component: 'COPYWRITER', target },
+    );
+  const wordCount = t.reduce((n, l) => n + words(l.text), 0);
+  const textShare = t.reduce((n, l) => n + area(l.rect), 0) / (spec.width * spec.height);
+  if (spec.moves.includes('MINIMAL_COPY') && wordCount > 22)
+    hier.push({ severity: 'MINOR', explanation: `A minimal-copy design carries ${wordCount} words.`, evidence: t.map((l) => `${l.role}: ${words(l.text)}`), correction: 'Leave out a supporting line (the Copywriter decides which).', component: 'COPYWRITER', target });
+  if (textShare > 0.4) hier.push({ severity: 'MINOR', explanation: `Text takes ${Math.round(textShare * 100)}% of the page.`, component: 'ART_DIRECTOR', target });
   results.push(measured('VISUAL_HIERARCHY', hier, `The eye lands on ${spec.focal.toLowerCase()} first, then follows the reading path.`));
 
   // Offer: one price, said once.
@@ -135,7 +169,11 @@ export function technicalChecks(spec: CreativeDesignSpec, ctx: CompositionCritiq
         offer.push({ severity: 'MAJOR', explanation: `The price appears twice: in the price element and in the ${role.toLowerCase()}.`, evidence: [l.text], correction: `Rewrite the ${role.toLowerCase()} without the price; the design already sets it.`, component: 'COPYWRITER', target });
     }
   }
-  results.push(price ? measured('OFFER_COMMUNICATION', offer, 'The price is said once, as its own element.') : notMeasured('OFFER_COMMUNICATION', 'No price in this ad.'));
+  if (price && spec.focal === 'PRICE' && price.font.size < spec.width * 0.09)
+    offer.push({ severity: 'MINOR', explanation: `The design leads with the price but sets it at ${Math.round(price.font.size)} px.`, correction: 'Give the price the scale of a focal point.', component: 'ART_DIRECTOR', target });
+  if (price && price.font.size < spec.width * 0.022)
+    offer.push({ severity: 'MINOR', explanation: `The price is set at ${Math.round(price.font.size)} px, small for a feed.`, component: 'ART_DIRECTOR', target });
+  results.push(price ? measured('OFFER_COMMUNICATION', offer, 'The price is said once, as its own element, at a size that matches its role.') : notMeasured('OFFER_COMMUNICATION', 'No price in this ad.'));
 
   // Facts: claims on the ad must be approved.
   if (ctx.approvedClaims) {
@@ -147,7 +185,15 @@ export function technicalChecks(spec: CreativeDesignSpec, ctx: CompositionCritiq
   const ctaFindings: Finding[] = [];
   if (cta && GENERIC_CTA.some((g) => cta.text.trim().startsWith(g)))
     ctaFindings.push({ severity: 'MINOR', explanation: `The action "${cta.text}" is generic.`, correction: 'Name the specific action in the audience\'s words ("קבעי שיעור ניסיון").', component: 'COPYWRITER', target });
-  results.push(measured('CTA_CLARITY', ctaFindings, 'The action is specific.'));
+  if (cta && cta.font.size < spec.width * 0.026)
+    ctaFindings.push({ severity: 'MINOR', explanation: `The action is set at ${Math.round(cta.font.size)} px, small for a thumb-sized feed.`, component: 'ART_DIRECTOR', target });
+  if (cta) {
+    const above = t.filter((l) => !['CTA', 'CTA_SUB', 'ADDRESS', 'BRAND'].includes(l.role) && l.rect.y + l.rect.h <= cta.rect.y + 1);
+    const gap = above.length ? cta.rect.y - Math.max(...above.map((l) => l.rect.y + l.rect.h)) : 0;
+    if (gap > spec.height * 0.28)
+      ctaFindings.push({ severity: 'MINOR', explanation: `The action sits ${Math.round(gap)} px below the message, apart from it.`, correction: 'Bring the action next to the message it completes.', component: 'LAYOUT_ENGINE', target });
+  }
+  results.push(measured('CTA_CLARITY', ctaFindings, 'The action is specific, legible and next to the message.'));
   const hebrew: Finding[] = t.flatMap((l) =>
     TRANSLATIONESE.filter((p) => l.text.includes(p)).map((p) => ({ severity: 'MINOR' as const, explanation: `"${p}" reads as translated or cliché Hebrew.`, evidence: [l.text], correction: 'Say it the way a local owner would.', component: 'COPYWRITER' as const, target })),
   );
@@ -185,8 +231,57 @@ export function creativeAnalysis(spec: CreativeDesignSpec, ctx: CompositionCriti
     const same = ctx.siblings.filter((s) => s.method === spec.method || (s.typeSystem === spec.typeSystem && s.palette.background === spec.palette.background));
     results.push(heuristic(measured('DIFFERENTIATION', same.map(() => ({ severity: 'MINOR' as const, explanation: 'Another direction uses the same arrangement or the same type and colour.', component: 'ART_DIRECTOR' as const, target })), 'This direction differs from its siblings in arrangement, type and colour.')));
   }
+  results.push(heuristic(measured('LAYOUT_BALANCE', emptySpace(spec, target), 'No region of the page is left empty without a reason.')));
+  results.push(heuristic(measured('IMAGE_RELEVANCE', imageBalance(spec, target), 'The picture gets the room the design’s focal point promises.')));
   results.push(notMeasured('PROFESSIONAL_POLISH', 'Whether this looks like agency work is for a person to judge.'));
   return results;
+}
+
+/** Occupied share of each cell of a 3×3 grid: images, text, logos and solid shapes (not the page background). */
+function occupancy(spec: CreativeDesignSpec): number[] {
+  const cells: number[] = [];
+  const page = spec.width * spec.height;
+  const parts = spec.layers.filter((l) => l.kind !== 'shape' || (l.fill && l.opacity >= 0.3 && area(l.rect) < page * 0.9));
+  for (let row = 0; row < 3; row++)
+    for (let col = 0; col < 3; col++) {
+      const cell = { x: (col * spec.width) / 3, y: (row * spec.height) / 3, w: spec.width / 3, h: spec.height / 3 };
+      cells.push(Math.min(1, parts.reduce((n, l) => n + intersect(l.rect, cell), 0) / area(cell)));
+    }
+  return cells;
+}
+
+/** Heuristic: empty regions are fine when negative space is the idea; otherwise they read as unfinished. */
+function emptySpace(spec: CreativeDesignSpec, target: string): Finding[] {
+  const cells = occupancy(spec);
+  const empty = cells.flatMap((c, i) => (c < 0.04 ? [`row ${Math.floor(i / 3) + 1} col ${(i % 3) + 1}`] : []));
+  if (empty.length < 3 || spec.moves.includes('GENEROUS_NEGATIVE_SPACE')) return [];
+  return [{ severity: 'MINOR', explanation: `${empty.length} of 9 regions are empty and the design does not call for negative space.`, evidence: empty, correction: 'Let the picture or the message take the space, or make the space deliberate.', component: 'ART_DIRECTOR', target }];
+}
+
+/** Heuristic: how much of the page the picture gets against what the focal point promises. */
+function imageBalance(spec: CreativeDesignSpec, target: string): Finding[] {
+  const page = { x: 0, y: 0, w: spec.width, h: spec.height };
+  const imageShare = Math.min(1, spec.layers.reduce((n, l) => n + (l.kind === 'image' ? intersect(l.rect, page) : 0), 0) / area(page));
+  if (spec.focal === 'IMAGE' && imageShare < 0.55)
+    return [{ severity: 'MINOR', explanation: `The design leads with the picture but it fills ${Math.round(imageShare * 100)}% of the page.`, correction: 'Give the picture the page and set the type on its calm area.', component: 'ART_DIRECTOR', target }];
+  return [];
+}
+
+/**
+ * Heuristic across the concepts of one campaign: their chosen directions should not be one layout with different
+ * words. A shared arrangement, or the same focal point in the same type, is reported; it never blocks.
+ */
+export function reviewConceptSpread(ads: readonly { concept: string; spec: CreativeDesignSpec }[]): CriterionResult {
+  const findings: Finding[] = [];
+  for (let i = 0; i < ads.length; i++)
+    for (let j = i + 1; j < ads.length; j++) {
+      const [a, b] = [ads[i]!, ads[j]!];
+      if (a.spec.method === b.spec.method)
+        findings.push({ severity: 'MINOR', explanation: `"${a.concept}" and "${b.concept}" use the same arrangement (${a.spec.method}).`, component: 'ART_DIRECTOR', target: `${a.concept} / ${b.concept}` });
+      else if (a.spec.focal === b.spec.focal && a.spec.typeSystem === b.spec.typeSystem)
+        findings.push({ severity: 'MINOR', explanation: `"${a.concept}" and "${b.concept}" lead with the same element (${a.spec.focal}) in the same type.`, component: 'ART_DIRECTOR', target: `${a.concept} / ${b.concept}` });
+    }
+  return heuristic(measured('DIFFERENTIATION', findings, 'Each concept has its own arrangement and focal point.', ads.map((x) => `${x.concept}: ${x.spec.method}, ${x.spec.focal}, ${x.spec.typeSystem}`)));
 }
 
 const serious = (r: CriterionResult) => r.severity === 'MAJOR' || r.severity === 'CRITICAL';
@@ -230,7 +325,7 @@ export function reviewDirection(
   const maxRounds = opts.maxRounds ?? CRITIC_POLICY.maxRevisionRounds;
   const formats = Object.keys(direction.specs) as StaticAdFormat[];
   const evaluate = (d: CreativeDirection) =>
-    Object.entries(d.specs).flatMap(([f, s]) => technicalChecks(s, { approvedClaims: opts.approvedClaims, target: `${d.key} ${f}` }));
+    Object.entries(d.specs).flatMap(([f, s]) => technicalChecks(s, { approvedClaims: opts.approvedClaims, target: `${d.key} ${f}`, ...(input.picture ? { picture: input.picture } : {}) }));
   const problems = (rs: CriterionResult[]) => rs.filter(serious).length;
   const subject: CritiqueSubject = { type: 'STATIC_AD', ref: `direction:${direction.key}` };
   const rounds: ReviewRound[] = [];
@@ -346,7 +441,8 @@ export function reviewDirectionSet(
     reviews[d.key] = {};
     for (const [format, spec] of Object.entries(d.specs)) {
       const siblings = directions.filter((x) => x.key !== d.key).flatMap((x) => (x.specs[format] ? [x.specs[format]!] : []));
-      reviews[d.key]![format] = creativeReview(spec, { approvedClaims: opts.approvedClaims, siblings, target: `${d.key} ${format}`, subjectRef: `${set.conceptKey}:${d.key}:${format}`, history: revised[i]!.history });
+      const picture = inputForDirection(input, d).picture;
+      reviews[d.key]![format] = creativeReview(spec, { approvedClaims: opts.approvedClaims, siblings, ...(picture ? { picture } : {}), target: `${d.key} ${format}`, subjectRef: `${set.conceptKey}:${d.key}:${format}`, history: revised[i]!.history });
     }
   }
   return { set: { ...set, directions }, reviews, copy: Object.fromEntries(revised.map((r) => [r.direction.key, r.copy])) };

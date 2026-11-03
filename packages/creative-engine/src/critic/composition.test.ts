@@ -3,7 +3,8 @@ import { retrieveProfessionalReferences } from '@kampora/agent-expertise';
 import { composeDesign, derivePalette } from '@kampora/production-engine';
 import type { BrandColors, CompositionMethod, CreativeDesignSpec } from '@kampora/shared';
 import { composeDirectionSpecs, directCreative, type DirectionInput } from '../art-director-v2';
-import { creativeAnalysis, creativeReview, reviewDirection, reviewDirectionSet, technicalChecks } from './composition';
+import { eyebrowWithoutBrand, repeatedBrand } from '../art-director-v2';
+import { creativeAnalysis, creativeReview, reviewConceptSpread, reviewDirection, reviewDirectionSet, technicalChecks } from './composition';
 
 const LUZ: BrandColors = { primary: '#2B1B12', secondary: '#C8743A', accent: '#F2C14E', background: '#FBF5EC', text: '#1C140F' };
 // The real Q6 pilot copy: the subheadline repeats the price that the design also sets.
@@ -151,5 +152,49 @@ describe('Critic 2.0: the layout engine composes readable, collision-free text e
               expect(r.severity, `${method} ${format} picture=${picture} ${emphasis}: ${r.explanation}`).not.toBe('MAJOR');
             }
           }
+  });
+});
+
+describe('Critic 2.0: measured composition defects', () => {
+  it('finds the brand set twice; the Art Director sets it once without writing new words', () => {
+    const d = set.directions[0]!;
+    const raw = composeDesign({ format: '4:5', method: d.method, moves: d.moves, typeSystem: d.typeSystem, palette: derivePalette(LUZ, d.moves), copy: input.copy, picture: input.picture!, emphasis: d.emphasis });
+    expect(repeatedBrand(raw)?.layer.role).toBe('EYEBROW');
+    expect(technicalChecks(raw).find((x) => x.criterion === 'VISUAL_HIERARCHY')!.severity).toBe('MAJOR');
+    const eyebrow = d.specs['4:5']!.layers.find((l) => l.kind === 'text' && l.role === 'EYEBROW');
+    expect(eyebrow?.kind === 'text' && eyebrow.text).toBe('פלורנטין');
+    expect(repeatedBrand(d.specs['4:5']!)).toBeUndefined();
+    expect(eyebrowWithoutBrand('Luz', 'Luz')).toBeUndefined();
+  });
+
+  it('measures text over the subject only when the subject box was recorded', () => {
+    const s = clone(spec('A'));
+    const img = s.layers.find((l) => l.kind === 'image')!;
+    const headline = s.layers.find((l) => l.kind === 'text' && l.role === 'HEADLINE')!;
+    if (img.kind !== 'image' || headline.kind !== 'text') throw new Error('fixture');
+    headline.rect = { ...img.rect };
+    const pic = { assetId: img.assetId, focal: { x: 0.5, y: 0.5 }, aspect: 0.8 };
+    const covered = technicalChecks(s, { picture: { ...pic, subject: { x: 0, y: 0, w: 1, h: 1 } } }).find((x) => x.criterion === 'LAYOUT_BALANCE')!;
+    expect(covered.severity).toBe('MAJOR');
+    expect(JSON.stringify(covered)).toMatch(/covers \d+% of the picture/);
+    // Without a recorded subject nothing about it is claimed.
+    expect(JSON.stringify(technicalChecks(s, { picture: pic }))).not.toMatch(/subject/);
+  });
+
+  it('finds a near-miss alignment of two right-aligned lines', () => {
+    const s = clone(spec('B'));
+    const loose = s.layers.flatMap((l) => (l.kind === 'text' && l.align === 'START' && !l.box ? [l] : []));
+    expect(loose.length).toBeGreaterThan(1);
+    const [a, b] = [loose[0]!, loose[1]!];
+    b.rect = { ...b.rect, x: a.rect.x + a.rect.w - b.rect.w - 6 };
+    expect(JSON.stringify(technicalChecks(s).find((x) => x.criterion === 'LAYOUT_BALANCE'))).toMatch(/6 px apart/);
+  });
+
+  it('reports concepts that share one layout, and passes concepts that do not', () => {
+    const [a, b, c] = set.directions.map((d) => d.specs['4:5']!);
+    expect(reviewConceptSpread([{ concept: 'x', spec: a! }, { concept: 'y', spec: b! }, { concept: 'z', spec: c! }]).severity).toBe('OK');
+    const same = reviewConceptSpread([{ concept: 'x', spec: a! }, { concept: 'y', spec: clone(a!) }]);
+    expect(same.severity).toBe('MINOR');
+    expect(same.method).toBe('HEURISTIC');
   });
 });

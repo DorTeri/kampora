@@ -1,4 +1,4 @@
-import { industryFor, retrieveProfessionalReferences, type RetrievedReference } from '@kampora/agent-expertise';
+import { conceptVisualStrategy, industryFor, retrieveProfessionalReferences, type RetrievedReference } from '@kampora/agent-expertise';
 import type { ComposeCopy } from '@kampora/production-engine';
 import {
   STATIC_AD_FORMATS,
@@ -9,6 +9,7 @@ import {
   type CampaignBrief,
   type CreativeConcept,
   type CreativeDirectionSet,
+  type DesignMove,
   type MediaAuthenticity,
   type StaticAd,
   type StaticAdFormat,
@@ -62,7 +63,8 @@ export function referencesFor(ctx: Pick<StaticDirectionContext, 'business' | 'br
     tone: ctx.business.tone,
     productType: `${ctx.brief.productName} ${ctx.business.category}`,
     audience: ctx.brief.audience,
-    ...(ctx.concept.design ? { moves: ctx.concept.design.designMoves } : {}),
+    // The concept's own visual idea steers retrieval: a craving concept looks for macro food work, not price layouts.
+    moves: [...new Set([...(ctx.concept.design?.designMoves ?? []), ...(Object.keys(conceptVisualStrategy({ angle: ctx.concept.angle, ...(ctx.concept.copy ? { hookTechnique: ctx.concept.copy.hookTechnique } : {}) }).moves) as DesignMove[])])],
     format: 'STATIC',
   });
 }

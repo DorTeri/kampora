@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PROFESSIONAL_REFERENCES, referenceById, retrieveProfessionalReferences, type RetrievedReference } from '@kampora/agent-expertise';
-import { CreativeDesignSpecSchema, type BrandColors } from '@kampora/shared';
+import { CreativeDesignSpecSchema, type BrandColors, type CreativeDirection } from '@kampora/shared';
 import { directCreative, type DirectionInput } from './art-director-v2';
 
 const LUZ: BrandColors = { primary: '#2B1B12', secondary: '#C8743A', accent: '#F2C14E', background: '#FBF5EC', text: '#1C140F' };
@@ -157,5 +157,77 @@ describe('Art Director 2.0', () => {
   it('is deterministic', () => {
     const refs = retrieve('cafe-restaurant', 'OFFER', 'warm');
     expect(JSON.stringify(directCreative(luzInput(refs)))).toEqual(JSON.stringify(directCreative(luzInput(refs))));
+  });
+});
+
+describe('Art Director 2.0: the concept drives the composition', () => {
+  const BURGER: BrandColors = { primary: '#1F1A17', secondary: '#E0482B', accent: '#F4B63F', background: '#FFF7EC', text: '#1F1A17' };
+  // One offer campaign, three concepts (Phase 1 burger sample): same price, same picture, same references.
+  const concepts = {
+    value: { title: 'המחיר הוא החדשות', angle: 'OFFER_DRIVEN', hookTechnique: 'OFFER_FIRST', headline: 'דאבל סמאש, צ׳יפס ושתייה, במחיר אחד' },
+    craving: { title: 'רגע החשק', angle: 'PRODUCT_DEMO', hookTechnique: 'SENSORY_DETAIL', headline: 'שתי קציצות דקות, צ׳דר ובצל מקורמל' },
+    craft: { title: 'מה שקורה במטבח', angle: 'UGC', hookTechnique: 'FIRST_PERSON', headline: 'טוחנים את הבשר במקום כל יום' },
+  } as const;
+  const refs = retrieve('cafe-restaurant', 'OFFER', 'friendly');
+  const burger = (c: (typeof concepts)[keyof typeof concepts], extra: Partial<DirectionInput> = {}): DirectionInput => ({
+    conceptKey: c.angle,
+    goal: 'OFFER',
+    tone: 'friendly',
+    industryId: 'cafe-restaurant',
+    brand: { name: 'בורגר האוס', colors: BURGER },
+    concept: { title: c.title, angle: c.angle, hookTechnique: c.hookTechnique },
+    copy: { headline: c.headline, price: { price: '59 ₪', label: 'דאבל סמאש + צ׳יפס + שתייה' }, cta: 'הזמינו עכשיו', brandName: 'בורגר האוס' },
+    picture: { assetId: 'pic', focal: { x: 0.5, y: 0.5 }, subject: { x: 0.25, y: 0.3, w: 0.5, h: 0.4 }, composition: 'SINGLE_HERO', people: 'NONE', authenticity: 'VERIFIED_PRODUCT_PHOTO' },
+    references: refs,
+    formats: ['4:5'],
+    ...extra,
+  });
+  const chosen = (input: DirectionInput) => {
+    const set = directCreative(input);
+    return { set, d: set.directions.find((x) => x.key === set.recommended)! };
+  };
+  const size = (d: CreativeDirection, role: 'PRICE' | 'HEADLINE') => {
+    const l = d.specs['4:5']!.layers.find((x) => x.kind === 'text' && x.role === role);
+    return l?.kind === 'text' ? l.font.size : NaN;
+  };
+
+  it('recommends a different arrangement, focal point and price treatment for each concept', () => {
+    const value = chosen(burger(concepts.value)).d;
+    const craving = chosen(burger(concepts.craving)).d;
+    const craft = chosen(burger(concepts.craft)).d;
+    expect([value.method, value.emphasis]).toEqual(['PROMO_PRICE', 'PRICE']);
+    expect([craving.method, craving.emphasis]).toEqual(['IMAGE_FIRST', 'IMAGE']);
+    expect([craft.method, craft.emphasis]).toEqual(['EDITORIAL', 'HEADLINE']);
+    expect(value.moves).toContain('PRICE_AS_GRAPHIC');
+    expect(craving.moves).toEqual(expect.arrayContaining(['DETAIL_MACRO_CROP', 'PRICE_UNDERSTATED']));
+    expect(craft.moves).toEqual(expect.arrayContaining(['SERIF_EDITORIAL', 'IMAGE_INSET_FRAME', 'PRICE_UNDERSTATED']));
+    // The layout engine applies it: the price outsizes the headline only where the concept is about the price.
+    expect(size(value, 'PRICE') / size(value, 'HEADLINE')).toBeGreaterThan(1);
+    expect(size(craving, 'PRICE') / size(craving, 'HEADLINE')).toBeLessThan(0.6);
+    expect(size(craft, 'PRICE') / size(craft, 'HEADLINE')).toBeLessThan(0.6);
+  });
+
+  it('an offer goal alone does not make the price the hero of a craving or craft concept', () => {
+    for (const c of [concepts.craving, concepts.craft])
+      for (const d of directCreative(burger(c)).directions) {
+        expect(d.emphasis).not.toBe('PRICE');
+        expect(d.moves).not.toContain('PRICE_AS_GRAPHIC');
+      }
+  });
+
+  it('records the concept decision and keeps references as influences', () => {
+    const { set, d } = chosen(burger(concepts.craving));
+    expect(d.rationale[0]).toMatchObject({ topic: 'concept', decision: 'APPETITE: this direction carries the concept' });
+    expect(set.recommendedBecause).toMatch(/appetite/);
+    expect(set.directions.filter((x) => x.rationale[0]!.decision.includes('alternative'))).toHaveLength(2);
+    expect(d.references.length).toBeGreaterThan(0);
+  });
+
+  it('no people in the picture: no people-led layout, even for a first-person concept', () => {
+    for (const d of directCreative(burger(concepts.craft)).directions) expect(d.moves).not.toContain('PEOPLE_AS_HERO');
+  });
+
+  it('without a picture, a craving concept is not given a shape-led stand-in for the food', () => {
+    expect(chosen(burger(concepts.craving, { picture: undefined })).d.approach).not.toBe('IMAGE_LED');
   });
 });

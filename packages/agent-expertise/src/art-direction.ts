@@ -1,9 +1,18 @@
-import type { CampaignGoal, CompositionType, LayoutFamily } from '@kampora/shared';
+import type {
+  CampaignGoal,
+  CompositionMethod,
+  CompositionType,
+  ConceptAngle,
+  DesignMove,
+  DirectionApproach,
+  HookTechnique,
+  LayoutFamily,
+} from '@kampora/shared';
 import type { Playbook } from './playbook';
 
 export const ART_DIRECTION_PLAYBOOK: Playbook = {
   id: 'art-direction',
-  version: '1.0.0',
+  version: '1.1.0',
   role: 'ART_DIRECTOR',
   responsibility:
     'Decide what the viewer notices first and how the eye travels, choose the layout, type, color and picture treatment that carry this specific message, and adapt them to every format.',
@@ -62,7 +71,8 @@ export const ART_DIRECTION_PLAYBOOK: Playbook = {
     'Layout families are deterministic, tested components; the plan chooses and parameterises them.',
   ],
   decisionRules: [
-    'OFFER/SALES with a price: the price is the primary focal point, or second after the product.',
+    'The concept, not the goal, decides the focal point (see CONCEPT_VISUAL_STRATEGIES): in an offer campaign only the value concept makes the price the hero; a craving or craft concept keeps the price legible but quiet.',
+    'OFFER/SALES with a price and a value concept: the price is the primary focal point, or second after the product.',
     'AWARENESS: the picture (people or place) leads; text is quiet.',
     'PRODUCT_PROMO: the product leads; price, if any, is secondary.',
     'LEADS: the message and the action lead; a clear action bar.',
@@ -81,6 +91,8 @@ export const ART_DIRECTION_PLAYBOOK: Playbook = {
   ],
   failureModes: [
     'The same template for every business',
+    'Three concepts of one campaign in the same layout, with only the words changed',
+    'Forcing a different look on a concept when the look stops serving its message',
     'A price card covering the product',
     'Low-contrast text on a busy photograph',
     'Four elements of equal visual weight',
@@ -95,6 +107,164 @@ export const ART_DIRECTION_PLAYBOOK: Playbook = {
     'VISUAL_ORIGINALITY',
   ],
 };
+
+/**
+ * What a concept's idea asks of the picture and the page. The Copywriter's hook technique and angle say which idea a
+ * concept argues; this decides the direction that carries it, the arrangement, the moves the layout engine applies,
+ * which element is the focal point and which pictures serve it. Weights add to the reference votes (a reference at
+ * full relevance votes 1.5), so the concept leads and the references refine.
+ */
+export type ConceptVisualIdea = 'VALUE' | 'APPETITE' | 'CRAFT' | 'MOMENT' | 'STATEMENT';
+
+export interface ConceptVisualStrategy {
+  id: ConceptVisualIdea;
+  name: string;
+  /** The art-direction principle, in one line (recorded in the rationale). */
+  principle: string;
+  /** The visual idea for the owner (Hebrew). */
+  ideaHe: string;
+  /** The direction that carries this idea; the other two stay as alternatives. */
+  approach: DirectionApproach;
+  /** Arrangements that carry the idea, best first. */
+  methods: readonly CompositionMethod[];
+  moves: Partial<Record<DesignMove, number>>;
+  /** Moves that work against the idea in any direction of this concept (a price sticker on a craving ad). */
+  avoid: readonly DesignMove[];
+  focal: 'PRICE' | 'IMAGE' | 'HEADLINE';
+  /** HERO: the price is the news. QUIET: legible, never louder than the idea. */
+  price: 'HERO' | 'QUIET';
+  /** Picture compositions that show this idea, best first (only measured or recorded metadata is compared). */
+  pictures: readonly CompositionType[];
+  /** The idea rests on a picture; without one it falls back to type. */
+  needsPicture: boolean;
+}
+
+export const CONCEPT_VISUAL_STRATEGIES: Record<ConceptVisualIdea, ConceptVisualStrategy> = {
+  VALUE: {
+    id: 'VALUE',
+    name: 'Value',
+    principle:
+      'The deal is read in one glance: what you get, one price, one action. The product stays beside the number so the price stands for something; no starburst, no sale sticker.',
+    ideaHe: 'מה שמקבלים ובכמה, במבט אחד: המחיר גדול ליד המוצר, ופעולה אחת ברורה.',
+    approach: 'BOLD_GRAPHIC',
+    methods: ['PROMO_PRICE'],
+    moves: { PRICE_AS_GRAPHIC: 1.6, CTA_BUTTON: 0.8, SINGLE_FOCAL_POINT: 0.5, RULE_LINES: 0.4 },
+    avoid: ['BADGE_STAMP', 'PRICE_UNDERSTATED'],
+    focal: 'PRICE',
+    price: 'HERO',
+    pictures: ['SINGLE_HERO', 'ASSORTMENT'],
+    needsPicture: false,
+  },
+  APPETITE: {
+    id: 'APPETITE',
+    name: 'Appetite',
+    principle:
+      'The food is the headline: the product fills the frame, close enough to see texture; few words on its calm edge, the price quiet, the action a line.',
+    ideaHe: 'האוכל הוא הכותרת: המוצר ממלא את הפריים מקרוב, מעט מילים בקצה השקט, והמחיר בשקט.',
+    approach: 'IMAGE_LED',
+    methods: ['IMAGE_FIRST', 'LAYERED'],
+    moves: {
+      FULL_BLEED_IMAGE: 1.4,
+      DETAIL_MACRO_CROP: 1.2,
+      MINIMAL_COPY: 1,
+      PRICE_UNDERSTATED: 1.4,
+      CTA_AS_TEXT_LINE: 0.9,
+      DARK_MOODY: 0.5,
+    },
+    avoid: ['PRICE_AS_GRAPHIC', 'BADGE_STAMP', 'TYPE_AS_IMAGE', 'STACKED_HEADLINE'],
+    focal: 'IMAGE',
+    price: 'QUIET',
+    pictures: ['DETAIL', 'SINGLE_HERO'],
+    needsPicture: true,
+  },
+  CRAFT: {
+    id: 'CRAFT',
+    name: 'Craft',
+    principle:
+      'Proof reads like a page, not a poster: the true detail of the making as a calm serif statement, the picture framed as evidence, thin rules; the price is a footnote.',
+    ideaHe: 'הוכחה ולא צעקה: משפט האמת על ההכנה בסריף רגוע, התמונה ממוסגרת כעדות, והמחיר כהערת שוליים.',
+    approach: 'EDITORIAL_TYPE',
+    methods: ['EDITORIAL', 'SPLIT'],
+    moves: {
+      SERIF_EDITORIAL: 1.3,
+      IMAGE_INSET_FRAME: 1.3,
+      RULE_LINES: 0.9,
+      PRICE_UNDERSTATED: 1.4,
+      CTA_AS_TEXT_LINE: 0.9,
+      GENEROUS_NEGATIVE_SPACE: 0.6,
+      MUTED_NATURAL_PALETTE: 0.6,
+    },
+    avoid: ['PRICE_AS_GRAPHIC', 'BADGE_STAMP', 'BRAND_COLOR_FLOOD', 'STACKED_HEADLINE', 'TYPE_AS_IMAGE'],
+    focal: 'HEADLINE',
+    price: 'QUIET',
+    pictures: ['DEMONSTRATION', 'DETAIL', 'SINGLE_HERO'],
+    needsPicture: false,
+  },
+  MOMENT: {
+    id: 'MOMENT',
+    name: 'Moment',
+    principle:
+      'A real moment carries it: people when such a picture exists, otherwise the place or the product in its setting, never an invented person; the type leans on the calm edge.',
+    ideaHe: 'רגע אמיתי מוביל, אנשים כשיש תמונה כזו; הטקסט נשען על הקצה השקט של התמונה.',
+    approach: 'IMAGE_LED',
+    methods: ['LIFESTYLE', 'LAYERED', 'IMAGE_FIRST'],
+    moves: {
+      FULL_BLEED_IMAGE: 1.2,
+      PEOPLE_AS_HERO: 1,
+      LAYERED_TYPE_OVER_IMAGE: 0.6,
+      CTA_AS_TEXT_LINE: 0.6,
+      PRICE_UNDERSTATED: 1,
+    },
+    avoid: ['PRICE_AS_GRAPHIC', 'BADGE_STAMP'],
+    focal: 'IMAGE',
+    price: 'QUIET',
+    pictures: ['LIFESTYLE', 'ENVIRONMENT'],
+    needsPicture: true,
+  },
+  STATEMENT: {
+    id: 'STATEMENT',
+    name: 'Statement',
+    principle: 'One sentence is the image: type at poster scale on a brand field, nothing competing with it.',
+    ideaHe: 'משפט אחד הוא התמונה: טיפוגרפיה בגודל שלט על צבע המותג.',
+    approach: 'BOLD_GRAPHIC',
+    methods: ['BOLD_TYPE'],
+    moves: { OVERSIZED_HEADLINE: 1, TYPE_AS_IMAGE: 0.8, BRAND_COLOR_FLOOD: 0.8, MINIMAL_COPY: 0.6 },
+    avoid: ['PRICE_AS_GRAPHIC', 'BADGE_STAMP'],
+    focal: 'HEADLINE',
+    price: 'QUIET',
+    pictures: [],
+    needsPicture: false,
+  },
+};
+
+const IDEA_BY_HOOK: Partial<Record<HookTechnique, ConceptVisualIdea>> = {
+  OFFER_FIRST: 'VALUE',
+  SENSORY_DETAIL: 'APPETITE',
+  FIRST_PERSON: 'CRAFT',
+  HOW_TO: 'CRAFT',
+  PATTERN_INTERRUPT: 'MOMENT',
+  BOLD_STATEMENT: 'STATEMENT',
+  // QUESTION and CONTRAST say how the words work, not what the picture shows: the angle decides.
+};
+const IDEA_BY_ANGLE: Record<ConceptAngle, ConceptVisualIdea> = {
+  OFFER_DRIVEN: 'VALUE',
+  PRODUCT_DEMO: 'APPETITE',
+  UGC: 'CRAFT',
+  EDUCATIONAL: 'CRAFT',
+  LIFESTYLE: 'MOMENT',
+  EMOTIONAL: 'MOMENT',
+  PROBLEM_SOLUTION: 'STATEMENT',
+  HUMOR: 'STATEMENT',
+};
+
+/** The visual idea a concept argues: its hook technique decides, its angle when the hook says nothing about it. */
+export function conceptVisualStrategy(concept: {
+  angle: ConceptAngle;
+  hookTechnique?: HookTechnique;
+}): ConceptVisualStrategy {
+  const id = (concept.hookTechnique && IDEA_BY_HOOK[concept.hookTechnique]) ?? IDEA_BY_ANGLE[concept.angle];
+  return CONCEPT_VISUAL_STRATEGIES[id];
+}
 
 /** When each layout family is the right tool (the Art Director scores families against these). */
 export interface LayoutFamilyProfile {

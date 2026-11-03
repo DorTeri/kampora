@@ -1,4 +1,4 @@
-import type { RetrievedReference } from '@kampora/agent-expertise';
+import { conceptVisualStrategy, type RetrievedReference } from '@kampora/agent-expertise';
 import { composeDesign, derivePalette, measurePictureUse, PICTURE_METHODS, type ComposeCopy, type ComposePicture } from '@kampora/production-engine';
 import {
   CreativeDirectionSetSchema,
@@ -16,6 +16,7 @@ import {
   type MediaAuthenticity,
   type ReferenceInfluence,
   type StaticAdFormat,
+  type TextLayer,
   type ToneOfVoice,
   type TypeSystemId,
 } from '@kampora/shared';
@@ -24,7 +25,9 @@ import {
  * Art Director 2.0: composition-first and reference-informed. For one concept it explores three genuinely
  * different directions (image-led, editorial typography, bold graphic). Every decision is derived from:
  *   - the retrieved professional references (their design moves, weighted by relevance, and their principles),
- *   - the concept (angle, hook technique, visual idea), the goal and offer, the brand's tone,
+ *   - the concept (angle, hook technique, visual idea), the goal and offer, the brand's tone. The concept's visual
+ *     idea (CONCEPT_VISUAL_STRATEGIES) decides which direction carries it, its arrangement, focal point and price
+ *     treatment: an offer campaign's craving concept is not laid out like its value concept,
  *   - the picture that actually exists (what it shows, whether it is authentic).
  * The result is a set of CreativeDesignSpecs built by the deterministic layout engine; no model writes layout.
  * Which reference shaped which decision is recorded, so the influence is inspectable and testable.
@@ -120,9 +123,9 @@ function conceptMoves(input: DirectionInput): Partial<Record<DesignMove, number>
   const m: Partial<Record<DesignMove, number>> = {};
   const add = (move: DesignMove, w: number) => (m[move] = (m[move] ?? 0) + w);
   const { angle, hookTechnique } = input.concept;
-  if (hookTechnique === 'OFFER_FIRST' || angle === 'OFFER_DRIVEN' || input.goal === 'OFFER') add('PRICE_AS_GRAPHIC', 1.2);
+  // The idea the concept argues, not the campaign goal, decides the price treatment and the arrangement.
+  for (const [move, w] of Object.entries(conceptVisualStrategy(input.concept).moves)) add(move as DesignMove, w!);
   if (hookTechnique === 'QUESTION' || hookTechnique === 'BOLD_STATEMENT') add('OVERSIZED_HEADLINE', 0.8);
-  if (hookTechnique === 'SENSORY_DETAIL') add('DETAIL_MACRO_CROP', 1);
   if (angle === 'LIFESTYLE' || angle === 'EMOTIONAL' || angle === 'UGC') add('PEOPLE_AS_HERO', 0.8);
   if (angle === 'PRODUCT_DEMO') add('PRODUCT_AS_HERO', 1);
   if (input.picture?.composition === 'SINGLE_HERO') add('PRODUCT_AS_HERO', 0.6);
@@ -167,6 +170,13 @@ function voteMoves(input: DirectionInput): Map<DesignMove, MoveVote> {
   for (const r of input.references)
     for (const move of r.reference.designMoves) vote(move, (r.score / top) * 1.5 * EVIDENCE_WEIGHT[r.reference.analysisBasis], r.reference.id);
   for (const [move, w] of Object.entries(conceptMoves(input))) vote(move as DesignMove, w!);
+  // A move that works against the concept's idea is outvoted wherever it came from (a price sticker on a craving ad).
+  for (const move of conceptVisualStrategy(input.concept).avoid) {
+    const v = votes.get(move);
+    if (v) v.weight *= 0.25;
+  }
+  // Recorded: no people in the picture. A people-led layout would promise what is not there.
+  if (input.picture?.people === 'NONE') votes.delete('PEOPLE_AS_HERO');
   return votes;
 }
 
@@ -189,7 +199,22 @@ const TONE_EXCLUDED: Record<ToneOfVoice, readonly DesignMove[]> = {
 
 const MAX_MOVES = 5;
 
+/**
+ * The concept's own moves that lead the direction carrying it (at most four, so references still refine the rest);
+ * none for the alternatives, which are ranked on the votes alone.
+ */
+function leadMoves(approach: DirectionApproach, method: CompositionMethod, input: DirectionInput): DesignMove[] {
+  const strategy = conceptVisualStrategy(input.concept);
+  if (approach !== strategy.approach || !strategy.methods.includes(method)) return [];
+  return (Object.entries(strategy.moves) as [DesignMove, number][])
+    .filter(([, w]) => w >= 0.8)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([m]) => m);
+}
+
 function pickMoves(approach: DirectionApproach, method: CompositionMethod, votes: Map<DesignMove, MoveVote>, hasPicture: boolean, taken: Set<DesignMove>, input?: DirectionInput): DesignMove[] {
+  const lead = input ? leadMoves(approach, method, input) : [];
   const scores = new Map<DesignMove, number>();
   for (const [move, v] of votes) scores.set(move, v.weight);
   for (const [move, w] of Object.entries(APPROACH_DEFAULTS[approach])) scores.set(move as DesignMove, (scores.get(move as DesignMove) ?? 0) + w!);
@@ -206,6 +231,8 @@ function pickMoves(approach: DirectionApproach, method: CompositionMethod, votes
     .map(([m, s]) => [m, native.has(m) ? s : s * 0.35] as const)
     // What another direction already uses scores lower: three directions, three ideas, three moods.
     .map(([m, s]) => [m, taken.has(m) && !['SINGLE_FOCAL_POINT', 'MINIMAL_COPY'].includes(m) ? s * (GROUPS[0]!.includes(m) ? 0.3 : 0.5) : s] as const)
+    // The concept's idea comes first in the direction that carries it.
+    .map(([m, s]) => [m, lead.includes(m) ? s + 10 : s] as const)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const chosen: DesignMove[] = [];
   for (const [m, s] of ranked) {
@@ -227,10 +254,11 @@ function chooseMethod(approach: DirectionApproach, votes: Map<DesignMove, MoveVo
   );
   // A split with nothing to split is a flat page: without a picture it is the last resort.
   const candidates = input.picture || allowed.length === 1 ? allowed : allowed.filter((m) => m !== 'SPLIT');
+  const strategy = conceptVisualStrategy(input.concept);
   const scored = candidates.map((method) => {
     let s = 0;
     for (const [move, w] of Object.entries(METHOD_AFFINITY[method])) s += (votes.get(move as DesignMove)?.weight ?? 0) * w!;
-    if (method === 'PROMO_PRICE' && input.copy.price && (input.goal === 'OFFER' || input.goal === 'SALES')) s += 3;
+    if (method === 'PROMO_PRICE' && strategy.price !== 'HERO') s -= 3;
     if (method === 'PROMO_PRICE' && !input.copy.price) s -= 10;
     if (method === 'LOCAL_MODERN' && input.industryId === 'local-services') s += 3;
     if (method === 'PRODUCT_LED' && input.picture?.composition === 'SINGLE_HERO') s += 1.5;
@@ -238,6 +266,15 @@ function chooseMethod(approach: DirectionApproach, votes: Map<DesignMove, MoveVo
     return { method, s };
   });
   scored.sort((a, b) => b.s - a.s || APPROACH_METHODS[approach].indexOf(a.method) - APPROACH_METHODS[approach].indexOf(b.method));
+  // The arrangement the concept's idea asks for, when this approach has it: the concept leads, references refine.
+  // A lifestyle arrangement needs people (or a recorded lifestyle picture); without them it would promise a moment that is not there.
+  const peopleShown = input.picture?.composition === 'LIFESTYLE' || ['ONE', 'FEW', 'GROUP'].includes(input.picture?.people ?? '');
+  const own = approach === strategy.approach && (!strategy.needsPicture || input.picture) ? strategy.methods.find((m) => candidates.includes(m) && (m !== 'LIFESTYLE' || peopleShown)) : undefined;
+  const top = scored[0];
+  if (own && top) {
+    const ownScore = scored.find((x) => x.method === own)!.s;
+    return { method: own, because: own === top.method ? `${own} carries the concept's idea (${strategy.id}) and scored highest (${top.s.toFixed(1)})` : `${own} carries the concept's idea (${strategy.id}); the reference votes alone favour ${top.method} (${top.s.toFixed(1)} against ${ownScore.toFixed(1)})` };
+  }
   const best = scored[0] ?? { method: APPROACH_METHODS[approach].find((m) => !PICTURE_METHODS.includes(m))!, s: 0 };
   const runnerUp = scored[1];
   const because =
@@ -278,8 +315,10 @@ function influences(moves: readonly DesignMove[], votes: Map<DesignMove, MoveVot
 }
 
 export function emphasisFor(approach: DirectionApproach, method: CompositionMethod, input: DirectionInput): CreativeDirection['emphasis'] {
-  if (method === 'PROMO_PRICE' || (approach === 'BOLD_GRAPHIC' && input.copy.price && input.goal === 'OFFER')) return 'PRICE';
+  if (method === 'PROMO_PRICE') return 'PRICE';
   if (method === 'LOCAL_MODERN') return 'BRAND';
+  // Only a value concept makes the price the hero; in a craving or craft concept it stays quiet in every direction.
+  if (approach === 'BOLD_GRAPHIC' && input.copy.price && conceptVisualStrategy(input.concept).price === 'HERO') return 'PRICE';
   if (approach === 'IMAGE_LED' && input.picture) return 'IMAGE';
   return 'HEADLINE';
 }
@@ -297,7 +336,27 @@ function idea(approach: DirectionApproach, method: CompositionMethod, input: Dir
   }
 }
 
-/** Composes one direction's decisions for each format with the deterministic layout engine. */
+const SEPARATORS = /\s*[·|•–—]\s*/;
+
+/** The business name set as a wordmark and repeated inside another text layer (an eyebrow "Luz · פלורנטין"). */
+export function repeatedBrand(spec: Pick<CreativeDesignSpec, 'layers'>): { brand: string; layer: TextLayer } | undefined {
+  const marks = spec.layers.flatMap((l) => (l.kind === 'logo' && !l.assetId ? [l.text] : l.kind === 'text' && l.role === 'BRAND' ? [l.text] : []));
+  for (const brand of marks)
+    for (const l of spec.layers.flatMap((x) => (x.kind === 'text' ? [x] : [])))
+      if (l.role !== 'BRAND' && l.text.split(SEPARATORS).some((part) => part.trim() === brand.trim())) return { brand, layer: l };
+  return undefined;
+}
+
+/** The eyebrow without the brand segment, or undefined when nothing else is left. No word is added. */
+export function eyebrowWithoutBrand(eyebrow: string, brand: string): string | undefined {
+  const rest = eyebrow.split(SEPARATORS).filter((part) => part.trim() && part.trim() !== brand.trim());
+  return rest.length ? rest.join(' · ') : undefined;
+}
+
+/**
+ * Composes one direction's decisions for each format with the deterministic layout engine. When the layout signs the
+ * ad with the business name, an eyebrow that repeats it gives up that segment: the brand is set once.
+ */
 export function composeDirectionSpecs(
   input: DirectionInput,
   approach: DirectionApproach,
@@ -309,21 +368,27 @@ export function composeDirectionSpecs(
 ): Record<string, CreativeDesignSpec> {
   const gallery = allPictures(input).filter((p) => p.assetId !== input.picture?.assetId);
   return Object.fromEntries(
-    formats.map((format) => [
-      format,
-      composeDesign({
-        format,
-        method,
-        moves,
-        typeSystem,
-        palette: derivePalette(input.brand.colors, moves),
-        copy: input.copy,
-        ...(input.picture ? { picture: input.picture } : {}),
-        ...(input.picture && gallery.length ? { gallery } : {}),
-        ...(input.logoAssetId ? { logoAssetId: input.logoAssetId } : {}),
-        emphasis,
-      }),
-    ]),
+    formats.map((format) => {
+      const compose = (copy: ComposeCopy) =>
+        composeDesign({
+          format,
+          method,
+          moves,
+          typeSystem,
+          palette: derivePalette(input.brand.colors, moves),
+          copy,
+          ...(input.picture ? { picture: input.picture } : {}),
+          ...(input.picture && gallery.length ? { gallery } : {}),
+          ...(input.logoAssetId ? { logoAssetId: input.logoAssetId } : {}),
+          emphasis,
+        });
+      const spec = compose(input.copy);
+      const twice = repeatedBrand(spec);
+      if (!twice || twice.layer.role !== 'EYEBROW' || !input.copy.eyebrow) return [format, spec];
+      const { eyebrow: _, ...rest } = input.copy;
+      const eyebrow = eyebrowWithoutBrand(input.copy.eyebrow, twice.brand);
+      return [format, compose(eyebrow ? { ...rest, eyebrow } : rest)];
+    }),
   );
 }
 
@@ -373,13 +438,11 @@ function pictureScore(
     score -= 1;
     reasons.push('no calm area for type over it');
   }
-  if (approach === 'IMAGE_LED' && pic.composition === 'LIFESTYLE' && ['LIFESTYLE', 'EMOTIONAL', 'UGC'].includes(input.concept.angle)) {
-    score += 0.5;
-    reasons.push('people in a real moment suit the concept');
-  }
-  if (input.copy.price && emphasisFor(approach, method, input) === 'PRICE' && pic.composition === 'SINGLE_HERO') {
-    score += 0.5;
-    reasons.push('one clear product beside the price');
+  const strategy = conceptVisualStrategy(input.concept);
+  const shows = pic.composition ? strategy.pictures.indexOf(pic.composition) : -1;
+  if (shows >= 0) {
+    score += 1 - shows * 0.3;
+    reasons.push(`shows what the ${strategy.name.toLowerCase()} concept is about (${pic.composition})`);
   }
   if (pic.relevance !== undefined) {
     score += 3 * pic.relevance;
@@ -402,6 +465,7 @@ export { APPROACH_METHODS, GROUPS as MOVE_GROUPS, EXCLUDED as APPROACH_EXCLUDED_
 export function directCreative(input: DirectionInput): CreativeDirectionSet {
   const formats = input.formats ?? ['4:5', '9:16'];
   const votes = voteMoves(input);
+  const strategy = conceptVisualStrategy(input.concept);
   const usedMethods = new Set<CompositionMethod>();
   /** Every move an earlier direction used: later directions lean elsewhere. */
   const usedPalettes = new Set<DesignMove>();
@@ -458,7 +522,13 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
     usedTypes.add(typeSystem);
     for (const m of moves) usedPalettes.add(m);
     const refs = influences(moves, votes, input);
+    const carriesIdea = approach === strategy.approach && strategy.methods.includes(method);
     decisions.unshift(
+      {
+        topic: 'concept',
+        decision: carriesIdea ? `${strategy.id}: this direction carries the concept` : `${strategy.id}: an alternative to the concept's own arrangement (${strategy.methods.join(' / ')})`,
+        because: strategy.principle,
+      },
       { topic: 'composition method', decision: method, because },
       { topic: 'type system', decision: typeSystem, because: `Matches the ${input.tone} tone${moves.some((m) => ['SERIF_EDITORIAL', 'CONDENSED_DISPLAY', 'BOLD_GEOMETRIC_SANS'].includes(m)) ? ' and the typographic move the references favour' : ''}; each direction uses a different voice.` },
       { topic: 'palette', decision: `background ${palette.background}, accent ${palette.accent}`, because: moves.find((m) => ['BRAND_COLOR_FLOOD', 'MONOCHROME_PALETTE', 'MUTED_NATURAL_PALETTE', 'VIBRANT_COMPLEMENTARY', 'DARK_MOODY'].includes(m)) ? `Colour move ${moves.find((m) => ['BRAND_COLOR_FLOOD', 'MONOCHROME_PALETTE', 'MUTED_NATURAL_PALETTE', 'VIBRANT_COMPLEMENTARY', 'DARK_MOODY'].includes(m))} applied to the brand colours, contrast enforced` : 'Brand colours as they are, contrast enforced' },
@@ -469,7 +539,7 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
       key: keys[i]!,
       approach,
       name: approach === 'IMAGE_LED' && !input.picture ? 'צורה וצבע מובילים' : APPROACH_NAMES[approach],
-      idea: idea(approach, method, input),
+      idea: carriesIdea ? strategy.ideaHe : idea(approach, method, input),
       method,
       moves,
       typeSystem,
@@ -482,9 +552,14 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
     };
   });
 
-  // Recommend the direction that serves the goal with the fewest fit compromises.
+  // Recommend the direction that carries the concept's idea, then serves the goal, with the fewest fit compromises.
+  const carries = (d: CreativeDirection) => d.approach === strategy.approach && strategy.methods.includes(d.method) && (!strategy.needsPicture || Boolean(input.picture));
   const goalFit = (d: CreativeDirection) =>
-    (input.goal === 'OFFER' && d.emphasis === 'PRICE' ? 2 : 0) +
+    (carries(d) ? 3 : 0) +
+    (d.emphasis === strategy.focal ? 1 : 0) +
+    (strategy.price === 'HERO' && d.emphasis === 'PRICE' ? 1 : 0) +
+    // An idea that rests on the picture, without one: abstract shapes do not stand in for the food; type carries it.
+    (strategy.needsPicture && !input.picture && d.approach === 'IMAGE_LED' ? -1.5 : 0) +
     (input.goal === 'AWARENESS' && d.approach !== 'BOLD_GRAPHIC' ? 1 : 0) +
     (input.goal === 'LEADS' && d.approach === 'EDITORIAL_TYPE' && input.tone === 'premium' ? 1.5 : 0) +
     (input.goal === 'LEADS' && d.approach === 'BOLD_GRAPHIC' && input.tone !== 'premium' ? 1 : 0) +
@@ -492,7 +567,7 @@ export function directCreative(input: DirectionInput): CreativeDirectionSet {
     d.references.length * 0.2 -
     Object.values(d.specs).reduce((n, s) => n + (s.fit.status === 'UNRESOLVED' ? 3 : s.fit.status === 'SHORTER_COPY_SUGGESTED' ? 1 : 0), 0);
   const best = [...directions].sort((a, b) => goalFit(b) - goalFit(a) || a.key.localeCompare(b.key))[0]!;
-  const because = `${best.name}: ${input.goal === 'OFFER' && best.emphasis === 'PRICE' ? 'the offer is the news and this direction makes the price the hero' : best.approach === 'EDITORIAL_TYPE' ? 'a calm, considered structure suits the brand and the decision the audience is making' : best.approach === 'IMAGE_LED' ? 'the picture can carry the idea on its own' : 'the message lands at a glance in a fast feed'}${Object.values(best.specs).every((s) => s.fit.status === 'FITS' || s.fit.status === 'REFLOWED') ? ', and the copy fits every format' : ''}.`;
+  const because = `${best.name}: ${carries(best) ? `the concept argues ${strategy.name.toLowerCase()} and this direction carries it (${strategy.principle})` : input.goal === 'OFFER' && best.emphasis === 'PRICE' ? 'the offer is the news and this direction makes the price the hero' : best.approach === 'EDITORIAL_TYPE' ? 'a calm, considered structure suits the brand and the decision the audience is making' : best.approach === 'IMAGE_LED' ? 'the picture can carry the idea on its own' : 'the message lands at a glance in a fast feed'}${Object.values(best.specs).every((s) => s.fit.status === 'FITS' || s.fit.status === 'REFLOWED') ? ', and the copy fits every format' : ''}.`;
 
   return CreativeDirectionSetSchema.parse({
     version: 1,
