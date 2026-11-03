@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
@@ -26,6 +27,21 @@ import { SceneImagesService } from './scene-images.service';
 import { StaticAdsService } from './static-ads.service';
 import { StudioService } from './studio.service';
 import { VoiceLabService } from './voice-lab.service';
+import { UPLOAD_TYPES, uploadError } from './uploads';
+
+const MAX_UPLOAD_BYTES = Math.max(...Object.values(UPLOAD_TYPES).map((t) => t.maxBytes));
+
+/** The raw request body (the file itself), refused as soon as it passes the largest allowed size. */
+async function readUpload(req: Request): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req as AsyncIterable<Buffer>) {
+    size += chunk.length;
+    if (size > MAX_UPLOAD_BYTES) throw uploadError('UPLOAD_SIZE', 'File is too large');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
 const RenderRequestSchema = z.object({ quality: RenderQualitySchema.default('final') });
 type RenderRequest = z.infer<typeof RenderRequestSchema>;
@@ -81,6 +97,30 @@ export class BusinessesController {
   @ApiOperation({ summary: 'Business profile, brand and media assets' })
   get(@Auth() ctx: AuthContext, @Param('id', UuidPipe) id: string) {
     return this.businesses.detail(ctx, id);
+  }
+
+  @Post(':id/assets')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({
+    summary: 'Upload the business owner photo or clip (raw body; Content-Type image/jpeg|png|webp or video/mp4|quicktime)',
+  })
+  async uploadAsset(
+    @Auth() ctx: AuthContext,
+    @Param('id', UuidPipe) id: string,
+    @Query('subject') subject: string,
+    @Query('description') description: string | undefined,
+    @Query('rights') rights: string | undefined,
+    @Req() req: Request,
+  ) {
+    const mimeType = (req.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
+    if (!UPLOAD_TYPES[mimeType]) throw uploadError('UPLOAD_TYPE', `Unsupported file type ${mimeType}`);
+    return this.businesses.upload(ctx, id, {
+      bytes: await readUpload(req),
+      mimeType,
+      subject: subject ?? '',
+      description: description ?? '',
+      rightsConfirmed: rights === 'true',
+    });
   }
 
   @Post(':id/campaigns')

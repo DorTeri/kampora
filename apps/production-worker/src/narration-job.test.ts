@@ -230,7 +230,8 @@ describe.skipIf(!dbAvailable)('narration job (integration: Postgres + ffprobe + 
     }
     // Spoken text is normalized: the price is read out, the brand uses the pronunciation dictionary.
     expect(n.segments[2]!.spokenText).toContain('עשרים ותשעה שקלים');
-    expect(n.segments[0]!.spokenText).toContain('לוּז');
+    // The offer-first hook may not say the name; whichever line does uses the dictionary.
+    expect(n.segments.some((s) => s.spokenText.includes('לוּז'))).toBe(true);
     expect(n.totalSec).toBeCloseTo(
       n.segments.reduce((a, s) => a + s.durationSec, 0),
       1,

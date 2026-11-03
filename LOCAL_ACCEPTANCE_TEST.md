@@ -55,6 +55,11 @@ TTS_PROVIDER=mock
 
 The Director's switches are independent: enabling it never enables paid creative. Restart the API after editing.
 
+Real copy, images and voice (only once you authorize it): `KAMPORA_ALLOW_PAID_GENERATION=true` plus
+`CREATIVE_PROVIDER=openai`, `IMAGE_PROVIDER=openai`, `TTS_PROVIDER=elevenlabs` (+ `ELEVENLABS_API_KEY`). Each paid
+step still waits for your approval of its quote in the studio. Video rendering is local Remotion: always $0. Restart
+the API and the worker after editing.
+
 ## 4. Spending caps and switches
 
 | Switch | Effect |
@@ -71,6 +76,11 @@ Every call, paid or simulated, is written to the cost ledger (project page → c
 Studio → **Director** → **＋ שיחה חדשה**. Describe your business in your own words. The business is created from the
 first fact the Director saves; it appears under **Business**. Do not reuse the demo business "Luz".
 
+**Upload your own media before asking for the campaign**: Studio → **Business** (pick your business at the top) →
+«העלאת תמונה או סרטון של העסק». JPEG/PNG/WebP up to 20 MB, MP4/MOV up to 100 MB. Choose what it shows (product, place,
+people, process); that choice decides which scenes and ads use it. Uploads are marked «שלכם» and the Art and Video
+Directors prefer them over stand-ins.
+
 ## 6. A real creative-production flow
 
 In the same conversation, ask for a campaign. Approve the Director's proposal in the approvals panel. Then on the
@@ -81,8 +91,8 @@ an explicit quote) → approve → render.
 
 - **Studio → Videos** (`/studio/videos`): every render, with a download link (signed URL, served by the API).
 - Project page: preview player and costs.
-- Missing authentic shots: the project's production plan `shotList` and each storyboard scene's
-  `direction.capture` (phone instructions), via the API (`/docs`); the studio does not show them yet.
+- Missing authentic shots: on the project page, each scene without your own footage shows «📷 צילום אמיתי חסר» with
+  the phone instructions and a link to the upload form.
 - Files on disk: `.data/storage/`.
 
 ## 8. Reset only the test session
@@ -93,14 +103,14 @@ database volume). Don't touch the real-voice projects d30196e6… and f7d1528b�
 
 ## 9. Known limitations and blockers
 
-1. **No upload of your own photos or footage** (no UI or API path). Every picture is a labelled stand-in
-   («הדמיה» / «תמונת הדגמה») until one exists; the shot list says what to film.
+1. **Video uploads are not transcoded.** MP4/MOV must be H.264 (a normal phone recording is; HEVC "high
+   efficiency" iPhone clips may not play in the render). Uploads can't be deleted from the UI yet.
 2. Mock stand-in images are abstract placeholders, not food. Appetite and craft can't be judged on them.
 3. Scene length follows the narration. A short line shortens a planned beat; a craft "process" scene can end up
    about 2.7 s long.
 4. Mock narration is silent timing only. Voice quality needs a listening test with real speech.
-5. Docker Desktop was not running during this check, so the DB/Redis integration tests and the full startup were
-   not re-verified in Phase 3.
+5. Verified locally on 2026-11-03: Postgres, Redis, API, worker and web start with the steps above, and the DB/Redis
+   integration tests pass.
 
 ## Proposed real-provider budget (not executed)
 

@@ -165,6 +165,7 @@ export interface ProjectDetail {
   plan: ProductionPlan | null;
   brief: CampaignBrief;
   briefId: string;
+  businessId: string;
   concept: CreativeConcept;
   storyboard: Storyboard;
   claimFlags: Array<{ phrase: string; source: string }>;

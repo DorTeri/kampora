@@ -62,6 +62,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           {scenes.map((scene, i) => {
             const scenePlan = plan?.scenes.find((s) => s.sceneKey === scene.key);
             const imageQuote = images?.scenes.find((q) => q.sceneKey === scene.key);
+            const shot = plan?.shotList?.find((s) => s.sceneKey === scene.key);
             return (
               <li key={scene.key}>
                 <Card className="grid gap-5 sm:grid-cols-[auto_1fr]">
@@ -123,6 +124,20 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                       <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
                         {he.planning.sceneNeedsMedia}
                       </p>
+                    )}
+                    {/* The Video Director's shot list: the authentic shot this scene still needs, and how to film it. */}
+                    {shot && (
+                      <div className="rounded-xl border border-line px-3 py-2 text-sm">
+                        <p className="font-bold">
+                          📷 {he.planning.shotMissing}
+                          {shot.footage && <span className="ms-2 font-normal text-muted">{he.planning.shotFootage}</span>}
+                        </p>
+                        {shot.capture && <p className="mt-1">{shot.capture}</p>}
+                        {shot.reason === 'STAND_IN' && <p className="mt-1 text-xs text-muted">{he.planning.shotStandIn}</p>}
+                        <a href={`/studio/business?b=${project.businessId}`} className="mt-1 inline-block text-xs font-semibold text-primary">
+                          {he.planning.shotUpload} ←
+                        </a>
+                      </div>
                     )}
                   </div>
                 </Card>

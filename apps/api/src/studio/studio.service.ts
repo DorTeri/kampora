@@ -484,6 +484,7 @@ export class StudioService {
       plan: project.plan,
       brief: brief.brief,
       briefId: brief.id,
+      businessId: brief.businessId,
       concept: concept!.concept,
       storyboard: storyboard!.storyboard,
       claimFlags: storyboard!.claimFlags,

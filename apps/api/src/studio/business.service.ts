@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq } from 'drizzle-orm';
 import {
@@ -14,10 +15,22 @@ import {
   type MediaAsset,
   type ToneOfVoice,
 } from '@kampora/shared';
+import { probeBufferDurationSec } from '@kampora/hebrew-voice';
 import type { StorageDriver } from '@kampora/storage';
 import type { AuthContext } from '../common/auth';
 import { notFound } from '../common/errors';
 import { DATABASE, STORAGE } from '../infra/tokens';
+import { UPLOAD_SUBJECTS, UPLOAD_TYPES, imageSize, sniffUpload, uploadError } from './uploads';
+
+export interface UploadInput {
+  bytes: Buffer;
+  mimeType: string;
+  /** What the picture shows (UPLOAD_SUBJECTS key). */
+  subject: string;
+  description: string;
+  /** The owner confirmed the media is theirs to use in ads. */
+  rightsConfirmed: boolean;
+}
 
 export type BrandAssetRow = typeof brandAssets.$inferSelect;
 
@@ -88,6 +101,61 @@ export class BusinessService {
       .from(brandAssets)
       .where(and(eq(brandAssets.businessId, businessId), eq(brandAssets.orgId, ctx.orgId)))
       .orderBy(asc(brandAssets.createdAt));
+  }
+
+  /**
+   * The owner's own photo or clip, stored like every other brand asset: the Art Director, the static-ad picture
+   * choice and the video router read brand assets, and CUSTOMER_UPLOAD provenance marks it as the real business.
+   */
+  async upload(ctx: AuthContext, businessId: string, input: UploadInput) {
+    const [business] = await this.db
+      .select({ id: businesses.id })
+      .from(businesses)
+      .where(and(eq(businesses.id, businessId), eq(businesses.orgId, ctx.orgId)));
+    if (!business) throw notFound('Business');
+    const type = UPLOAD_TYPES[input.mimeType];
+    if (!type) throw uploadError('UPLOAD_TYPE', `Unsupported file type ${input.mimeType}`);
+    const tags = UPLOAD_SUBJECTS[input.subject];
+    if (!tags) throw uploadError('UPLOAD_SUBJECT', 'Unknown subject');
+    if (!input.rightsConfirmed) throw uploadError('UPLOAD_RIGHTS', 'The owner must confirm the rights to the media');
+    if (!input.bytes.length || input.bytes.length > type.maxBytes) throw uploadError('UPLOAD_SIZE', 'File is empty or too large');
+    if (!sniffUpload(input.mimeType, input.bytes)) throw uploadError('UPLOAD_CONTENT', 'File content does not match its type');
+    const size = type.kind === 'image' ? imageSize(input.mimeType, input.bytes) : undefined;
+    let durationSec: number | undefined;
+    if (type.kind === 'video') {
+      try {
+        durationSec = await probeBufferDurationSec(input.bytes, type.ext, process.env.FFPROBE_PATH || undefined);
+      } catch {
+        throw uploadError('UPLOAD_VIDEO_UNREADABLE', 'The video could not be read (ffprobe)');
+      }
+    }
+    const id = randomUUID();
+    const storageKey = `orgs/${ctx.orgId}/businesses/${businessId}/uploads/${id}.${type.ext}`;
+    await this.storage.put(storageKey, input.bytes, input.mimeType);
+    const [row] = await this.db
+      .insert(brandAssets)
+      .values({
+        id,
+        orgId: ctx.orgId,
+        businessId,
+        kind: type.kind,
+        storageKey,
+        mimeType: input.mimeType,
+        bytes: input.bytes.length,
+        sha256: createHash('sha256').update(input.bytes).digest('hex'),
+        width: size?.width,
+        height: size?.height,
+        durationSec,
+        description: input.description.trim().slice(0, 200),
+        tags,
+        provenance: {
+          source: 'CUSTOMER_UPLOAD',
+          license: 'Uploaded by the business owner, who confirmed the right to use it in ads',
+          commercialUse: true,
+        },
+      })
+      .returning();
+    return { id: row!.id, kind: row!.kind, tags: row!.tags, width: row!.width, height: row!.height, durationSec: row!.durationSec };
   }
 
   /** Profile + assets with short-lived preview URLs, for the "העסק שלי" page. */

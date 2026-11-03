@@ -2,9 +2,13 @@ import { formatIls } from '@kampora/shared';
 import { Badge, Card, CardTitle, PageHeader } from '@/components/ui';
 import { he } from '@/i18n/he';
 import { api, type BusinessDetail, type BusinessSummary } from '@/lib/api';
+import { MediaUpload } from './upload';
 
-export default async function BusinessPage() {
-  const [summary] = await api<BusinessSummary[]>('/v1/businesses');
+export default async function BusinessPage({ searchParams }: { searchParams: Promise<{ b?: string }> }) {
+  const { b } = await searchParams;
+  const all = await api<BusinessSummary[]>('/v1/businesses');
+  // A business the Director created is picked with ?b=<id>; the first one is the default.
+  const summary = all.find((x) => x.id === b) ?? all[0];
   if (!summary) return null;
   const { profile, assets } = await api<BusinessDetail>(`/v1/businesses/${summary.id}`);
   const isDemo = Object.values(profile.fieldSources).includes('DEMO_SEED');
@@ -16,6 +20,20 @@ export default async function BusinessPage() {
         title={profile.name}
         subtitle={he.business.subtitle}
       />
+      {all.length > 1 && (
+        <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-semibold text-muted">{he.business.otherBusinesses}:</span>
+          {all.map((x) => (
+            <a
+              key={x.id}
+              href={`/studio/business?b=${x.id}`}
+              className={x.id === summary.id ? 'rounded-full bg-primary px-3 py-1 font-bold text-white' : 'rounded-full bg-ink/[0.05] px-3 py-1'}
+            >
+              {x.name}
+            </a>
+          ))}
+        </nav>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -117,18 +135,28 @@ export default async function BusinessPage() {
           <CardTitle>{he.business.media}</CardTitle>
           <div className="grid grid-cols-3 gap-3">
             {assets
-              .filter((a) => a.kind === 'image' || a.kind === 'logo')
+              .filter((a) => a.kind === 'image' || a.kind === 'logo' || a.kind === 'video')
               .map((a) => (
-                <figure key={a.id}>
-                  {/* Plain <img>: short-lived signed URLs, no Next image optimizer. */}
-                  <img
-                    src={a.url}
-                    alt={a.description}
-                    className="aspect-[9/16] w-full rounded-xl object-cover"
-                  />
+                <figure key={a.id} className="relative">
+                  {a.kind === 'video' ? (
+                    <video src={a.url} controls muted playsInline className="aspect-[9/16] w-full rounded-xl object-cover" />
+                  ) : (
+                    /* Plain <img>: short-lived signed URLs, no Next image optimizer. */
+                    <img
+                      src={a.url}
+                      alt={a.description}
+                      className="aspect-[9/16] w-full rounded-xl object-cover"
+                    />
+                  )}
+                  <figcaption className="absolute start-1 top-1">
+                    <Badge tone={a.provenance.source === 'CUSTOMER_UPLOAD' ? 'success' : 'warn'}>
+                      {a.provenance.source === 'CUSTOMER_UPLOAD' ? he.business.ownMedia : he.business.standIn}
+                    </Badge>
+                  </figcaption>
                 </figure>
               ))}
           </div>
+          <MediaUpload businessId={summary.id} />
           <p className="mt-3 text-xs text-muted">
             {assets.find((a) => a.kind === 'image')?.provenance.license}
           </p>
