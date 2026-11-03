@@ -5,7 +5,7 @@ import {
   displayFact,
   factState,
   memoryOf,
-  recommend,
+  recommendNext,
 } from '@kampora/creative-engine/director';
 import type { DirectorMessageDto, DirectorWorkspaceDto } from '@/lib/director';
 import type { DirectorPort } from './workspace';
@@ -47,7 +47,7 @@ export function sandboxPort(): { port: DirectorPort; initial: DirectorWorkspaceD
       status: await sandbox.executor.GetProductionStatus({}),
       work: history,
       previews: [],
-      recommendations: recommend({ memory, now, history, approvals: data.approvals, cost: COST }),
+      recommendations: recommendNext({ memory, now, history, approvals: data.approvals, cost: COST }),
       paidGenerationEnabled: false,
     };
   }

@@ -9,7 +9,7 @@ import {
   displayFact,
   factState,
   memoryOf,
-  recommend,
+  recommendNext,
   type DirectorContext,
   type TurnResult,
 } from '@kampora/creative-engine';
@@ -172,7 +172,7 @@ export class DirectorService {
       status,
       work: history,
       previews: await this.previews(ctx, history.flatMap((h) => (h.projectId ? [h.projectId] : [])).slice(0, 4)),
-      recommendations: recommend({ memory, now, history, approvals, cost: this.cost() }),
+      recommendations: recommendNext({ memory, now, history, approvals, cost: this.cost() }),
       paidGenerationEnabled: this.policy.paidGenerationEnabled,
       brain: this.brainSetup.mode,
     };

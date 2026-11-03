@@ -18,10 +18,11 @@ import type {
   MarketingDecision,
   MarketingObjective,
   PaidVerdict,
+  Recommendation,
 } from '@kampora/shared';
 import { SITUATION_KEYS, factState, usable, usableText, type Memory } from './facts';
 import { destinationRequirement } from './requirements';
-import { ACTION_LABELS, OBJECTIVE_LABELS, displayFact, planConversion } from './strategy';
+import { ACTION_LABELS, DEFAULT_OBJECTIVE, OBJECTIVE_LABELS, displayFact, planConversion, recommend, type RecommendInput } from './strategy';
 
 /**
  * The Marketing Decision Engine: what this business should do next, and whether paid ads make sense now. It reads
@@ -380,6 +381,20 @@ export function decideMarketing(input: DecisionInput): MarketingDecision {
 }
 
 /** The decision in a few natural sentences: what to do first and why, paid ads or not, and the next step. */
+/**
+ * The workspace's "what I would do now", built on the same decision as the conversation, so the side panel never
+ * suggests a campaign that the conversation advised against.
+ */
+export function recommendNext(input: RecommendInput): Recommendation[] {
+  const { memory, now } = input;
+  const model = usable(memory, 'business.model', now) as BusinessModel | undefined;
+  if (!model) return recommend(input);
+  const objective = (usable(memory, 'goal.primary', now) as MarketingObjective | undefined) ?? DEFAULT_OBJECTIVE[model];
+  const product = usableText(memory, 'offering.main', now);
+  const next = decideMarketing({ model, objective, memory, now, request: 'ADVICE', history: input.history, ...(product ? { product } : {}) });
+  return recommend({ ...input, next });
+}
+
 export function decisionText(d: MarketingDecision, request: DecisionInput['request']): string {
   const parts = [d.why];
   if (d.paid.verdict === 'OWNER_CHOICE') parts.push(`רק שתדע: ${d.paid.why}${d.paid.condition ? ` הייתי מחכה ${d.paid.condition}.` : ''}`);

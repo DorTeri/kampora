@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BusinessFact, DirectorCard, MarketingDecision } from '@kampora/shared';
 import { MARKETING_SKILLS, skillDigest, skillsFor } from '@kampora/agent-expertise';
-import { decideMarketing, decisionText, DirectorSandbox, memoryOf, understand, type DecisionInput } from './index';
+import { decideMarketing, decisionText, DirectorSandbox, memoryOf, recommendNext, understand, type DecisionInput } from './index';
 
 /**
  * The marketing decision: which first step, whether paid ads fit now, and which workflow follows. Unit tests call
@@ -342,5 +342,21 @@ describe('defects found on the blind held-out sets', () => {
       texts.push((await s.send(m)).text);
     expect(texts.filter((x) => /רשמתי/.test(x)).length).toBeLessThanOrEqual(1);
     expect(s.executor.data.facts.find((f) => f.key === 'business.name')?.value).toBe('דייגי הכנרת');
+  });
+});
+
+describe('the side panel follows the decision', () => {
+  const panel = (facts: BusinessFact[]) =>
+    recommendNext({ memory: memoryOf([fact('business.model', 'RESTAURANT'), fact('business.category', 'מסעדה'), ...facts]), now: NOW, history: [], approvals: [], cost: { providerPaid: false, creativeUsd: 0 } });
+
+  it('does not suggest a campaign while customers are stuck', () => {
+    const recs = panel([fact('conversion.ordering', 'טלפון'), fact('conversion.problem', 'אף אחד לא עונה לטלפון')]);
+    expect(recs.some((r) => r.kind === 'CAMPAIGN')).toBe(false);
+    expect(recs.find((r) => r.kind === 'NEXT_STEP')?.title).toBe(decide([fact('conversion.ordering', 'טלפון'), fact('conversion.problem', 'אף אחד לא עונה לטלפון')]).title);
+  });
+
+  it('still suggests the campaign when the decision recommends paid ads', () => {
+    const recs = panel([...WOLT, fact('budget.monthlyIls', 2000)]);
+    expect(recs.some((r) => r.kind === 'CAMPAIGN')).toBe(true);
   });
 });

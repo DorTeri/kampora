@@ -6,6 +6,7 @@ import type {
   DirectorApprovalSummary,
   DirectorCampaignSummary,
   FactKey,
+  MarketingDecision,
   MarketingObjective,
   MetaCampaignDraft,
   Recommendation,
@@ -364,6 +365,8 @@ export interface RecommendInput {
   history: DirectorCampaignSummary[];
   approvals: DirectorApprovalSummary[];
   cost: CostContext;
+  /** The marketing decision for this business now. When it does not recommend paid ads, no campaign is suggested. */
+  next?: MarketingDecision;
 }
 
 /** What the Director suggests doing next, from what it knows. No growth or ROI is promised. */
@@ -431,6 +434,21 @@ export function recommend(input: RecommendInput): Recommendation[] {
       missingInformation: [ACTION_LABELS[decision.plan.action]],
       proposedAction: 'לשלוח לי קישור, מספר וואטסאפ או כתובת.',
     });
+  const next = input.next;
+  if (next && !['RECOMMENDED', 'OWNER_CHOICE'].includes(next.paid.verdict))
+    // The side panel says what the decision says: a phone nobody answers is fixed before a campaign is suggested.
+    recs.push({
+      ...base,
+      id: `next-${next.action.toLowerCase()}`,
+      kind: 'NEXT_STEP',
+      title: next.title,
+      objective,
+      reasoning: next.why,
+      informationUsed: next.evidence.filter((e) => e.source === 'OWNER' || e.source === 'MEMORY').map((e) => e.text.slice(0, 200)).slice(0, 5),
+      missingInformation: next.questions.map((q) => q.question.slice(0, 200)),
+      proposedAction: next.sequence[0]!.step,
+    });
+  else
   recs.push({
     ...base,
     id: `campaign-${objective.toLowerCase()}`,

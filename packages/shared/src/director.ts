@@ -179,6 +179,8 @@ export const RecommendationKindSchema = z.enum([
   'COLLECT_PHOTOS',
   'REFRESH_CREATIVE',
   'WAIT',
+  /** The marketing decision's first step when it is not a paid campaign (fix the phone, post organically...). */
+  'NEXT_STEP',
 ]);
 
 export const RecommendationSchema = z.object({
