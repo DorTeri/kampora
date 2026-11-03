@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { LlmProvider, StructuredGenerationRequest } from '@kampora/media-providers';
 import type { CampaignGoal, CreativeConcept, Storyboard } from '@kampora/shared';
 import { CONCEPT_TYPES, conceptTypesGuide } from './concept-types';
+import { hebrewCopyIssues, industryFor } from '@kampora/agent-expertise';
+import { conceptSetQa } from './copy-qa';
 import { conceptQa, storyboardQa } from './creative-qa';
 import { DEMO_BUSINESS, DEMO_CAMPAIGN_REQUEST } from './demo';
 import type { ConceptSetLlm } from './llm-schemas';
@@ -41,7 +43,7 @@ describe('concept types', () => {
     expect(conceptTypesGuide().split('\n')).toHaveLength(8);
   });
 
-  it('gives every generated concept a full strategy, and picks the third idea by goal', async () => {
+  it('gives every generated concept a full strategy, and picks its creative territories by goal', async () => {
     const thirdAngle = async (goal: CampaignGoal) => {
       const { conceptSet } = await generateConcepts(
         { business: DEMO_BUSINESS, brief: briefFor(goal) },
@@ -54,9 +56,10 @@ describe('concept types', () => {
       }
       return conceptSet.concepts[2]!.angle;
     };
-    expect(await thirdAngle('OFFER')).toBe('EMOTIONAL');
-    expect(await thirdAngle('PRODUCT_PROMO')).toBe('PRODUCT_DEMO');
-    expect(await thirdAngle('AWARENESS')).toBe('LIFESTYLE');
+    // Food: value → craving → craft for an offer; craving → craft → occasion for a product; local → occasion → craft for awareness.
+    expect(await thirdAngle('OFFER')).toBe('UGC');
+    expect(await thirdAngle('PRODUCT_PROMO')).toBe('LIFESTYLE');
+    expect(await thirdAngle('AWARENESS')).toBe('UGC');
   });
 
   it('gives every storyboard scene a purpose and framing an editor can act on, with visual variety', async () => {
@@ -228,5 +231,60 @@ describe('creative QA', () => {
     );
     expect(calls).toHaveLength(2);
     expect(conceptSet.concepts[1]!.hook).toBe(good.concepts[1]!.hook);
+  });
+});
+
+describe('creative territories (fictional burger place)', () => {
+  const burger = {
+    ...DEMO_BUSINESS,
+    name: 'בורגר האוס',
+    website: undefined,
+    category: 'המבורגריה',
+    city: 'ראשון לציון',
+    address: 'רוטשילד 40, ראשון לציון',
+    description: 'המבורגריה שכונתית עם קציצות שנטחנות במקום.',
+    products: [{ name: 'דאבל סמאש', description: 'שתי קציצות דקות, צ׳דר, בצל מקורמל' }],
+    approvedClaims: ['טוחנים את הבשר במקום כל יום', 'לחמניית בריוש'],
+    pronunciation: [],
+  };
+  const concepts = async (goal: CampaignGoal, offer?: string) => {
+    const brief = buildCampaignBrief({
+      business: burger,
+      request: { goal, productName: 'דאבל סמאש', ...(offer ? { offer } : {}) },
+      defaults: { budgetUsd: 5, qualityTier: 'standard', targetDurationSec: 20 },
+    });
+    return (await generateConcepts({ business: burger, brief }, { provider })).conceptSet;
+  };
+
+  it('reads a burger place as food', () => {
+    expect(industryFor(burger).profile.id).toBe('cafe-restaurant');
+  });
+
+  it('argues three different reasons to order, the claim leading one concept at most', async () => {
+    const set = await concepts('OFFER', 'דאבל סמאש + צ׳יפס + שתייה ב-59 ₪');
+    expect(set.concepts.map((c) => c.title)).toEqual(['המחיר הוא החדשות', 'רגע החשק', 'מה שקורה במטבח']);
+    expect(new Set(set.concepts.map((c) => c.mainMessage)).size).toBe(3);
+    expect(set.concepts.filter((c) => c.mainMessage.includes('טוחנים')).length).toBeLessThanOrEqual(1);
+    // The product's own details, not adjectives; the name joined to its prefix.
+    expect(set.concepts[1]!.copy?.headline).toBe('שתי קציצות דקות, צ׳דר ובצל מקורמל');
+    expect(set.concepts.map((c) => c.voiceover).join(' ')).not.toMatch(/[בלמ]-בורגר/);
+    expect(set.recommendedKey).toBe('offer-driven');
+  });
+
+  it('leads with the place for awareness and with the craving for a product', async () => {
+    expect((await concepts('AWARENESS')).concepts[0]!.hook).toBe('ראשון לציון, תכירו: בורגר האוס');
+    expect((await concepts('PRODUCT_PROMO')).concepts[0]!.hook).toBe('ערב, רעב, והבטן כבר החליטה');
+  });
+
+  it('flags a hyphen between a prefix and a Hebrew word, not before digits or Latin', () => {
+    expect(hebrewCopyIssues('קפצו ב-בורגר האוס').map((i) => [i.code, i.suggestion])).toEqual([['PREFIX_HYPHEN', 'בבורגר']]);
+    expect(hebrewCopyIssues('ב-59 ₪ ב-Luz בתל-אביב')).toEqual([]);
+  });
+
+  it('rejects a set whose concepts all argue the same claim', async () => {
+    const set = await concepts('PRODUCT_PROMO');
+    const same = { ...set, concepts: set.concepts.map((c) => ({ ...c, mainMessage: 'טוחנים את הבשר במקום כל יום' })) };
+    const codes = conceptSetQa(same, { business: burger, industry: industryFor(burger).profile }).map((i) => i.code);
+    expect(codes).toContain('SAME_MAIN_MESSAGE');
   });
 });

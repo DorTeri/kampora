@@ -20,6 +20,7 @@ import { assessScriptLength, estimateSpeechSec, normalizeHebrewForSpeech } from 
 import {
   COPYWRITING_PLAYBOOK,
   copywriterExpertise,
+  creativeTerritoriesGuide,
   industryFor,
   playbookTag,
   type IndustryProfile,
@@ -71,7 +72,7 @@ export interface StepContext {
 }
 
 const CTA_BY_GOAL: Record<CampaignGoal, string> = {
-  OFFER: 'בואו לנצל את המבצע',
+  OFFER: 'תפסו את המבצע',
   SALES: 'הזמינו עכשיו',
   LEADS: 'השאירו פרטים ונחזור אליכם',
   PRODUCT_PROMO: 'בואו לטעום',
@@ -179,7 +180,10 @@ const CONCEPTS_SYSTEM = [
   'Return exactly 3 concepts with genuinely different angles: different hook mechanism, structure and emotional driver — never three rewrites of one idea. Choose from these concept types (prefer types whose "best for" includes the brief goal):',
   conceptTypesGuide(),
   'Each concept carries ONE message. objective: the single thing it should achieve. insight: a real audience observation (never an invented number). hypothesis: what this concept tests. storyStructure: 3–6 short beats in order. Pick visualStyle (photographic styles for real products; illustration only when it clearly serves the idea), productionFormat and voiceStyle that fit the type.',
-  'Hooks: max ~8 words, specific to this business and audience; no generic openers like "הכירו את" or "מחפשים?" alone.',
+  'Creative territories: the marketing idea, i.e. the reason to choose the business that the ad argues. The three concepts argue three DIFFERENT territories (a different hook or layout over the same reason is the same idea). mainMessage states that reason in one sentence; an approved claim is the mainMessage of one concept at most. Use a territory only when what it needs exists in the data:',
+  creativeTerritoriesGuide(),
+  'Hooks: max ~8 words, specific to this business and audience; no template openers that fit any business ("הכירו את", "מחפשים X?", "ככה נראה X מקרוב", "תנו לנו להראות לכם").',
+  'Concrete before adjectives: use the product\'s own details from <business> (what is in it, how it is made). Hebrew prefix letters join Hebrew words directly ("בבורגר האוס", "מבורגר האוס"); a hyphen only before digits or Latin ("ב-59 ₪", "ב-Luz").',
   'hook: the opening spoken line that stops the scroll in the first 2 seconds. script: the complete voiceover in short spoken sentences, written to FILL estimatedDurationSec at a natural pace (~2.3 words per second, so a 20-second ad needs ~40 words); estimatedDurationSec must not exceed the brief target.',
   'recommendedIndex: the concept most likely to achieve the brief goal; explain why in recommendationReason (Hebrew).',
   'Written copy is separate from the spoken script: headline (3–7 words, readable in one second, not a transcript of the hook) and subheadline (optional, one short supporting line) are what static ads and title cards show. hookTechnique: the technique the hook uses, different in each concept. claimsUsed: the approved claims the concept relies on, quoted exactly (empty if none).',

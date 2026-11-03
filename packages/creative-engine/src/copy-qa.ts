@@ -41,6 +41,9 @@ const copyOf = (c: CreativeConcept) =>
     Boolean,
   );
 
+/** Openers that fit any business: "מחפשים X?", "ככה נראה X מקרוב", "תנו לנו להראות לכם". */
+const TEMPLATE_HOOK = /^(?:מחפשים|מחפשות|הכירו את|ככה נראה|תנו לנו להראות)/;
+
 /**
  * The Copywriter's quality gate. Errors send the model back with the problems (bounded retries); warnings are
  * kept for the Critic and the owner. These are measurable proxies, not a judgement of whether the copy is good.
@@ -82,6 +85,22 @@ export function conceptSetQa(
           message: `"${a.title}" and "${b.title}" are built on the same insight; each concept needs its own hypothesis.`,
         });
     }
+  // The same reason to choose, said three ways, is one idea (often the same approved claim as every main message).
+  for (let i = 0; i < cs.length; i++)
+    for (let j = i + 1; j < cs.length; j++)
+      if (similarity(cs[i]!.mainMessage, cs[j]!.mainMessage) >= 0.6)
+        issues.push({
+          severity: 'error',
+          code: 'SAME_MAIN_MESSAGE',
+          message: `"${cs[i]!.title}" and "${cs[j]!.title}" argue the same main message; give each concept its own creative territory.`,
+        });
+  for (const c of cs)
+    if (TEMPLATE_HOOK.test(c.hook.trim()))
+      issues.push({
+        severity: 'warning',
+        code: 'TEMPLATE_HOOK',
+        message: `The hook of "${c.title}" opens with a template that fits any business ("${c.hook}").`,
+      });
   if (new Set(cs.map((c) => c.cta.trim())).size === 1 && cs.length > 1)
     issues.push({
       severity: 'warning',
@@ -103,7 +122,13 @@ export function conceptSetQa(
       issues.push({
         severity: 'error',
         code:
-          issue.code === 'CLICHE' ? 'CLICHE' : issue.code === 'FORMAL' ? 'FORMAL_REGISTER' : 'TRANSLATIONESE',
+          issue.code === 'CLICHE'
+            ? 'CLICHE'
+            : issue.code === 'FORMAL'
+              ? 'FORMAL_REGISTER'
+              : issue.code === 'PREFIX_HYPHEN'
+                ? 'HEBREW_PREFIX'
+                : 'TRANSLATIONESE',
         message: `"${c.title}" uses "${issue.phrase}"${issue.suggestion ? ` (say "${issue.suggestion}")` : ' (a cliché that fits any business)'}.`,
       });
     }

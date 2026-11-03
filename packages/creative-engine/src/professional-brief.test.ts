@@ -117,12 +117,12 @@ describe('Copywriter', () => {
       { business: s.business, brief: briefFor('cafe-offer'), assets: s.assets },
       { provider },
     );
-    expect(provider.calls[0]!.system).toContain('copywriting@1.0.0');
+    expect(provider.calls[0]!.system).toContain('copywriting@1.1.0');
     expect(provider.calls[0]!.system).toContain('industry:cafe-restaurant');
     expect(provider.calls[0]!.prompt).toContain('<strategy>');
     expect(provider.calls[0]!.prompt).toContain('industry.kosher');
     const c = conceptSet.concepts[0]!;
-    expect(c.copy).toMatchObject({ hookTechnique: 'OFFER_FIRST', playbookVersion: 'copywriting@1.0.0' });
+    expect(c.copy).toMatchObject({ hookTechnique: 'OFFER_FIRST', playbookVersion: 'copywriting@1.1.0' });
     expect(c.copy!.headline).not.toBe(c.voiceover);
     expect(new Set(conceptSet.concepts.map((x) => x.copy!.hookTechnique)).size).toBe(3);
   });

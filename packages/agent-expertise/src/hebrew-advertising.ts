@@ -6,7 +6,7 @@ import type { Playbook } from './playbook';
  */
 export const HEBREW_ADVERTISING_PLAYBOOK: Playbook = {
   id: 'hebrew-advertising',
-  version: '1.0.0',
+  version: '1.1.0',
   role: 'COPYWRITER',
   responsibility: 'Keep every customer-facing word natural, modern, spoken Israeli Hebrew.',
   requiredContext: ['business tone of voice', 'whether the text is spoken or written'],
@@ -70,6 +70,9 @@ export const HEBREW_CLICHES: readonly string[] = [
   'בלתי רגיל',
   'פשוט תענוג',
   'חוויה של פעם בחיים',
+  'שאפשר לסמוך עליו',
+  'טעם של עוד',
+  'האולטימטיבי',
 ];
 
 /** Formal written words and their spoken equivalents. */
@@ -94,10 +97,11 @@ export const HEBREW_TRANSLATIONESE: ReadonlyArray<readonly [string, string]> = [
   ['זה הכל עליך', 'זה בשבילך'],
   ['תהיו מוכנים להיות מופתעים', 'תופתעו'],
   ['עושה שכל', 'הגיוני'],
+  ['בואו לגלות', 'בואו לראות'],
 ];
 
 export interface HebrewCopyIssue {
-  code: 'CLICHE' | 'FORMAL' | 'TRANSLATIONESE' | 'EXCLAMATION';
+  code: 'CLICHE' | 'FORMAL' | 'TRANSLATIONESE' | 'EXCLAMATION' | 'PREFIX_HYPHEN';
   phrase: string;
   suggestion?: string;
 }
@@ -114,6 +118,9 @@ export function hebrewCopyIssues(text: string): HebrewCopyIssue[] {
   }
   for (const [calque, natural] of HEBREW_TRANSLATIONESE)
     if (text.includes(calque)) issues.push({ code: 'TRANSLATIONESE', phrase: calque, suggestion: natural });
+  // "ב-בורגר האוס": a prefix letter joins a Hebrew word directly. The hyphen is only for digits and Latin ("ב-59 ₪").
+  for (const m of text.matchAll(/(?<![\u0590-\u05FF])([ובלמהכש])-([\u05D0-\u05EA][\u0590-\u05FF\u05F3\u05F4'"]*)/g))
+    issues.push({ code: 'PREFIX_HYPHEN', phrase: m[0], suggestion: `${m[1]}${m[2]}` });
   const bangs = (text.match(/!/g) ?? []).length;
   if (bangs > 1 || /!!/.test(text))
     issues.push({ code: 'EXCLAMATION', phrase: '!'.repeat(Math.min(bangs, 3)) });

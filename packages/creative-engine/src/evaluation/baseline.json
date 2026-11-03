@@ -1,6 +1,6 @@
 {
   "versions": {
-    "expertise": "copywriting@1.0.0 hebrew-advertising@1.0.0 creative-strategy@1.0.0 art-direction@1.0.0 video-direction@1.0.0 creative-rubric@1.0.0 references@1.0.0",
+    "expertise": "copywriting@1.1.0 hebrew-advertising@1.1.0 creative-strategy@1.0.0 art-direction@1.0.0 video-direction@1.0.0 creative-rubric@1.0.0 references@1.0.0",
     "criticPolicy": "critic-policy@1.0.0",
     "provider": "mock (free)"
   },

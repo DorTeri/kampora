@@ -68,8 +68,8 @@ describe('structured output: concepts', () => {
     const { conceptSet } = await generateConcepts({ business: DEMO_BUSINESS, brief }, { provider });
     expect(conceptSet.concepts.map((c) => c.angle)).toEqual([
       'OFFER_DRIVEN',
-      'PROBLEM_SOLUTION',
-      'EMOTIONAL',
+      'PRODUCT_DEMO',
+      'UGC',
     ]);
     expect(conceptSet.recommendedKey).toBe('offer-driven');
     expect(conceptSet.concepts[0]!.estimatedDurationSec).toBe(18);

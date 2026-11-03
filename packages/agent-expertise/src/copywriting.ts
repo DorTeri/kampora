@@ -1,4 +1,4 @@
-import type { HookTechnique } from '@kampora/shared';
+import type { CampaignGoal, HookTechnique } from '@kampora/shared';
 import type { Method, Playbook } from './playbook';
 
 /** Hook techniques. Three concepts in one set never share a technique (a different way to stop the scroll). */
@@ -63,9 +63,101 @@ export const HOOK_TECHNIQUES: Record<HookTechnique, Method> = {
   },
 };
 
+/**
+ * The marketing idea of a concept: the reason to choose the business that the ad argues. A hook technique is how
+ * the ad stops the scroll; the territory is what it says. Three concepts with the same territory are one idea in
+ * three layouts, however different their hooks look.
+ */
+export interface CreativeTerritory {
+  id: string;
+  name: string;
+  /** The argument, in one line. */
+  idea: string;
+  /** The audience truth it rests on (a hypothesis, never a statistic). */
+  insight: string;
+  /** What must exist in the business facts before this territory is used. */
+  needs: string;
+  goals: readonly CampaignGoal[];
+  /** One Hebrew line in the territory's voice, as a model of tone (never copied into an ad). */
+  example: string;
+}
+
+export const CREATIVE_TERRITORIES: readonly CreativeTerritory[] = [
+  {
+    id: 'VALUE',
+    name: 'What you get for the money',
+    idea: 'The exact offer is the news: what is included, then the price, nothing before it.',
+    insight: 'A closed price removes the last hesitation before ordering now rather than later.',
+    needs: 'an offer with exact terms in the brief',
+    goals: ['OFFER', 'SALES'],
+    example: 'דאבל + צ׳יפס + שתייה ב-59 ₪',
+  },
+  {
+    id: 'CRAVING',
+    name: 'The moment of wanting it',
+    idea: 'Meet the audience at the hour the desire starts, with the product itself in close-up.',
+    insight: 'Food and treats are chosen in a moment of desire, not after comparing; whoever shows up in that moment gets the order.',
+    needs: 'the real product (its name and, ideally, what is in it)',
+    goals: ['PRODUCT_PROMO', 'SALES', 'OFFER'],
+    example: 'ערב, רעב, והבטן כבר החליטה',
+  },
+  {
+    id: 'CRAFT',
+    name: 'How it is made',
+    idea: 'One true detail of the making, said by the business itself, is the proof of quality.',
+    insight: 'When every competitor says "fresh" and "quality", one concrete detail is more convincing than any praise.',
+    needs: 'an approved claim about how the product is made',
+    goals: ['PRODUCT_PROMO', 'AWARENESS', 'SALES'],
+    example: 'אצלנו טוחנים את הבשר במקום',
+  },
+  {
+    id: 'OCCASION',
+    name: 'Own a recurring moment',
+    idea: 'Tie the business to a moment that comes back every week, so the moment itself becomes the reminder.',
+    insight: 'People do not choose a category; they solve a moment ("what do we do tonight"). A business linked to the moment is remembered each time it returns.',
+    needs: 'nothing beyond the product; the moment must fit how the product is actually used',
+    goals: ['AWARENESS', 'PRODUCT_PROMO', 'OFFER'],
+    example: 'חמישי בערב, ואף אחד לא מתנדב לבשל',
+  },
+  {
+    id: 'LOCAL',
+    name: 'Right here',
+    idea: 'Introduce the business to its own area: where it is and why it is worth the short trip.',
+    insight: 'For a business people do not know yet, the first barrier is not knowing it exists, or that it is this close.',
+    needs: 'the city or address',
+    goals: ['AWARENESS'],
+    example: 'ראשון לציון, תכירו: בורגר האוס',
+  },
+  {
+    id: 'RELIEF',
+    name: 'The problem goes away',
+    idea: 'Name one familiar frustration in the audience’s words and show the business removing it.',
+    insight: 'A problem the audience already feels gets attention that a benefit does not.',
+    needs: 'a real problem the business solves',
+    goals: ['LEADS', 'SALES'],
+    example: 'פוחדת להיות החדשה בשיעור?',
+  },
+  {
+    id: 'PEOPLE',
+    name: 'The people behind it',
+    idea: 'The owner or team, real and at eye level, telling the business’s own story.',
+    insight: 'It is easier to order from, or walk into, a place whose people you have already seen.',
+    needs: 'real people who agreed to appear (never an invented customer)',
+    goals: ['AWARENESS', 'LEADS'],
+    example: 'זה אני, ואת זה אני מכין כל בוקר',
+  },
+];
+
+/** Compact guide for the prompt: one line per territory. */
+export function creativeTerritoriesGuide(): string {
+  return CREATIVE_TERRITORIES.map(
+    (t) => `- ${t.id}: ${t.idea} Insight: ${t.insight} Needs: ${t.needs}. Tone, e.g. "${t.example}".`,
+  ).join('\n');
+}
+
 export const COPYWRITING_PLAYBOOK: Playbook = {
   id: 'copywriting',
-  version: '1.0.0',
+  version: '1.1.0',
   role: 'COPYWRITER',
   responsibility:
     'Turn the creative brief into genuinely different advertising concepts and the exact words for each format: hook, spoken script, written headline, CTA, with the reasoning behind them.',
@@ -140,6 +232,8 @@ export const COPYWRITING_PLAYBOOK: Playbook = {
   ],
   decisionRules: [
     'Each of the three concepts tests a different marketing hypothesis: a different angle, a different hook technique and a different insight.',
+    'Each concept argues a different creative territory (a different reason to choose the business). An approved claim is the main message of one concept at most; the others may use it only as supporting proof.',
+    'Use the business’s own product details (what is in the dish, how it is made) before any adjective.',
     'For OFFER and SALES goals one concept leads with the offer; the others must still be able to carry the offer.',
     'Prefer the specific over the general: a named product, a real detail, the exact offer.',
     'Use an approved claim only when it supports this concept’s message.',
@@ -154,6 +248,12 @@ export const COPYWRITING_PLAYBOOK: Playbook = {
       why: 'The good hook carries the value in two seconds; the weak one is a cliché that fits any café.',
     },
     {
+      situation: 'Burger place, product "דאבל סמאש" (two thin patties, cheddar, caramelised onion), goal PRODUCT_PROMO',
+      good: 'Three territories: craving ("ערב, רעב, והבטן כבר החליטה" + the real ingredients), craft ("אצלנו טוחנים את הבשר במקום"), occasion ("חמישי בערב, ואף אחד לא מתנדב לבשל")',
+      weak: 'Three hooks around the same claim: "מחפשים המבורגר שאפשר לסמוך עליו?", "ככה נראה המבורגר מקרוב", "תנו לנו להראות לכם"',
+      why: 'The good set tests three reasons to order; the weak one repeats one message in three layouts with template openers.',
+    },
+    {
       situation: 'Pilates studio, goal LEADS, approved claim "קבוצות של עד 6 מתאמנות"',
       good: 'Hook: "פוחדת להיות החדשה בשיעור?" → reassurance via the small groups claim',
       weak: 'Hook: "מחפשים סטודיו פילאטיס?"',
@@ -162,6 +262,9 @@ export const COPYWRITING_PLAYBOOK: Playbook = {
   ],
   failureModes: [
     'Three concepts that are the same idea with different adjectives.',
+    'Three concepts that all lead with the same approved claim.',
+    'Template openers that fit any business: "מחפשים X?", "ככה נראה X מקרוב", "תנו לנו להראות לכם".',
+    'A hyphen between a prefix letter and a Hebrew word ("ב-בורגר האוס"); the hyphen is only for digits and Latin ("ב-59 ₪", "ב-Luz").',
     'Clichés: "חוויה בלתי נשכחת", "איכות ללא פשרות", "מחכים לכם", "פשוט מושלם".',
     'Formal written Hebrew in a spoken script ("הינו", "על מנת", "באפשרותכם").',
     'A CTA that does not match the goal (e.g. "בואו להכיר" for an offer).',
