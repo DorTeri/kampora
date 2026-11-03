@@ -34,9 +34,10 @@ async function startApi() {
       CREATIVE_PROVIDER: 'mock',
       TTS_PROVIDER: 'mock',
       IMAGE_PROVIDER: 'mock',
-      // Paid generation stays off, except for the Director brain in an approved LLM validation run (creative,
-      // voice and images are forced to mock above, so nothing else can spend).
-      KAMPORA_ALLOW_PAID_GENERATION: process.env.DIRECTOR_BRAIN === 'llm' && process.argv.includes('--approved-paid-run') ? 'true' : 'false',
+      // Paid creative generation stays off. The Director's own model has a separate switch (with its own cap and
+      // ledger): it stays on only in an approved LLM validation run.
+      KAMPORA_ALLOW_PAID_GENERATION: 'false',
+      ...(process.argv.includes('--approved-paid-run') ? {} : { DIRECTOR_LLM_ALLOW_PAID: 'false' }),
       LOG_LEVEL: 'warn',
     },
     stdio: ['ignore', 'ignore', 'inherit'],

@@ -59,7 +59,7 @@ export class DirectorService {
     private readonly staticAds: StaticAdsService,
     private readonly paid: PaidOperationsService,
   ) {
-    this.brainSetup = directorBrainSetup(config, catalog, policy);
+    this.brainSetup = directorBrainSetup(config, catalog);
     this.llmLedger = new DbDirectorLlmLedger(db);
     this.logger.log(`director brain: ${this.brainSetup.mode}${this.brainSetup.model ? ` (${this.brainSetup.model})` : ''}${this.brainSetup.reason ? ` — ${this.brainSetup.reason}` : ''}`);
   }

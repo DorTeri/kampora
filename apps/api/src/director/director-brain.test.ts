@@ -15,20 +15,26 @@ const llmEnv = {
 
 describe('director brain setup', () => {
   const catalog = PriceCatalog.fromEnv({});
-  const setup = (e: Record<string, string>, paid: boolean) =>
-    directorBrainSetup(loadConfig(e as NodeJS.ProcessEnv), catalog, budgetPolicyFromEnv({ KAMPORA_ALLOW_PAID_GENERATION: paid ? 'true' : 'false' }));
+  const setup = (e: Record<string, string>) => directorBrainSetup(loadConfig(e as NodeJS.ProcessEnv), catalog);
 
   it('runs the rules brain by default', () => {
-    expect(setup(env, true)).toMatchObject({ mode: 'rules' });
+    expect(setup(env)).toMatchObject({ mode: 'rules' });
   });
 
-  it('needs every switch before the paid model is used', () => {
-    expect(setup(llmEnv, false)).toMatchObject({ mode: 'rules', reason: 'KAMPORA_ALLOW_PAID_GENERATION is off' });
-    expect(setup({ ...llmEnv, DIRECTOR_LLM_ALLOW_PAID: 'false' }, true)).toMatchObject({ mode: 'rules', reason: 'DIRECTOR_LLM_ALLOW_PAID is off' });
-    expect(setup({ ...llmEnv, DIRECTOR_LLM_MONTHLY_USD_CAP: '0' }, true)).toMatchObject({ mode: 'rules' });
-    expect(setup({ ...llmEnv, OPENAI_API_KEY: '' }, true)).toMatchObject({ mode: 'rules', reason: 'OPENAI_API_KEY is not set' });
-    expect(setup({ ...llmEnv, DIRECTOR_OPENAI_MODEL: 'unknown-model' }, true).mode).toBe('rules');
-    expect(setup(llmEnv, true)).toMatchObject({ mode: 'llm', model: 'gpt-6-luna', monthlyCapUsd: 5 });
+  it('needs every one of its own switches before the paid model is used', () => {
+    expect(setup({ ...llmEnv, DIRECTOR_LLM_ALLOW_PAID: 'false' })).toMatchObject({ mode: 'rules', reason: 'DIRECTOR_LLM_ALLOW_PAID is off' });
+    expect(setup({ ...llmEnv, DIRECTOR_LLM_MONTHLY_USD_CAP: '0' })).toMatchObject({ mode: 'rules' });
+    expect(setup({ ...llmEnv, OPENAI_API_KEY: '' })).toMatchObject({ mode: 'rules', reason: 'OPENAI_API_KEY is not set' });
+    expect(setup({ ...llmEnv, DIRECTOR_OPENAI_MODEL: 'unknown-model' }).mode).toBe('rules');
+    expect(setup(llmEnv)).toMatchObject({ mode: 'llm', model: 'gpt-6-luna', monthlyCapUsd: 5 });
+  });
+
+  it('runs the Director LLM while paid creative generation stays off', () => {
+    // The creative kill switch is off: images, voice and video stay disabled...
+    const env = { ...llmEnv, KAMPORA_ALLOW_PAID_GENERATION: 'false' };
+    expect(budgetPolicyFromEnv(env).paidGenerationEnabled).toBe(false);
+    // ...and the Director still reads messages with its own capped model.
+    expect(setup(env)).toMatchObject({ mode: 'llm', monthlyCapUsd: 5, maxCallsPerConversationDay: expect.any(Number) });
   });
 });
 

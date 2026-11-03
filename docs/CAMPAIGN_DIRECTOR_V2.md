@@ -43,12 +43,14 @@ Status (2026-11-03): implemented. The paid LLM validation has run under the appr
   turn. The conversation never breaks.
 - **Switches** (`apps/api/src/director/director-brain.ts`), all required:
   - `DIRECTOR_BRAIN=llm`
-  - `KAMPORA_ALLOW_PAID_GENERATION=true`
   - `DIRECTOR_LLM_ALLOW_PAID=true`
   - `DIRECTOR_LLM_MONTHLY_USD_CAP>0`
   - an API key
   - a price-catalog entry for the model (`DIRECTOR_OPENAI_MODEL`, default `gpt-6-luna`)
   - Default: rules. The workspace shows which brain reads the messages.
+  - Independent of paid creative generation (V2.1): `KAMPORA_ALLOW_PAID_GENERATION` is not read. The Director's LLM
+    can run while image, voice and video generation stay off, and turning the Director on never turns a creative
+    provider on. Before V2.1 the Director also required that switch, which opened paid creative generation too.
 - **Budget guard:**
   - Before each call it checks the worst-case estimate against the monthly cap and the per-conversation daily call
     limit.

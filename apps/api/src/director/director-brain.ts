@@ -1,5 +1,5 @@
 import { and, count, eq, gte, inArray, sql } from 'drizzle-orm';
-import { usdToMicro, type BudgetPolicy, type PriceCatalog } from '@kampora/cost-engine';
+import { usdToMicro, type PriceCatalog } from '@kampora/cost-engine';
 import { LlmDirectorBrain, RuleBasedDirectorBrain, type DirectorBrain } from '@kampora/creative-engine';
 import { costLedger, recordUsage, usageEvents, type Database } from '@kampora/database';
 import {
@@ -24,16 +24,19 @@ export interface DirectorBrainSetup {
 }
 
 /**
- * The LLM brain runs only when every switch says so: DIRECTOR_BRAIN=llm, the global paid-generation kill switch,
- * the Director's own paid switch, a positive monthly cap, an API key and a price-list entry for the model (without a
- * price the cap cannot be enforced). Anything missing → the deterministic brain, with the reason.
+ * The LLM brain runs only when every one of its own switches says so: DIRECTOR_BRAIN=llm, the Director's paid
+ * switch, a positive monthly cap, an API key and a price-list entry for the model (without a price the cap cannot be
+ * enforced). Anything missing → the deterministic brain, with the reason.
+ *
+ * It does not depend on KAMPORA_ALLOW_PAID_GENERATION: that switch covers paid creative (images, voice, video), and
+ * turning it on only to let the Director read messages would also enable those providers. The two stay independent;
+ * the Director's spend has its own cap, per-conversation limit and ledger entries.
  */
-export function directorBrainSetup(config: AppConfig, catalog: PriceCatalog, policy: BudgetPolicy): DirectorBrainSetup {
+export function directorBrainSetup(config: AppConfig, catalog: PriceCatalog): DirectorBrainSetup {
   const caps = { monthlyCapUsd: config.DIRECTOR_LLM_MONTHLY_USD_CAP, maxCallsPerConversationDay: config.DIRECTOR_LLM_MAX_CALLS_PER_CONVERSATION_DAY };
   const rules = (reason?: string): DirectorBrainSetup => ({ mode: 'rules', reason, ...caps });
   if (config.DIRECTOR_BRAIN !== 'llm') return rules();
   const model = config.DIRECTOR_OPENAI_MODEL;
-  if (!policy.paidGenerationEnabled) return rules('KAMPORA_ALLOW_PAID_GENERATION is off');
   if (!config.DIRECTOR_LLM_ALLOW_PAID) return rules('DIRECTOR_LLM_ALLOW_PAID is off');
   if (!(caps.monthlyCapUsd > 0)) return rules('DIRECTOR_LLM_MONTHLY_USD_CAP is 0');
   if (!config.OPENAI_API_KEY) return rules('OPENAI_API_KEY is not set');
