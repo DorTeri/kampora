@@ -24,7 +24,15 @@ function usePop(delay: number, damping = 14) {
 }
 
 /** Word-by-word reveal of a short headline in the top safe area. */
-export function HeadlineOverlay({ text, position }: { text: string; position: 'top' | 'center' }) {
+export function HeadlineOverlay({
+  text,
+  position,
+  delayFrames = 4,
+}: {
+  text: string;
+  position: 'top' | 'center';
+  delayFrames?: number;
+}) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const { project } = useRenderContext();
@@ -64,7 +72,7 @@ export function HeadlineOverlay({ text, position }: { text: string; position: 't
             rules as for subtitles (mixed Hebrew/English, numbers, ₪, punctuation). Inline-block words would be
             atomic boxes that bidi cannot reorder. The rise uses relative offset, which works on inline boxes. */}
         {words.map((word, i) => {
-          const p = spring({ frame: frame - 4 - i * 3, fps, config: { damping: 16, stiffness: 160 } });
+          const p = spring({ frame: frame - delayFrames - i * 3, fps, config: { damping: 16, stiffness: 160 } });
           const motion: CSSProperties =
             art?.textAnimation === 'FADE'
               ? { opacity: p }
@@ -262,10 +270,43 @@ export function LogoBadge({ assetId }: { assetId?: string }) {
   );
 }
 
+/** Stand-in label: small, quiet and always legible, just above the top safe area. */
+export function NoticeOverlay({ text }: { text: string }) {
+  const { project } = useRenderContext();
+  return (
+    <AbsoluteFill
+      style={{
+        alignItems: 'flex-start',
+        justifyContent: 'flex-start',
+        paddingTop: project.safeArea.topPx - 64,
+        paddingInline: project.safeArea.sidePx,
+      }}
+    >
+      <span
+        dir="rtl"
+        data-kampora-text="notice"
+        style={{
+          ...textBase,
+          fontSize: 30,
+          fontWeight: 700,
+          color: '#fff',
+          background: 'rgba(0,0,0,0.55)',
+          borderRadius: 999,
+          padding: '6px 20px',
+        }}
+      >
+        {text}
+      </span>
+    </AbsoluteFill>
+  );
+}
+
 export function OverlayView({ overlay }: { overlay: Overlay }) {
   switch (overlay.type) {
     case 'headline':
-      return <HeadlineOverlay text={overlay.text} position={overlay.position} />;
+      return <HeadlineOverlay text={overlay.text} position={overlay.position} delayFrames={overlay.delayFrames} />;
+    case 'notice':
+      return <NoticeOverlay text={overlay.text} />;
     case 'price-tag':
       return <PriceTag price={overlay.price} label={overlay.label} note={overlay.note} />;
     case 'cta':

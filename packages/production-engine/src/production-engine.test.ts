@@ -204,10 +204,17 @@ describe('creative → plan → timeline pipeline (mock provider)', () => {
       'EXISTING_IMAGE_MOTION',
       'EXISTING_IMAGE_MOTION',
       'MOTION_GRAPHICS',
-      'LAYERED_PARALLAX',
+      'EXISTING_IMAGE_MOTION',
     ]);
     expect(plan.requiresPaidApproval).toBe(false);
     expect(plan.estimatedPaidCostUsd).toBe(0);
+    // Demo pictures are stand-ins: every photographic scene is on the shot list with a phone instruction.
+    expect(plan.shotList?.map((s) => [s.sceneKey, s.reason])).toEqual([
+      ['hook', 'STAND_IN'],
+      ['product', 'STAND_IN'],
+      ['cta', 'STAND_IN'],
+    ]);
+    expect(plan.shotList?.every((s) => s.capture)).toBe(true);
 
     const project = buildVideoProject({
       projectId: 'p1',
@@ -226,6 +233,55 @@ describe('creative → plan → timeline pipeline (mock provider)', () => {
     const offer = project.scenes[2]!;
     expect(offer.overlays).toContainEqual({ type: 'price-tag', price: '29.90 ₪', label: 'קפה + מאפה' });
     expect(project.scenes[3]!.overlays.some((o) => o.type === 'cta')).toBe(true);
+    // A demo picture of the product is labelled on screen; the offer card is not a picture.
+    expect(project.scenes[0]!.overlays).toContainEqual({ type: 'notice', text: 'תמונת הדגמה' });
+    expect(offer.overlays.some((o) => o.type === 'notice')).toBe(false);
+  });
+
+  it('cuts each concept by its own treatment, not one slideshow', async () => {
+    const provider = new MockCreativeLlmProvider();
+    const brief = await generateCampaignBrief(
+      {
+        business: DEMO_BUSINESS,
+        request: DEMO_CAMPAIGN_REQUEST,
+        defaults: { budgetUsd: 5, qualityTier: 'standard', targetDurationSec: 20 },
+      },
+      { provider },
+    );
+    const { conceptSet } = await generateConcepts({ business: DEMO_BUSINESS, brief }, { provider });
+    const base = conceptSet.concepts[0]!;
+    const as = (angle: 'OFFER_DRIVEN' | 'PRODUCT_DEMO' | 'UGC', hookTechnique: 'OFFER_FIRST' | 'SENSORY_DETAIL' | 'FIRST_PERSON') => ({
+      ...base,
+      angle,
+      copy: { ...base.copy!, hookTechnique },
+    });
+    const cut = async (concept: ReturnType<typeof as>) => {
+      const { storyboard } = await generateStoryboard({ business: DEMO_BUSINESS, brief, concept, assets: demoAssets }, { provider });
+      const plan = planProduction({ storyboard, assets: demoAssets, budgetUsd: 5, perGenerationMaxUsd: 1, qualityTier: 'standard', catalog });
+      const project = buildVideoProject({ projectId: 'p', title: 't', business: DEMO_BUSINESS, brief, storyboard, plan, assets: mediaAssets });
+      const headline = project.scenes[0]!.overlays.find((o) => o.type === 'headline');
+      return {
+        idea: storyboard.treatment?.idea,
+        roles: storyboard.scenes.map((s) => s.role).join(' '),
+        hookShot: storyboard.scenes[0]!.direction?.shot,
+        cuts: project.scenes.slice(1).map((s) => s.transition.type),
+        intensity: project.scenes.flatMap((s) => (s.visual.type === 'image-motion' ? [s.visual.motion.intensity] : []))[0],
+        textDelay: headline?.type === 'headline' ? headline.delayFrames : undefined,
+      };
+    };
+    const value = await cut(as('OFFER_DRIVEN', 'OFFER_FIRST'));
+    const craving = await cut(as('PRODUCT_DEMO', 'SENSORY_DETAIL'));
+    const craft = await cut(as('UGC', 'FIRST_PERSON'));
+    expect([value.idea, craving.idea, craft.idea]).toEqual(['VALUE', 'APPETITE', 'CRAFT']);
+    expect(new Set([value.roles, craving.roles, craft.roles]).size).toBe(3);
+    // Value: the price leads, zoom cuts. Craving: macro first, hard cuts, words wait for the food.
+    // Craft: process and hands, soft fades and a gentler camera.
+    expect(value.textDelay).toBe(4);
+    expect(craving.textDelay).toBeGreaterThan(value.textDelay!);
+    expect(craving.hookShot).toBe('close-up'); // two hero products never fit a macro frame
+    expect(craving.cuts).toContain('none');
+    expect(craft.cuts.filter((t) => t === 'fade').length).toBeGreaterThan(1);
+    expect(craft.intensity!).toBeLessThan(craving.intensity!);
   });
 
   it('drops the CTA caption only when the card already shows what is said', async () => {

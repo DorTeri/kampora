@@ -19,10 +19,15 @@ import {
 import { assessScriptLength, estimateSpeechSec, normalizeHebrewForSpeech } from '@kampora/hebrew-voice';
 import {
   COPYWRITING_PLAYBOOK,
+  captureForShot,
+  conceptVideoTreatment,
   copywriterExpertise,
   creativeTerritoriesGuide,
   industryFor,
   playbookTag,
+  storyboardTreatment,
+  treatmentBeats,
+  type ConceptVideoTreatment,
   type IndustryProfile,
 } from '@kampora/agent-expertise';
 import type { LlmProvider } from '@kampora/media-providers';
@@ -205,6 +210,7 @@ const STORYBOARD_SYSTEM = [
   'assetTags: choose only from availableTags so existing business media is reused. Prefer PHOTO scenes with camera motion presets.',
   'Set requiresHumanMotion / requiresComplexAction true ONLY when the scene is impossible without real movement. onScreenText: max ~6 words or null. Never put text inside images.',
   'composition and subjects say what the picture must contain; they take priority over the shot. A scene that shows several products is ASSORTMENT (with a shot wide enough for them, never detail or extreme-close-up); a scene about the place is ENVIRONMENT. Name subjects from the business products and the offer, with approximate quantities when they matter (e.g. two drinks and one dessert).',
+  'videoTreatment is how this concept is cut: open as its hook says and use its beats (role, shot, composition, motion, duration) as the default scene plan. Change a beat only when the script, the offer or the available media cannot support it; never cut every concept as the same hook-product-offer-storefront slideshow.',
   'Follow the concept storyStructure. Every scene states its purpose for the viewer, a shot framing and (when useful) an editorNote an editor can act on. Visual variety: consecutive scenes must differ in shot framing or motion preset. One OFFER scene at most; the hook scene lands within 2–3 seconds.',
 ].join('\n');
 
@@ -338,8 +344,40 @@ export async function generateConcepts(
 
 // ── Storyboard ────────────────────────────────────────────────────────
 
+/** The Video Director's treatment for a concept (its visual idea decides; see agent-expertise). */
+export function videoTreatmentFor(concept: Pick<CreativeConcept, 'angle' | 'copy'>): ConceptVideoTreatment {
+  return conceptVideoTreatment({ angle: concept.angle, hookTechnique: concept.copy?.hookTechnique });
+}
+
+function videoTreatmentBrief(t: ConceptVideoTreatment, hasOffer: boolean) {
+  return {
+    name: t.name,
+    hook: t.hook,
+    pacing: t.pacing,
+    endFrame: t.endFrame,
+    beats: treatmentBeats(t, hasOffer).map((b) => ({
+      role: b.role,
+      shot: b.shot,
+      composition: b.composition,
+      motionPreset: b.motion,
+      durationSec: b.durationSec,
+      visualKind: b.visualKind,
+      purpose: b.purpose,
+    })),
+  };
+}
+
 function toStoryboard(output: StoryboardLlm, input: StoryboardStepInput): Storyboard {
   const allowedTags = new Set(input.assets.flatMap((a) => a.tags));
+  const treatment = videoTreatmentFor(input.concept);
+  // Each scene takes the phone-capture note of the planned beat with its role; unplanned scenes get one by framing.
+  const beats = treatmentBeats(treatment, Boolean(input.brief.offer));
+  const captureFor = (s: StoryboardLlm['scenes'][number]) => {
+    if (s.visualKind === 'GRAPHIC') return undefined;
+    const i = beats.findIndex((b) => b.role === s.role);
+    const beat = i >= 0 ? beats.splice(i, 1)[0] : undefined;
+    return beat?.capture ?? captureForShot(s.shot, s.composition);
+  };
   const used = new Map<string, number>();
   const scenes: StoryboardScene[] = output.scenes.map((s, order) => {
     const base = s.role.toLowerCase();
@@ -372,6 +410,7 @@ function toStoryboard(output: StoryboardLlm, input: StoryboardStepInput): Storyb
         purpose: s.purpose,
         shot: s.shot,
         editorNote: s.editorNote ?? undefined,
+        capture: captureFor(s),
         composition: {
           type: s.composition,
           subjects: s.subjects
@@ -382,7 +421,12 @@ function toStoryboard(output: StoryboardLlm, input: StoryboardStepInput): Storyb
       },
     };
   });
-  const storyboard = StoryboardSchema.parse({ conceptKey: input.concept.key, aspectRatio: '9:16', scenes });
+  const storyboard = StoryboardSchema.parse({
+    conceptKey: input.concept.key,
+    aspectRatio: '9:16',
+    scenes,
+    treatment: storyboardTreatment(treatment),
+  });
   const problems: string[] = [];
   if (scenes[0]?.role !== 'HOOK') problems.push('The first scene must have role HOOK.');
   if (scenes.at(-1)?.role !== 'CTA') problems.push('The last scene must have role CTA.');
@@ -416,6 +460,7 @@ export async function generateStoryboard(
           estimatedDurationSec: i.concept.estimatedDurationSec,
           strategy: i.concept.strategy ?? null,
         }),
+        dataBlock('videoTreatment', videoTreatmentBrief(videoTreatmentFor(i.concept), Boolean(i.brief.offer))),
         dataBlock('media', {
           availableTags: [...new Set(i.assets.flatMap((a) => a.tags))],
           assets: i.assets.map((a) => ({ kind: a.kind, description: a.description, tags: a.tags })),

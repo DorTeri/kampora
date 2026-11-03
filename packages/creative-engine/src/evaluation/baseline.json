@@ -1,6 +1,6 @@
 {
   "versions": {
-    "expertise": "copywriting@1.1.0 hebrew-advertising@1.1.0 creative-strategy@1.0.0 art-direction@1.1.0 video-direction@1.0.0 creative-rubric@1.0.0 references@1.0.0",
+    "expertise": "copywriting@1.1.0 hebrew-advertising@1.1.0 creative-strategy@1.0.0 art-direction@1.1.0 video-direction@1.1.0 creative-rubric@1.0.0 references@1.0.0",
     "criticPolicy": "critic-policy@1.0.0",
     "provider": "mock (free)"
   },
@@ -30,7 +30,7 @@
         "static:9:16": [],
         "video": []
       },
-      "video": ["hook:ken-burns-in", "product:pan-left", "offer:motion-graphics", "cta:parallax"]
+      "video": ["hook:ken-burns-in", "product:pan-left", "offer:motion-graphics", "cta:ken-burns-in"]
     },
     {
       "id": "fitness-leads",
@@ -48,7 +48,12 @@
         "static:9:16": [],
         "video": ["MOTION_APPROPRIATENESS"]
       },
-      "video": ["hook:motion-graphics", "product:motion-graphics", "offer:motion-graphics", "cta:parallax"]
+      "video": [
+        "hook:motion-graphics",
+        "product:motion-graphics",
+        "offer:motion-graphics",
+        "cta:motion-graphics"
+      ]
     },
     {
       "id": "premium-product",
@@ -66,7 +71,7 @@
         "static:9:16": [],
         "video": []
       },
-      "video": ["hook:motion-graphics", "product:pan-left", "proof:ken-burns-out", "cta:parallax"]
+      "video": ["hook:motion-graphics", "solution:ken-burns-out", "product:product-reveal", "cta:parallax"]
     },
     {
       "id": "local-service",
@@ -84,7 +89,7 @@
         "static:9:16": [],
         "video": []
       },
-      "video": ["hook:motion-graphics", "product:motion-graphics", "proof:ken-burns-out", "cta:parallax"]
+      "video": ["hook:motion-graphics", "solution:ken-burns-out", "product:motion-graphics", "cta:parallax"]
     },
     {
       "id": "ecommerce-launch",
@@ -102,7 +107,7 @@
         "static:9:16": [],
         "video": []
       },
-      "video": ["hook:motion-graphics", "product:pan-left", "offer:motion-graphics", "cta:parallax"]
+      "video": ["hook:ken-burns-in", "product:pan-left", "offer:motion-graphics", "cta:ken-burns-in"]
     }
   ]
 }

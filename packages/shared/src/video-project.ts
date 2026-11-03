@@ -89,6 +89,8 @@ export const OverlaySchema = z.discriminatedUnion('type', [
     type: z.literal('headline'),
     text: z.string().min(1),
     position: z.enum(['top', 'center']).default('top'),
+    /** Frames before the first word enters (the concept's text timing); default 4. */
+    delayFrames: z.number().int().min(0).max(60).optional(),
   }),
   z.object({
     type: z.literal('price-tag'),
@@ -98,6 +100,8 @@ export const OverlaySchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('cta'), text: z.string().min(1), subtext: z.string().optional() }),
   z.object({ type: z.literal('logo'), assetId: z.string().optional() }),
+  /** A small on-screen label: the picture is a stand-in (demo or generated), not the business's real product. */
+  z.object({ type: z.literal('notice'), text: z.string().min(1) }),
 ]);
 export type Overlay = z.infer<typeof OverlaySchema>;
 

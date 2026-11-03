@@ -116,8 +116,28 @@ export const SceneDirectionSchema = z.object({
   editorNote: z.string().optional(),
   /** What the picture must contain. Older storyboards have none; it is then inferred from the visual. */
   composition: SceneCompositionSchema.optional(),
+  /** How the owner can film the authentic shot this scene needs on a phone (Hebrew), when one is needed. */
+  capture: z.string().optional(),
 });
 export type SceneDirection = z.infer<typeof SceneDirectionSchema>;
+
+/**
+ * The concept's video treatment (Video Director): how this concept is cut, not only what it shows. The timeline
+ * reads it for pacing, transitions, motion strength and when on-screen text enters.
+ */
+export const VideoTreatmentSchema = z.object({
+  idea: z.enum(['VALUE', 'APPETITE', 'CRAFT', 'MOMENT', 'STATEMENT']),
+  pacing: z.enum(['CALM', 'BALANCED', 'FAST']),
+  /** The cut between ordinary scenes; 'none' is a hard cut. */
+  transition: z.enum(['none', 'fade', 'slide-up', 'zoom']),
+  /** Camera-move strength on stills, 0.1 (barely) to 1. */
+  motionIntensity: z.number().min(0.1).max(1),
+  /** On-screen text waits this long so the picture lands first (0 = text leads). */
+  textDelaySec: z.number().min(0).max(2),
+  /** What the last frame leaves on screen. */
+  endFrame: z.enum(['PRICE', 'PRODUCT', 'HEADLINE', 'BRAND']),
+});
+export type VideoTreatment = z.infer<typeof VideoTreatmentSchema>;
 
 export const StoryboardSceneSchema = z.object({
   key: z.string().regex(/^[a-z0-9-]+$/),
@@ -142,6 +162,8 @@ export const StoryboardSchema = z
     conceptKey: z.string(),
     aspectRatio: z.literal('9:16'),
     scenes: z.array(StoryboardSceneSchema).min(3).max(8),
+    /** Older storyboards have none; the timeline then uses the art direction's motion settings. */
+    treatment: VideoTreatmentSchema.optional(),
   })
   .refine((s) => new Set(s.scenes.map((x) => x.key)).size === s.scenes.length, {
     message: 'Scene keys must be unique',

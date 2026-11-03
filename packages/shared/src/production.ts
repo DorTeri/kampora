@@ -40,6 +40,20 @@ export const ScenePlanSchema = z.object({
 });
 export type ScenePlan = z.infer<typeof ScenePlanSchema>;
 
+/** An authentic shot the ad needs but the business's media does not have yet (Video Director). */
+export const ShotRequestSchema = z.object({
+  sceneKey: z.string(),
+  /** NO_MEDIA: nothing matches, the scene is generated or graphic. STAND_IN: a demo, stock or AI picture fills it. */
+  reason: z.enum(['NO_MEDIA', 'STAND_IN']),
+  /** What the shot must show (the storyboard visual). */
+  need: z.string(),
+  /** How to film it on a phone (Hebrew), when the storyboard has an instruction. */
+  capture: z.string().optional(),
+  /** The scene asks for moving footage, not a still. */
+  footage: z.boolean(),
+});
+export type ShotRequest = z.infer<typeof ShotRequestSchema>;
+
 export const ProductionPlanSchema = z.object({
   scenes: z.array(ScenePlanSchema),
   estimatedPaidCostUsd: z.number().nonnegative(),
@@ -50,5 +64,7 @@ export const ProductionPlanSchema = z.object({
   /** True when any planned generation is paid. Paid work needs an explicit approval record. */
   requiresPaidApproval: z.boolean(),
   warnings: z.array(z.string()),
+  /** Authentic shots to film so stand-ins can be replaced. Older plans have none. */
+  shotList: z.array(ShotRequestSchema).optional(),
 });
 export type ProductionPlan = z.infer<typeof ProductionPlanSchema>;

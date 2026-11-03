@@ -1,6 +1,8 @@
 import {
   REELS_SAFE_AREA,
   VideoProjectSchema,
+  mediaAuthenticity,
+  representsRealBusiness,
   stripNiqqud,
   type ArtDirectionPlan,
   type BusinessProfile,
@@ -108,7 +110,7 @@ export function computeSceneTiming(
 function visualFor(
   scene: StoryboardScene,
   plan: ProductionPlan['scenes'][number],
-  motionContext: { previous?: MotionPreset; durationSec: number },
+  motionContext: { previous?: MotionPreset; durationSec: number; intensity?: number },
 ): SceneVisual {
   const assetId = plan.assetIds[0];
   switch (plan.strategy) {
@@ -178,7 +180,28 @@ export function splitPrice(text: string): { price: string; label?: string } | un
   return { price: price.trim(), label: label || undefined };
 }
 
-function overlaysFor(scene: StoryboardScene, input: BuildVideoProjectInput): Overlay[] {
+/**
+ * A picture that is not the business's own photo (demo art, stock, AI) is labelled on screen wherever the scene
+ * shows the product, the place or people: a stand-in is never passed off as the real thing.
+ */
+export function standInNotice(
+  scene: StoryboardScene,
+  visual: SceneVisual,
+  assets: readonly MediaAsset[],
+): Overlay | undefined {
+  if (visual.type !== 'image-motion' && visual.type !== 'video') return undefined;
+  const composition = scene.direction?.composition?.type;
+  const showsReal =
+    scene.quality.requiresProductAccuracy || composition === 'ENVIRONMENT' || composition === 'LIFESTYLE';
+  const asset = assets.find((a) => a.id === visual.assetId);
+  if (!showsReal || !asset) return undefined;
+  const authenticity = mediaAuthenticity({ source: asset.provenance.source, mimeType: asset.mimeType });
+  if (representsRealBusiness(authenticity)) return undefined;
+  const ai = authenticity === 'SYNTHETIC_AI' || authenticity === 'REFERENCE_GUIDED_AI';
+  return { type: 'notice', text: ai ? 'הדמיה, לא המוצר האמיתי' : 'תמונת הדגמה' };
+}
+
+function overlaysFor(scene: StoryboardScene, input: BuildVideoProjectInput, fps: number): Overlay[] {
   const text = scene.onScreenText?.trim();
   if (scene.role === 'CTA') {
     return [
@@ -189,7 +212,16 @@ function overlaysFor(scene: StoryboardScene, input: BuildVideoProjectInput): Ove
   if (!text) return [];
   const price = scene.role === 'OFFER' ? splitPrice(text) : undefined;
   if (price) return [{ type: 'price-tag', ...price }];
-  return [{ type: 'headline', text, position: input.motion?.headlinePosition ?? 'top' }];
+  // The concept's text timing: appetite and moment concepts let the picture land before the words.
+  const delay = input.storyboard.treatment ? 4 + Math.round(input.storyboard.treatment.textDelaySec * fps) : undefined;
+  return [
+    {
+      type: 'headline',
+      text,
+      position: input.motion?.headlinePosition ?? 'top',
+      ...(delay !== undefined ? { delayFrames: delay } : {}),
+    },
+  ];
 }
 
 /**
@@ -200,6 +232,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
   const fps = input.fps ?? 30;
   const planByKey = new Map(input.plan.scenes.map((p) => [p.sceneKey, p]));
   const ordered = [...input.storyboard.scenes].sort((a, b) => a.order - b.order);
+  const treatment = input.storyboard.treatment;
 
   let previousPreset: MotionPreset | undefined;
   const scenes: TimelineScene[] = ordered.map((scene, index) => {
@@ -215,9 +248,11 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
     const visual = visualFor(scene, plan, {
       previous: previousPreset,
       durationSec: timing.durationInFrames / fps,
+      intensity: treatment?.motionIntensity,
     });
     previousPreset = visual.type === 'image-motion' ? visual.motion.preset : undefined;
-    const overlays = overlaysFor(scene, input);
+    const notice = standInNotice(scene, visual, input.assets);
+    const overlays = [...overlaysFor(scene, input, fps), ...(notice ? [notice] : [])];
     const spoken = stripNiqqud(scene.voiceover).trim();
     const caption = shownOnCtaCard(spoken, overlays) ? '' : spoken;
     // Subtitle cues follow the speech: shift by the narration offset, clamp to the scene.
@@ -248,7 +283,7 @@ export function buildVideoProject(input: BuildVideoProjectInput): VideoProject {
             durationInFrames: Math.max(1, Math.round(voice.durationSec * fps)),
           }
         : undefined,
-      transition: chooseTransition(scene, index, timing.durationInFrames, input.motion),
+      transition: chooseTransition(scene, index, timing.durationInFrames, input.motion, treatment),
     };
   });
 

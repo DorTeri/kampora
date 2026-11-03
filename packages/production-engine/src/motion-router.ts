@@ -5,6 +5,7 @@ import type {
   ShotType,
   StoryboardScene,
   Transition,
+  VideoTreatment,
 } from '@kampora/shared';
 
 /**
@@ -58,11 +59,17 @@ export interface MotionChoice {
  */
 export function chooseMotion(
   scene: StoryboardScene,
-  options: { previous?: MotionPreset; durationSec: number; parallax?: boolean },
+  /** intensity: the concept treatment's camera-move strength; without one it grows with the scene length. */
+  options: { previous?: MotionPreset; durationSec: number; parallax?: boolean; intensity?: number },
 ): MotionChoice {
   const shot = scene.direction?.shot ?? ROLE_SHOT[scene.role];
   const focalPoint = SHOT_FOCUS[shot];
-  const intensity = Math.round(Math.min(0.7, Math.max(0.3, 0.25 + options.durationSec * 0.07)) * 100) / 100;
+  const intensity =
+    Math.round(
+      (options.intensity !== undefined
+        ? Math.min(1, Math.max(0.1, options.intensity))
+        : Math.min(0.7, Math.max(0.3, 0.25 + options.durationSec * 0.07))) * 100,
+    ) / 100;
   if (options.parallax) {
     return { motion: { preset: 'parallax', intensity, focalPoint }, reason: 'layered parallax (depth)' };
   }
@@ -91,7 +98,14 @@ export function chooseTransition(
   durationInFrames: number,
   /** Art direction: calm ads change scenes slower, fast ones quicker; the in-between transition follows it. */
   motion?: Pick<ArtDirectionPlan['motion'], 'pacing' | 'transition'>,
+  /** The concept's treatment wins over the art direction; its 'none' is a hard cut between ordinary scenes. */
+  treatment?: Pick<VideoTreatment, 'pacing' | 'transition'>,
 ): Transition {
+  if (treatment) {
+    if (treatment.transition === 'none' && index > 0 && scene.role !== 'OFFER' && scene.role !== 'CTA')
+      return { type: 'none', durationInFrames: 0 };
+    motion = { pacing: treatment.pacing, transition: treatment.transition };
+  }
   const cap = Math.max(4, Math.floor(durationInFrames * 0.2));
   const k = motion?.pacing === 'CALM' ? 1.4 : motion?.pacing === 'FAST' ? 0.75 : 1;
   const pick = (type: Transition['type'], frames: number): Transition => ({

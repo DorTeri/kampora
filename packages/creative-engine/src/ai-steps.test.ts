@@ -166,7 +166,12 @@ describe('structured output: storyboard', () => {
     expect(product!.direction?.composition?.type).toBe('ASSORTMENT');
     expect(product!.direction?.composition?.subjects.map((s) => s.name)).toEqual(['קפה', 'מאפים']);
     expect(['detail', 'extreme-close-up']).not.toContain(product!.direction?.shot);
-    expect(cta!.direction?.composition?.type).toBe('ENVIRONMENT');
+    // A value concept ends on the product with the CTA, not on the storefront (its video treatment).
+    expect(storyboard.treatment?.idea).toBe('VALUE');
+    expect(cta!.direction?.composition?.type).toBe('SINGLE_HERO');
+    // Every photographic scene says how to film the real shot; the offer card needs none.
+    expect(storyboard.scenes.filter((s) => s.visualKind !== 'GRAPHIC').every((s) => s.direction?.capture)).toBe(true);
+    expect(storyboard.scenes[2]!.direction?.capture).toBeUndefined();
   });
 
   it('requires HOOK first and CTA last', async () => {

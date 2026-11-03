@@ -4,8 +4,8 @@ import type {
   StructuredGenerationRequest,
   StructuredGenerationResult,
 } from '@kampora/media-providers';
-import type { CampaignGoal, ConceptAngle } from '@kampora/shared';
-import { industryFor } from '@kampora/agent-expertise';
+import type { CampaignGoal, ConceptAngle, SceneRole } from '@kampora/shared';
+import { industryFor, treatmentBeats } from '@kampora/agent-expertise';
 import { CONCEPT_TYPES } from './concept-types';
 import type { ConceptLlm, ConceptSetLlm, StoryboardLlm } from './llm-schemas';
 
@@ -20,7 +20,7 @@ const typeDefaults = (angle: ConceptAngle) => {
     voiceStyle: t.voiceStyle,
   };
 };
-import { ConceptsStepInputSchema, StoryboardStepInputSchema } from './steps';
+import { ConceptsStepInputSchema, StoryboardStepInputSchema, videoTreatmentFor } from './steps';
 import { CritiqueOpinionInputSchema, type CritiqueOpinionLlm } from './critic/opinion';
 
 /** A prefix letter joins a Hebrew word ("בבורגר האוס"); before digits or Latin it takes a hyphen ("ב-Luz"). */
@@ -485,101 +485,67 @@ export class MockCreativeLlmProvider implements LlmProvider {
       .filter(Boolean)
       .map((name) => ({ name, quantity: 1 }));
     const products = business.products.slice(0, 4).map((p) => ({ name: p.name, quantity: null }));
-    return {
-      scenes: [
-        {
-          role: 'HOOK',
-          durationSec: 4,
-          visual: `קלוז-אפ קולנועי על ${brief.productName}, אור בוקר חם`,
-          visualKind: 'PHOTO',
-          voiceover: concept.hook,
+    // The concept's video treatment plans the scenes: a craving concept is cut differently from a value one.
+    const treatment = videoTreatmentFor(concept);
+    const beats = treatmentBeats(treatment, Boolean(brief.offer));
+    // With a middle scene of its own (demo, benefit, solution) the second claim is said there, not twice.
+    const middle = beats.some((b) => b.role === 'DEMO' || b.role === 'BENEFIT' || b.role === 'SOLUTION');
+    const line = (role: SceneRole): { voiceover: string; onScreenText: string | null } => {
+      switch (role) {
+        case 'HOOK':
           // The Copywriter's written headline is the on-screen hook (not the spoken line).
-          onScreenText:
-            concept.copy?.headline ?? (brief.offer ? `מבצע החודש ${prefixed('ב', business.name)}` : concept.title),
-          assetTags: ['hero'],
-          motionPreset: 'cinematic-zoom',
+          return {
+            voiceover: concept.hook,
+            onScreenText:
+              concept.copy?.headline ?? (brief.offer ? `מבצע החודש ${prefixed('ב', business.name)}` : concept.title),
+          };
+        case 'PRODUCT':
+          return {
+            voiceover: `${prefixed('ב', business.name)} ${claimA}${claimB && !middle ? `, ו${claimB}` : ''}.`,
+            onScreenText: middle ? null : (claimB ?? null),
+          };
+        case 'OFFER': {
+          // The card keeps the approved words; past seven words "a + b + c" reads as a list ("a, b וc").
+          const card = brief.offer!.replace(/\s+עד\s.+$/, '');
+          const long = card.trim().split(/\s+/).length > 7;
+          return { voiceover: `עכשיו: ${brief.offer}.`, onScreenText: long ? spokenList(card.replace(/\s+\+\s+/g, ', ')) : card };
+        }
+        case 'CTA':
+          return { voiceover: `${concept.cta}${business.address ? ` – ${business.address}` : ''}.`, onScreenText: concept.cta };
+        default:
+          return { voiceover: `${claimB ?? brief.keyMessage}.`, onScreenText: null };
+      }
+    };
+    const subjectsFor = (composition: string) =>
+      composition === 'ASSORTMENT' ? products : composition === 'ENVIRONMENT' ? [] : heroSubjects;
+    return {
+      scenes: beats.map((b, i) => {
+        const close = b.shot === 'extreme-close-up' || b.shot === 'detail';
+        return {
+          role: b.role,
+          durationSec: b.durationSec,
+          visual: b.visual.replace('{product}', brief.productName),
+          visualKind: b.visualKind,
+          ...line(b.role),
+          assetTags: [...b.assetTags],
+          motionPreset: b.motion,
           ...flags,
-          requiresProductAccuracy: true,
-          purpose: 'לעצור את הגלילה ולהציג את ההבטחה המרכזית',
-          shot: heroSubjects.length > 1 ? 'close-up' : 'extreme-close-up',
-          composition: 'SINGLE_HERO',
-          subjects: heroSubjects,
-          editorNote: 'הטקסט נכנס כבר בשנייה הראשונה; חיתוך מהיר לסצנה הבאה',
-        },
-        {
-          role: 'PRODUCT',
-          durationSec: 5.5,
-          // A spread on the counter suits a café; elsewhere the product (or service) itself, framed clean.
-          visual:
-            industryFor(business).profile.id === 'cafe-restaurant'
-              ? 'פריסת מוצרים טריים על הדלפק'
-              : `${brief.productName} מקרוב, בפריים נקי`,
-          visualKind: 'PHOTO',
-          voiceover: `${prefixed('ב', business.name)} ${claimA}${claimB ? `, ו${claimB}` : ''}.`,
-          onScreenText: claimB ?? null,
-          assetTags: ['product'],
-          motionPreset: 'pan-left',
-          ...flags,
-          requiresProductAccuracy: true,
-          purpose: 'להראות מה מקבלים בפועל',
-          shot: 'overhead',
-          composition: 'ASSORTMENT',
-          subjects: products,
-          editorNote: null,
-        },
-        brief.offer
-          ? {
-              role: 'OFFER',
-              durationSec: 5,
-              visual: 'כרטיס מבצע בצבעי המותג עם המחיר בגדול',
-              visualKind: 'GRAPHIC',
-              voiceover: `עכשיו: ${brief.offer}.`,
-              onScreenText: brief.offer.replace(/\s+עד\s.+$/, ''),
-              assetTags: ['product'],
-              motionPreset: 'static',
-              ...flags,
-              requiresProductAccuracy: false,
-              purpose: 'להבהיר את המחיר והתנאים בדיוק כפי שאושרו',
-              shot: 'graphic',
-              composition: 'SINGLE_HERO',
-              subjects: [],
-              editorNote: 'המחיר הוא הדבר הגדול ביותר על המסך',
-            }
-          : {
-              role: 'PROOF',
-              durationSec: 5,
-              visual: 'אווירה במקום',
-              visualKind: 'PHOTO',
-              voiceover: business.approvedClaims[2] ?? brief.keyMessage,
-              onScreenText: business.approvedClaims[2] ?? null,
-              assetTags: ['store'],
-              motionPreset: 'ken-burns-out',
-              ...flags,
-              requiresProductAccuracy: false,
-              purpose: 'לבסס אמון דרך המקום עצמו',
-              shot: 'wide',
-              composition: 'ENVIRONMENT',
-              subjects: [],
-              editorNote: null,
-            },
-        {
-          role: 'CTA',
-          durationSec: 5,
-          visual: 'חזית/פנים העסק עם לוגו וכתובת',
-          visualKind: 'PHOTO',
-          voiceover: `${concept.cta}${business.address ? ` – ${business.address}` : ''}.`,
-          onScreenText: concept.cta,
-          assetTags: ['store'],
-          motionPreset: 'parallax',
-          ...flags,
-          requiresProductAccuracy: false,
-          purpose: 'להגיד בדיוק מה לעשות ואיפה',
-          shot: 'wide',
-          composition: 'ENVIRONMENT',
-          subjects: [],
-          editorNote: 'הלוגו והכתובת נשארים על המסך עד הסוף',
-        },
-      ],
+          requiresProductAccuracy: b.requiresProductAccuracy,
+          purpose: b.purpose,
+          // Several products never fit a macro frame.
+          shot: close && heroSubjects.length > 1 ? 'close-up' : b.shot,
+          composition: b.composition,
+          subjects: b.visualKind === 'GRAPHIC' ? [] : subjectsFor(b.composition),
+          editorNote:
+            i === 0
+              ? treatment.textDelaySec > 0
+                ? 'התמונה נוחתת לפני הטקסט; חיתוך מהיר לסצנה הבאה'
+                : 'הטקסט נכנס כבר בשנייה הראשונה; חיתוך מהיר לסצנה הבאה'
+              : b.role === 'CTA'
+                ? 'הלוגו והקריאה לפעולה נשארים על המסך עד הסוף'
+                : null,
+        };
+      }),
     };
   }
 }
