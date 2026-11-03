@@ -76,7 +76,20 @@ export function requirementsFor(task: DirectorTask, memory: Memory, now: Date): 
         : req('business.model', true, 'סוג העסק קובע לאן המודעה שולחת לקוחות.'),
     );
   const model = usable(memory, 'business.model', now) as BusinessModel | undefined;
-  if (needsCity(memory, now) && missing('location.city')) out.push(req('location.city', true, 'מודעה מקומית מוצגת רק לאנשים באזור שלך.'));
+  // A region ("השרון") is enough to advise, and enough for a local ad if the owner prefers it: the city is then
+  // asked once, optionally, saying why (a region is wide, and the ad would reach people far from the business).
+  const region = usableText(memory, 'location.region', now);
+  if (needsCity(memory, now) && missing('location.city'))
+    out.push(
+      region
+        ? req(
+            'location.city',
+            false,
+            '',
+            `"${region}" זה אזור רחב. כדי שהמודעה תגיע לאנשים קרובים אליכם ולא תשלם על מי שגר רחוק, באיזו עיר או שכונה העסק? אם עדיף לכם כל ${region}, אפשר לדלג.`,
+          )
+        : req('location.city', true, 'מודעה מקומית מוצגת רק לאנשים באזור שלך.'),
+    );
 
   const product = task.params.product;
   // A new product named only generically ("ההמבורגר החדש") needs its real name, whether the task is a launch or not.
@@ -140,7 +153,7 @@ function usableTextAny(memory: Memory, key: FactKey): string | undefined {
 }
 
 /** The destination question explains why it is asked, and that no landing page is required. */
-function destinationRequirement(key: FactKey, model: BusinessModel): Requirement {
+export function destinationRequirement(key: FactKey, model: BusinessModel): Requirement {
   const why = 'המודעה צריכה לשלוח לקוחות למקום שקיים. אני לא ממציא קישורים.';
   switch (key) {
     case 'conversion.ordering':

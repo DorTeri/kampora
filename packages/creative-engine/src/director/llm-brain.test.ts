@@ -467,3 +467,64 @@ describe('open items from the validation report', () => {
     expect(u.offerPatch?.validUntil).toBe('2026-11-15');
   });
 });
+
+describe('the model suggests the next step; the decision engine decides (V2.1)', () => {
+  // A fresh copy each time: the sandbox writes into the data it is given.
+  const memory = () => ({ facts: [fact('business.model', 'RESTAURANT'), fact('business.category', 'מסעדה'), fact('location.city', 'חיפה'), fact('conversion.ordering', 'Wolt'), fact('conversion.orderUrl', 'https://wolt.com/he/isr/haifa/restaurant/x')], campaigns: [], approvals: [] });
+  const decisionOf = (cards: DirectorCard[]) => cards.find((c): c is Extract<DirectorCard, { kind: 'DECISION' }> => c.kind === 'DECISION')?.decision;
+
+  it('uses a suggestion whose evidence quotes the owner, and says so in the decision', async () => {
+    const text = 'אנשים אוהבים את האוכל אבל כמעט אף אחד לא חוזר פעם שנייה. מה לעשות?';
+    const { provider } = scripted({ intent: 'RECOMMEND', decision: { action: 'CUSTOMER_RETENTION', blocker: null, evidence: 'כמעט אף אחד לא חוזר פעם שנייה', paidAds: 'NO' } });
+    const r = await llmSandbox(provider, memory()).send(text);
+    const d = decisionOf(r.cards)!;
+    expect(d.rule).toBe('MODEL_HINT');
+    expect(d.action).toBe('CUSTOMER_RETENTION');
+    expect(d.model).toMatchObject({ action: 'CUSTOMER_RETENTION', used: true });
+  });
+
+  it('drops a suggestion whose evidence the owner never wrote', async () => {
+    const { provider } = scripted({ intent: 'RECOMMEND', decision: { action: 'DEFER_SPENDING', blocker: null, evidence: 'אין לי כסף בכלל', paidAds: 'NO' } });
+    const r = await llmSandbox(provider, memory()).send('מה כדאי לי לעשות החודש?');
+    const d = decisionOf(r.cards)!;
+    expect(d.rule).not.toBe('MODEL_HINT');
+    expect(d.model).toBeNull();
+  });
+
+  it('cannot recommend paid ads past a contraindication the owner stated', async () => {
+    const { provider } = scripted({
+      intent: 'RECOMMEND',
+      facts: [{ key: 'capacity.full', value: true, evidence: 'היומן מלא' }],
+      decision: { action: 'PAID_ADVERTISING', blocker: null, evidence: 'היומן מלא', paidAds: 'YES' },
+    });
+    const data = { facts: [fact('business.model', 'BEAUTY'), fact('business.category', 'מניקור'), fact('location.city', 'חיפה')], campaigns: [], approvals: [] };
+    const r = await llmSandbox(provider, data).send('היומן מלא, שווה לפרסם?');
+    expect(decisionOf(r.cards)!.paid.verdict).toBe('NOT_NOW');
+  });
+
+  it('an overlong field is cut, not a reason to throw the whole reading away', async () => {
+    const { provider } = scripted({
+      intent: 'PROVIDE_INFO',
+      facts: [{ key: 'location.city', value: 'חיפה', evidence: 'בחיפה' }],
+      product: 'א'.repeat(400),
+      offer: { text: 'ב'.repeat(500), price: null, validUntil: 'עד ה-15 בנובמבר 2026 כולל, ולא יאוחר מזה בשום מקרה', ongoing: false, evidence: 'עד ה-15 בנובמבר' },
+    });
+    const brain = new LlmDirectorBrain(provider);
+    const u = await brain.interpret({ text: 'אנחנו בחיפה, המבצע עד ה-15 בנובמבר', now: NOW, state: new DirectorSandbox().state, knownFacts: [], recentWork: [] });
+    expect(u.fallbackReason).toBeUndefined();
+    expect(u.facts.find((f) => f.key === 'location.city')?.value).toBe('חיפה');
+    // The long date the model wrote is not trusted as a date; the owner's words are parsed instead.
+    expect(u.offerPatch?.validUntil).toBe('2026-11-15');
+  });
+
+  it('budget 0 from the model is kept only when the owner said there is no budget', async () => {
+    const said = scripted({ facts: [{ key: 'budget.monthlyIls', value: 0, evidence: 'אין לי תקציב' }] });
+    const s1 = llmSandbox(said.provider, memory());
+    await s1.send('אין לי תקציב לפרסום בכלל');
+    expect(stored(s1, 'budget.monthlyIls')?.value).toBe(0);
+    const invented = scripted({ facts: [{ key: 'budget.monthlyIls', value: 0, evidence: 'קטן' }] });
+    const s2 = llmSandbox(invented.provider, memory());
+    await s2.send('העסק קטן');
+    expect(stored(s2, 'budget.monthlyIls')).toBeUndefined();
+  });
+});

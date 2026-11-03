@@ -11,16 +11,20 @@ import type {
   DirectorToolName,
   FactKey,
   FactProposal,
+  MarketingDecision,
+  MarketingObjective,
   OfferFact,
   ToolCallRecord,
 } from '@kampora/shared';
+import { skillDigest, skillsFor } from '@kampora/agent-expertise';
 import type { DirectorBrain } from './brain';
-import { FACT_SPECS, decideFacts, factState, formatDay, isOffer, mergeFacts, memoryOf, usable, usableText, type Memory } from './facts';
+import { FACT_SPECS, SITUATION_KEYS, decideFacts, factState, formatDay, isOffer, mergeFacts, memoryOf, usable, usableText, type Memory } from './facts';
+import { MARKETING_ACTION_LABELS, decideMarketing, decisionText, type DecisionInput } from './decision';
 import { parseProductAnswer, type Understanding } from './hebrew';
 import { campaignLabel, resolveReference } from './references';
 import { needsCity, nextQuestion, requirementsFor, taskObjective, taskProduct } from './requirements';
 import { GROWTH_MEANING, marketingRecommendation } from './playbooks';
-import { ACTION_LABELS, OBJECTIVE_LABELS, displayFact, proposeCampaign, recommend, type CostContext } from './strategy';
+import { ACTION_LABELS, DEFAULT_OBJECTIVE, OBJECTIVE_LABELS, displayFact, proposeCampaign, recommend, type CostContext } from './strategy';
 import {
   authorizeTool,
   DirectorToolError,
@@ -102,6 +106,17 @@ class StepStop extends Error {
 }
 
 const NEW_TASK_INTENTS = ['CAMPAIGN', 'PROMOTION', 'LAUNCH', 'MODIFY'];
+
+const PAID_VERDICT_LABELS: Record<MarketingDecision['paid']['verdict'], string> = {
+  RECOMMENDED: 'מומלץ',
+  LATER: 'אחר כך',
+  NOT_NOW: 'לא עכשיו',
+  OWNER_CHOICE: 'בחירה של בעל העסק',
+};
+
+/** A turn that told the Director about the situation (a blocker, a full calendar, no budget, earlier results). */
+const DESTINATION_KEYS: readonly FactKey[] = ['channel.website', 'channel.instagram', 'conversion.orderUrl', 'conversion.bookingUrl', 'contact.whatsapp', 'contact.phone'];
+const situationChanged = (facts: readonly BusinessFact[]) => facts.some((f) => SITUATION_KEYS.includes(f.key) || (f.key === 'budget.monthlyIls' && f.value === 0));
 const ONBOARDING_KEYS: FactKey[] = ['business.name', 'business.model', 'location.city', 'offering.main'];
 
 function offerLine(offer: OfferFact): string {
@@ -234,9 +249,15 @@ class Turn {
     if (!accepted.length) return;
     const r = mergeFacts(this.memory, accepted, this.now);
     await this.persist(r.changed, r.memory);
-    const confirmed = r.changed.filter((f) => f.status === 'CONFIRMED' && f.value !== false);
+    // Answers to the question just asked need no echo (the next step shows they landed), and situations are
+    // acknowledged by the decision that follows. What the owner volunteered is confirmed once, briefly.
+    const asked = this.state.awaiting?.kind === 'DECISION' ? (this.state.awaiting.questionKeys ?? []) : awaited;
+    const confirmed = r.changed.filter((f) => f.status === 'CONFIRMED' && f.value !== false && !asked.includes(f.key) && !SITUATION_KEYS.includes(f.key) && f.key !== 'budget.monthlyIls');
     const shown = confirmed.filter((f) => !(f.key === 'business.model' && confirmed.some((c) => c.key === 'business.category')));
-    if (shown.length) this.say(`רשמתי: ${shown.map((f) => `${FACT_SPECS[f.key].label} – ${displayFact(f.key, f.value)}`).join(', ')}.`);
+    // "רשמתי" once, on the first message; later only a link or a number is read back, since the ad would send there.
+    const later = this.state.turns > 1 ? shown.filter((f) => DESTINATION_KEYS.includes(f.key)) : shown;
+    const line = later.map((f) => `${FACT_SPECS[f.key].label} – ${displayFact(f.key, f.value)}`).join(', ');
+    if (later.length) this.say(this.state.turns > 1 ? `מעולה: ${line}.` : `רשמתי: ${line}.`);
     const proposed = r.changed.filter((f) => f.status === 'PROPOSED');
     if (proposed.length)
       this.cards.push({
@@ -340,12 +361,15 @@ export class DirectorEngine {
               ? 'לאיזה מהם התכוונת?'
               : awaiting?.kind === 'INSTRUCTION'
                 ? 'מה לשנות?'
-                : ctx.state.conflict
+                : awaiting?.kind === 'DECISION'
+                  ? (awaiting.questionKeys ?? []).map((k) => FACT_SPECS[k].question).join(' ') || 'להתקדם עם ההמלצה?'
+                  : ctx.state.conflict
                   ? `לעדכן ${FACT_SPECS[ctx.state.conflict.key].label}?`
                   : undefined,
       ...(active ? { activeTask: { kind: active.kind, status: active.status, objective: active.params.objective, product: active.params.product } } : {}),
       pendingApprovals: ctx.approvals.filter((a) => a.status === 'PENDING').map((a) => a.title),
       transcript: ctx.transcript ?? [],
+      skills: skillDigest(skillsFor({ model: usable(t.memory, 'business.model', ctx.now) as BusinessModel | undefined, objective: usable(t.memory, 'goal.primary', ctx.now) as MarketingObjective | undefined, signals: [] })),
     });
     t.state.turns += 1;
     const hadConflict = Boolean(ctx.state.conflict);
@@ -465,7 +489,17 @@ export class DirectorEngine {
       }
     }
 
+    // "השרון" answers "באיזו עיר?" with a region: accepted, and the city is not asked again in this conversation.
+    if (awaiting?.kind === 'FACTS' && awaiting.keys.includes('location.city') && proposals.some((p) => p.key === 'location.region') && !proposals.some((p) => p.key === 'location.city')) {
+      t.state.skipped = [...new Set([...t.state.skipped, 'location.city' as FactKey])];
+      t.say(`בסדר, נעבוד עם ${proposals.find((p) => p.key === 'location.region')!.value} כולו.`);
+    }
+
     await t.remember(proposals);
+
+    if (awaiting?.kind === 'DECISION' && (await this.decisionReply(t, awaiting, u))) return;
+    // The business type was the one thing advice needed: answer the original question now.
+    if (awaiting?.kind === 'FACTS' && awaiting.advice && usable(t.memory, 'business.model', t.now) && !NEW_TASK_INTENTS.includes(u.intent)) return this.advise(t, u);
 
     if (awaiting?.kind === 'CONCEPT' && u.choice !== undefined && !NEW_TASK_INTENTS.includes(u.intent)) return this.chooseConcept(t, awaiting, u.choice);
     if (awaiting?.kind === 'CLARIFY' && !NEW_TASK_INTENTS.includes(u.intent)) {
@@ -494,7 +528,7 @@ export class DirectorEngine {
       case 'HISTORY':
         return this.historyReply(t);
       case 'RECOMMEND':
-        return this.recommendReply(t);
+        return this.recommendReply(t, u);
       case 'APPROVE_TEXT':
         return this.approveByText(t);
       case 'RETRY':
@@ -529,9 +563,10 @@ export class DirectorEngine {
 
   // ── Campaign workflow ──
 
-  private async startCampaign(t: Turn, intent: 'CAMPAIGN' | 'PROMOTION' | 'LAUNCH', u: Understanding) {
+  private async startCampaign(t: Turn, intent: 'CAMPAIGN' | 'PROMOTION' | 'LAUNCH', u: Understanding, extra: DirectorTask['params'] = {}) {
     const active = t.activeTask();
     const params: DirectorTask['params'] = {
+      ...extra,
       ...(u.objective ? { objective: u.objective } : {}),
       ...(u.product ? { product: u.product.text, productIsNew: u.product.isNew } : {}),
       ...(u.window ? { window: u.window } : {}),
@@ -548,7 +583,9 @@ export class DirectorEngine {
     if (active && ['WAITING_CHOICE', 'WAITING_APPROVAL'].includes(active.status) && params.objective && active.params.objective !== params.objective)
       t.say('הקמפיין הקודם נשמר כמו שהוא, ואפשר לחזור אליו.');
     const task = t.newTask(intent, params);
-    t.say(
+    // A message that describes a problem gets an answer to the problem, not "בשמחה, נכין קמפיין".
+    if (!situationChanged(t.changedFacts) && !extra.ownerChoice)
+      t.say(
       intent === 'PROMOTION'
         ? 'בשמחה, נכין קמפיין מבצע.'
         : intent === 'LAUNCH'
@@ -570,6 +607,13 @@ export class DirectorEngine {
     if (task.status === 'WAITING_CHOICE') {
       t.say('איזה מהרעיונות לבחור? אפשר לכתוב 1, 2 או 3, או "מה שאתה ממליץ".');
       return;
+    }
+    // Before collecting campaign details: does a paid campaign make sense now? A blocker, a full calendar or no
+    // budget is answered first, instead of asking for photos and links for ads that should wait.
+    const known = usable(t.memory, 'business.model', t.now) as BusinessModel | undefined;
+    if (known && !task.params.ownerChoice && !task.params.channel && t.state.awaiting?.kind !== 'DECISION') {
+      const early = await this.decision(t, task, 'CAMPAIGN');
+      if ((early.paid.verdict === 'LATER' || early.paid.verdict === 'NOT_NOW') && early.rule !== 'NEEDS_DESTINATION') return this.presentDecision(t, early, 'CAMPAIGN', task);
     }
     const requirements = requirementsFor(task, t.memory, t.now);
     const q = nextQuestion(requirements, t.state.skipped);
@@ -602,11 +646,17 @@ export class DirectorEngine {
       now: t.now,
       paidProvider: t.ctx.cost.providerPaid,
     });
-    t.recordDecision('ProposeCampaignStrategy', `${strategy.recommendation.title} · יעד: ${ACTION_LABELS[strategy.conversion.action]}`);
-    t.cards.push({ kind: 'RECOMMENDATION', recommendation: strategy.recommendation, conversion: strategy.conversion, marketing });
+    const organic = task.params.channel === 'ORGANIC';
+    const decision = await this.decision(t, task, 'CAMPAIGN');
+    t.recordDecision('ProposeCampaignStrategy', `${organic ? 'תוכן אורגני' : strategy.recommendation.title} · יעד: ${ACTION_LABELS[strategy.conversion.action]}`);
+    t.cards.push({ kind: 'DECISION', decision });
+    if (!organic) t.cards.push({ kind: 'RECOMMENDATION', recommendation: strategy.recommendation, conversion: strategy.conversion, marketing });
     if (task.params.growth && !usable(t.memory, 'goal.primary', t.now)) t.say(GROWTH_MEANING[model]);
-    t.say(`הנה מה שאני מציע. ${strategy.recommendation.reasoning}`);
-    t.say(`ההנחה שנבדוק: ${marketing.hypothesis} נמדוד את זה לפי ${marketing.measurement.primaryMetric}.`);
+    if (organic) t.say(`נכין תוכן לערוצים שלכם, בלי קידום ממומן. ${decision.sequence[0] ? `הצעד הראשון: ${decision.sequence[0].step}.` : ''}`.trim());
+    else if (task.params.ownerChoice && decision.paid.verdict === 'OWNER_CHOICE')
+      t.say(`בסדר, זו החלטה שלך ונתקדם עם הקמפיין. רק שתדע: ${decision.paid.why} ${strategy.conversion.destination ? `המודעה תשלח ל${ACTION_LABELS[strategy.conversion.action]} (${strategy.conversion.destination}).` : ''}`.trim());
+    else t.say(`הנה מה שאני מציע. ${decision.rule === 'DESTINATION_READY' ? strategy.recommendation.reasoning : decision.why}`);
+    t.say(`ההנחה שנבדוק: ${organic ? decision.why : marketing.hypothesis} נמדוד את זה לפי ${organic ? decision.measurement.primaryMetric : marketing.measurement.primaryMetric}.`);
 
     const offer = promotion ? usable(t.memory, 'offer.current', t.now) : undefined;
     const brief = {
@@ -618,7 +668,9 @@ export class DirectorEngine {
         task.params.window ? `לוח זמנים: ${task.params.window}` : '',
         usableText(t.memory, 'preferences.style', t.now) ? `העדפת סגנון של בעל העסק: ${usableText(t.memory, 'preferences.style', t.now)}` : '',
         `הלקוח מתבקש: ${ACTION_LABELS[strategy.conversion.action]}${strategy.conversion.destination ? ` (${strategy.conversion.destination})` : ''}`,
-        `השערה שיווקית: ${marketing.hypothesis}`,
+        organic ? 'תוכן אורגני לערוצים של העסק עצמו (אינסטגרם, סטורי, פרופיל גוגל), לא לקידום ממומן. בלי הנעה לרכישה דחופה.' : '',
+        task.params.ownerChoice && decision.paid.verdict === 'OWNER_CHOICE' ? `בעל העסק בחר לפרסם למרות: ${decision.paid.why}` : '',
+        `השערה שיווקית: ${organic ? decision.why : marketing.hypothesis}`,
         `פורמטים: ${marketing.creativeFormats.map((f) => f.format).join(', ')}`,
       ]
         .filter(Boolean)
@@ -640,6 +692,161 @@ export class DirectorEngine {
       return;
     }
     await this.createConcepts(t, task, brief);
+  }
+
+  // ── Marketing decisions ──
+
+  /** The decision for this business now. CAMPAIGN: the owner asked for a campaign; ADVICE: they asked what to do. */
+  private async decision(t: Turn, task: DirectorTask | undefined, request: DecisionInput['request'], u?: Understanding): Promise<MarketingDecision> {
+    const model = (usable(t.memory, 'business.model', t.now) as BusinessModel | undefined) ?? 'OTHER';
+    const objective = task ? taskObjective(task, t.memory, t.now)! : (u?.objective ?? (usable(t.memory, 'goal.primary', t.now) as MarketingObjective | undefined) ?? DEFAULT_OBJECTIVE[model]);
+    const product = task ? taskProduct(task, t.memory, t.now) : (u?.product?.text ?? usableText(t.memory, 'offering.main', t.now));
+    const decision = decideMarketing({
+      model,
+      objective,
+      memory: t.memory,
+      now: t.now,
+      request,
+      ...(product ? { product } : {}),
+      launch: task?.kind === 'LAUNCH' || Boolean(u?.product?.isNew),
+      history: await t.loadHistory(),
+      ownerChoice: Boolean(task?.params.ownerChoice),
+      ...(u?.decisionHint ? { hint: u.decisionHint } : {}),
+    });
+    t.recordDecision(
+      'ProposeMarketingDecision',
+      `${MARKETING_ACTION_LABELS[decision.action]} · פרסום ממומן: ${PAID_VERDICT_LABELS[decision.paid.verdict]} · ${decision.rule}${decision.model ? ` · מודל: ${decision.model.used ? 'התקבל' : 'לא שימש'}` : ''}`,
+    );
+    return decision;
+  }
+
+  /** Shows a decision and waits for the owner: "כן" runs its workflow, "בכל זאת קמפיין" is their choice to advertise. */
+  private presentDecision(t: Turn, d: MarketingDecision, request: DecisionInput['request'], task?: DirectorTask) {
+    t.cards.push({ kind: 'DECISION', decision: d });
+    t.say(decisionText(d, request));
+    const questionKeys = d.questions.map((q) => q.key).filter((k): k is FactKey => Boolean(k));
+    if (d.next === 'NONE') {
+      t.state.awaiting = undefined;
+      return;
+    }
+    t.state.awaiting = {
+      kind: 'DECISION',
+      action: d.action,
+      next: d.next,
+      paid: d.paid.verdict,
+      ...(d.paid.blockedBy ? { against: true } : {}),
+      ...(task ? { taskId: task.id } : {}),
+      ...(questionKeys.length ? { questionKeys } : {}),
+    };
+    const paidNow = d.paid.verdict === 'RECOMMENDED';
+    const q = d.questions[0];
+    const suggestions =
+      q?.key && d.next !== 'PAID_CONCEPTS'
+        ? [...(FACT_SPECS[q.key].suggestions ?? []).slice(0, 4), ...(paidNow ? [] : ['בכל זאת קמפיין ממומן'])]
+        : d.next === 'PAID_CONCEPTS'
+          ? ['כן, תכין', 'לא עכשיו']
+          : d.next === 'ORGANIC_CONCEPTS'
+            ? ['כן, תכין תוכן', 'בכל זאת קמפיין ממומן']
+            : paidNow
+              ? []
+              : ['בכל זאת קמפיין ממומן'];
+    t.cards.push({ kind: 'QUESTION', keys: questionKeys.slice(0, 3), skippable: Boolean(q) && d.next !== 'PAID_CONCEPTS', suggestions: suggestions.slice(0, 6) });
+    t.note(`החלטה: ${MARKETING_ACTION_LABELS[d.action]} (פרסום: ${PAID_VERDICT_LABELS[d.paid.verdict]})`);
+  }
+
+  /** Advice: the owner described a situation or asked what to do. */
+  private async advise(t: Turn, u?: Understanding) {
+    // A situation the owner described (no budget, a full calendar, a blocker) decides without the business type.
+    const situation = [...SITUATION_KEYS, 'budget.monthlyIls' as const].some((k) => factState(t.memory[k], t.now) === 'USABLE');
+    if (!usable(t.memory, 'business.model', t.now) && !situation) {
+      // The business type is the one thing advice cannot do without; the name and the rest can wait.
+      // Still a decision, recorded and explainable: learn the one fact that decides everything else.
+      const base = await this.decision(t, undefined, 'ADVICE', u);
+      const decision: MarketingDecision = {
+        ...base,
+        action: 'BUSINESS_RESEARCH',
+        title: MARKETING_ACTION_LABELS.BUSINESS_RESEARCH,
+        why: 'עוד לא ברור איזה עסק זה, ובלי זה כל עצה תהיה ניחוש: מסעדה, סטודיו וחנות אונליין צריכים צעדים שונים.',
+        sequence: [{ action: 'BUSINESS_RESEARCH', step: 'להבין איזה עסק זה ואיך לקוחות קונים בו היום', when: null }],
+        paid: { verdict: 'LATER', why: 'עוד לא ידוע מה העסק ולאן מודעה תשלח.', condition: 'כשנדע מה העסק ולאן לשלוח לקוחות', blockedBy: null },
+        questions: [{ key: 'business.model', question: 'איזה סוג עסק זה?', why: 'סוג העסק קובע מה הצעד הראשון.' }],
+        checklist: [],
+        rule: 'NEEDS_BUSINESS_TYPE',
+        confidence: 'LOW',
+        next: 'QUESTION',
+      };
+      t.cards.push({ kind: 'DECISION', decision });
+      t.state.awaiting = { kind: 'FACTS', keys: ['business.model'], advice: true };
+      t.cards.push({ kind: 'QUESTION', keys: ['business.model'], skippable: false, suggestions: (FACT_SPECS['business.model'].suggestions ?? []).slice(0, 6) });
+      t.say('כדי לתת עצה שמתאימה לעסק, אני צריך לדעת דבר אחד: איזה סוג עסק זה?');
+      return;
+    }
+    const active = t.activeTask();
+    const d = await this.decision(t, active?.status === 'COLLECTING' ? active : undefined, 'ADVICE', u);
+    return this.presentDecision(t, d, 'ADVICE', active?.status === 'COLLECTING' ? active : undefined);
+  }
+
+  /** The owner's answer while a decision waits. Returns false when the message is about something else. */
+  private async decisionReply(t: Turn, awaiting: Extract<DirectorConversationState['awaiting'], { kind: 'DECISION' }>, u: Understanding): Promise<boolean> {
+    const existing = t.task(awaiting.taskId);
+    const start = async (params: DirectorTask['params']) => {
+      t.state.awaiting = undefined;
+      const task = existing && !['DONE', 'CANCELLED'].includes(existing.status) ? { ...existing, status: 'COLLECTING' as const, params: { ...existing.params, ...params } } : t.newTask('CAMPAIGN', params);
+      t.save(task);
+      t.state.activeTaskId = task.id;
+      await this.advance(t, task);
+      return true;
+    };
+    const asksForCampaign = ['CAMPAIGN', 'PROMOTION', 'LAUNCH'].includes(u.intent);
+    // Asking for a campaign again after hearing why not now (or "בכל זאת") is the owner's choice to advertise.
+    if ((u.insists || (awaiting.against && asksForCampaign)) && !u.wantsOrganic) {
+      // Said once, plainly: it is the owner's call; the risk is repeated with the recommendation at the end.
+      if (awaiting.against) t.say('בסדר, זו ההחלטה שלך. נכין קמפיין ממומן, ובסוף אזכיר מה כדאי לסדר כדי שהתקציב לא ילך לאיבוד.');
+      if (asksForCampaign && u.intent !== 'CAMPAIGN') {
+        t.state.awaiting = undefined;
+        await this.startCampaign(t, u.intent as 'PROMOTION' | 'LAUNCH', u, { ownerChoice: true, channel: 'PAID' });
+        return true;
+      }
+      return start({ ownerChoice: true, channel: 'PAID' });
+    }
+    if (u.wantsOrganic || (u.yes && awaiting.next === 'ORGANIC_CONCEPTS')) return start({ channel: 'ORGANIC' });
+    if (u.yes && awaiting.next === 'PAID_CONCEPTS') return start({ channel: 'PAID' });
+    // A new request (a promotion, a launch) is handled as one; its own decision runs when it is ready.
+    if (asksForCampaign) {
+      t.state.awaiting = undefined;
+      return false;
+    }
+    if (u.no && !t.changedFacts.length) {
+      t.state.awaiting = undefined;
+      t.say('בסדר. כשתרצה, נחזור לזה.');
+      return true;
+    }
+    if (u.skip && !t.changedFacts.length) {
+      t.state.awaiting = undefined;
+      t.state.skipped = [...new Set([...t.state.skipped, ...(awaiting.questionKeys ?? [])])];
+      t.say('בסדר, נמשיך בלי זה. כשיהיה לך עדכון, תגיד לי.');
+      return true;
+    }
+    // New information (often the answer to the decision's question) can change the decision: decide again.
+    if (t.changedFacts.length) {
+      t.state.awaiting = undefined;
+      const task = existing && existing.status === 'COLLECTING' ? existing : undefined;
+      const d = await this.decision(t, task, task ? 'CAMPAIGN' : 'ADVICE', u);
+      if (task && d.paid.verdict === 'RECOMMENDED') {
+        const next = { ...task, params: { ...task.params, channel: 'PAID' as const } };
+        t.save(next);
+        await this.advance(t, next);
+        return true;
+      }
+      this.presentDecision(t, d, task ? 'CAMPAIGN' : 'ADVICE', task);
+      return true;
+    }
+    if (u.yes) {
+      t.state.awaiting = undefined;
+      t.say('מעולה. כשזה מסודר, ספר לי מה השתנה, ונחליט יחד אם להוסיף פרסום.');
+      return true;
+    }
+    return false;
   }
 
   private async createConcepts(t: Turn, task: DirectorTask, brief: Record<string, unknown>, auth?: Partial<ToolAuthContext>) {
@@ -843,7 +1050,12 @@ export class DirectorEngine {
     this.remind(t);
   }
 
-  private async recommendReply(t: Turn, intro?: string) {
+  private async recommendReply(t: Turn, u?: Understanding, intro?: string) {
+    // What to do next is a decision: the same engine that answers "מה לעשות?" and gates campaigns.
+    if (u || usable(t.memory, 'business.model', t.now)) {
+      if (intro) t.say(intro);
+      return this.advise(t, u);
+    }
     const recs = recommend({ memory: t.memory, now: t.now, history: await t.loadHistory(), approvals: t.approvals, cost: t.ctx.cost });
     if (!recs.length) {
       t.say('ספר לי קצת על העסק ואוכל להמליץ: איך קוראים לו ומה הוא עושה?');
@@ -853,21 +1065,33 @@ export class DirectorEngine {
     t.say(`${intro ? `${intro} ` : ''}הייתי מתחיל ב: ${recs[0]!.title}. ${recs[0]!.reasoning}`);
   }
 
+  /** "מה אתה יודע עליי?": what is confirmed, what is uncertain (unconfirmed, possibly outdated), and how to correct it. */
   private async profileReply(t: Turn) {
     await t.call('ReadBusinessProfile', {}, () => TOOL_SPECS.ReadBusinessProfile.label);
-    const known = Object.values(t.memory).filter((f) => f && f.status === 'CONFIRMED' && f.value !== false && factState(f, t.now) === 'USABLE');
-    if (!known.length) {
+    const facts = Object.values(t.memory).filter((f): f is BusinessFact => Boolean(f) && f!.status !== 'REJECTED');
+    const state = (f: BusinessFact) => factState(f, t.now);
+    const confirmed = facts.filter((f) => ['USABLE', 'DECLINED'].includes(state(f)) && !(f.key === 'business.model' && t.memory['business.category']));
+    const proposed = facts.filter((f) => state(f) === 'PROPOSED');
+    const outdated = facts.filter((f) => state(f) === 'STALE' || state(f) === 'EXPIRED');
+    if (!confirmed.length && !proposed.length) {
       t.say('עוד לא סיפרת לי על העסק. איך קוראים לו ומה הוא עושה?');
       return;
     }
-    t.cards.push({ kind: 'FACTS', facts: known.slice(0, 20).map((f) => ({ key: f.key, label: FACT_SPECS[f.key].label, value: displayFact(f.key, f.value), status: f.status })) });
+    const line = (f: BusinessFact) => `${FACT_SPECS[f.key].label}: ${displayFact(f.key, f.value)}`;
+    t.cards.push({
+      kind: 'FACTS',
+      facts: [...confirmed, ...proposed].slice(0, 20).map((f) => ({ key: f.key, label: FACT_SPECS[f.key].label, value: displayFact(f.key, f.value), status: f.status })),
+    });
     const history = await t.loadHistory();
-    t.say(
-      `זה מה שאני זוכר על העסק: ${known.slice(0, 5).map((f) => `${FACT_SPECS[f.key].label} – ${displayFact(f.key, f.value)}`).join(', ')}.` +
-        (history.length ? ` הכנו עד עכשיו ${history.length === 1 ? 'קמפיין אחד' : `${history.length} קמפיינים`}.` : ' עוד לא הכנו קמפיינים.') +
-        ' אם משהו השתנה, כתוב לי ואעדכן.',
-    );
-    this.remind(t);
+    const parts = [confirmed.length ? `מה שאני יודע בוודאות (אמרת או אישרת): ${confirmed.slice(0, 8).map(line).join('; ')}.` : 'עוד אין לי פרטים מאושרים.'];
+    const unsure = [
+      ...proposed.map((f) => `${line(f)} (ככה הבנתי, אבל לא אישרת)`),
+      ...outdated.map((f) => `${line(f)} (${state(f) === 'EXPIRED' ? 'כבר הסתיים' : 'לא אישרת לאחרונה שזה עדיין נכון'})`),
+    ];
+    if (unsure.length) parts.push(`פחות בטוח: ${unsure.slice(0, 4).join('; ')}.`);
+    parts.push(history.length ? `הכנו עד עכשיו ${history.length === 1 ? 'קמפיין אחד' : `${history.length} קמפיינים`}.` : 'עוד לא הכנו קמפיינים.');
+    parts.push(proposed.length ? 'אפשר לאשר או לתקן בכרטיס, או פשוט לכתוב לי את התיקון.' : 'אם משהו לא מדויק, פשוט כתוב לי את התיקון ואעדכן.');
+    t.say(parts.join(' '));
   }
 
   private remind(t: Turn) {
@@ -919,7 +1143,9 @@ export class DirectorEngine {
 
   /** Without an open task: keep learning the essentials, then recommend. */
   private async onboardingNext(t: Turn) {
-    const missing = ONBOARDING_KEYS.filter((k) => !(k === 'location.city' && !needsCity(t.memory, t.now)) && !['USABLE', 'DECLINED'].includes(factState(t.memory[k], t.now)));
+    const missing = ONBOARDING_KEYS.filter(
+      (k) => !(k === 'location.city' && (!needsCity(t.memory, t.now) || usableText(t.memory, 'location.region', t.now) || t.state.skipped.includes(k))) && !['USABLE', 'DECLINED'].includes(factState(t.memory[k], t.now)),
+    );
     const proposed = missing.filter((k) => t.memory[k]?.status === 'PROPOSED');
     if (proposed.length) {
       t.state.awaiting = { kind: 'FACTS', keys: proposed };
@@ -935,7 +1161,7 @@ export class DirectorEngine {
       return;
     }
     t.state.awaiting = undefined;
-    return this.recommendReply(t, 'יש לי תמונה טובה של העסק.');
+    return this.recommendReply(t, undefined, 'יש לי תמונה טובה של העסק.');
   }
 
   private async continueOrFallback(t: Turn, u: Understanding) {
@@ -946,6 +1172,8 @@ export class DirectorEngine {
       return;
     }
     if (u.yes && t.pendingFor().length) return this.approveByText(t);
+    // "היומן שלי מלא", "בערב אף אחד לא עונה": a situation is a question about what to do.
+    if (!active && situationChanged(t.changedFacts) && t.state.awaiting?.kind !== 'FACTS') return this.advise(t, u);
     // "כן" / "יאללה" after a recommendation: go ahead with the recommended campaign.
     if (u.yes && !active && usable(t.memory, 'business.model', t.now)) return this.startCampaign(t, 'CAMPAIGN', u);
     if (t.changedFacts.length || t.state.awaiting?.kind === 'FACTS' || !usableText(t.memory, 'business.name', t.now)) return this.onboardingNext(t);

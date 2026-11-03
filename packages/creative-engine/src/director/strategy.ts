@@ -57,6 +57,8 @@ export const MODEL_LABELS: Record<BusinessModel, string> = {
 export function displayFact(key: FactKey, value: Parameters<typeof factValueText>[0]): string {
   if (key === 'business.model' && typeof value === 'string' && value in MODEL_LABELS) return MODEL_LABELS[value as BusinessModel];
   if (key === 'goal.primary' && typeof value === 'string' && value in OBJECTIVE_LABELS) return OBJECTIVE_LABELS[value as MarketingObjective];
+  if (key === 'budget.monthlyIls' && value === 0) return 'אין תקציב';
+  if (key === 'capacity.full') return value === true ? 'אין כרגע מקום (היומן מלא)' : 'יש מקום';
   if (key === 'budget.monthlyIls' && typeof value === 'number') return `${value.toLocaleString('he-IL')} ₪`;
   return factValueText(value);
 }
@@ -141,6 +143,8 @@ function probe(action: ConversionAction, model: BusinessModel, memory: Memory, n
     case 'NAVIGATION':
       return model === 'COFFEE_CART' ? look('location.serviceArea') : look('location.address');
     case 'ORDERING_PAGE': {
+      // An ordering link the owner gave is the answer, whatever "how do customers order" says.
+      if (factState(memory['conversion.orderUrl'], now) === 'USABLE') return look('conversion.orderUrl');
       const ordering = factState(memory['conversion.ordering'], now);
       if (ordering === 'DECLINED' || ordering === 'REJECTED') return { kind: 'NO' };
       if (ordering !== 'USABLE') return { kind: 'ASK', key: 'conversion.ordering' };
@@ -256,8 +260,10 @@ export function metaDraft(model: BusinessModel, objective: MarketingObjective, c
         : objective === 'RETENTION'
           ? 'OUTCOME_ENGAGEMENT'
           : 'OUTCOME_AWARENESS';
-  const city = usableText(memory, 'location.city', now);
-  const radius = RADIUS_KM[model];
+  // A region ("השרון") targets wider than a city.
+  const region = usableText(memory, 'location.region', now);
+  const city = usableText(memory, 'location.city', now) ?? region;
+  const radius = RADIUS_KM[model] && !usableText(memory, 'location.city', now) && region ? Math.max(RADIUS_KM[model]!, 20) : RADIUS_KM[model];
   const monthly = usable(memory, 'budget.monthlyIls', now);
   return {
     objective: metaObjective,

@@ -61,6 +61,14 @@ export const FACT_SPECS: Record<FactKey, FactSpec> = {
     suggestions: ['יותר הזמנות', 'שיגיעו יותר לקוחות', 'יותר הרשמות', 'שיכירו אותנו'],
   },
   'preferences.style': { label: 'סגנון מועדף', question: 'יש סגנון שאתה אוהב במודעות?' },
+  'location.region': { label: 'אזור', question: 'באיזה אזור העסק פועל?' },
+  'capacity.full': {
+    label: 'מקום ללקוחות חדשים',
+    question: 'יש לכם כרגע מקום ללקוחות חדשים, או שהיומן מלא?',
+    suggestions: ['יש מקום', 'היומן מלא'],
+  },
+  'conversion.problem': { label: 'מה תוקע לקוחות', question: 'יש משהו שתוקע לקוחות שכבר רוצים לקנות, למשל טלפון שלא נענה?' },
+  'performance.notes': { label: 'מה ראית מהשיווק הקודם', question: 'מה קרה בקמפיין הקודם: הגיעו פניות או הזמנות, או בעיקר צפיות?' },
 };
 
 /** Sources that come from the owner. Everything else is a proposal until the owner confirms it. */
@@ -70,6 +78,10 @@ export const isOwnerSource = (source: FactSource) => OWNER_SOURCES.includes(sour
 /** An offer without an end date is re-confirmed after this many days; a standing one after a month. */
 export const OFFER_STALE_DAYS = 14;
 export const ONGOING_OFFER_DAYS = 30;
+
+/** Situations, not traits: a full calendar or an unanswered phone is re-confirmed after this many days. */
+export const SITUATION_DAYS = 30;
+export const SITUATION_KEYS: readonly FactKey[] = ['capacity.full', 'conversion.problem', 'performance.notes'];
 
 export type Memory = Partial<Record<FactKey, BusinessFact>>;
 
@@ -94,12 +106,14 @@ export function isOffer(value: FactValue | undefined): value is OfferFact {
 
 /**
  * The state of one fact today. DECLINED: the owner said it does not exist ("אין לנו אתר"), which is an answer,
- * not a gap. An offer is EXPIRED after its end date and STALE when it never had one and was not re-confirmed.
+ * not a gap. An offer is EXPIRED after its end date and STALE when it never had one and was not re-confirmed; a
+ * situation (a full calendar, a conversion problem) is STALE after a month.
  */
 export function factState(fact: BusinessFact | undefined, now: Date): FactState {
   if (!fact) return 'MISSING';
   if (fact.status === 'REJECTED') return 'REJECTED';
   if (fact.status === 'PROPOSED' || !isOwnerSource(fact.source)) return 'PROPOSED';
+  if (SITUATION_KEYS.includes(fact.key) && now.getTime() - Date.parse(fact.confirmedAt ?? fact.updatedAt) > SITUATION_DAYS * DAY_MS) return 'STALE';
   if (fact.value === false) return 'DECLINED';
   if (isOffer(fact.value)) {
     const offer = fact.value;

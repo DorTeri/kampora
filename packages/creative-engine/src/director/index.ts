@@ -9,3 +9,4 @@ export * from './engine';
 export * from './sandbox-executor';
 export * from './sandbox';
 export * from './playbooks';
+export * from './decision';

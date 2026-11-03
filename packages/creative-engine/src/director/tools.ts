@@ -40,6 +40,7 @@ export const TOOL_ARGS = {
     })
     .strict(),
   ProposeCampaignStrategy: z.object({ objective: z.string().max(40) }).strict(),
+  ProposeMarketingDecision: z.object({ action: z.string().max(40) }).strict(),
   GenerateCreativeConcepts: z.object({ campaignId: uuid }).strict(),
   RequestStoryboard: z.object({ campaignId: uuid, conceptId: uuid }).strict(),
   RequestArtDirection: z.object({ projectId: uuid }).strict(),
@@ -85,6 +86,7 @@ export const TOOL_SPECS: Record<DirectorToolName, ToolSpec> = {
   GetAvailableAssets: { effect: read, label: 'תמונות וחומרים זמינים' },
   CreateCreativeBrief: { effect: creative, approval: 'PAID_GENERATION', label: 'יצירת בריף קמפיין' },
   ProposeCampaignStrategy: { effect: read, label: 'אסטרטגיית קמפיין' },
+  ProposeMarketingDecision: { effect: read, label: 'החלטה שיווקית' },
   GenerateCreativeConcepts: { effect: creative, approval: 'PAID_GENERATION', label: 'רעיונות קריאייטיב' },
   RequestStoryboard: { effect: creative, approval: 'PAID_GENERATION', label: 'תסריט וסטוריבורד' },
   RequestArtDirection: { effect: () => 'APPROVAL_REQUIRED', approval: 'SCRIPT', label: 'כיווני עיצוב למודעות' },

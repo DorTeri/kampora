@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   BusinessModelSchema,
   FactKeySchema,
+  MarketingActionSchema,
   MarketingObjectiveSchema,
   type DirectorConversationState,
   type FactKey,
@@ -9,7 +10,7 @@ import {
   type OfferFact,
 } from '@kampora/shared';
 import type { LlmProvider } from '@kampora/media-providers';
-import { DIRECTOR_INTENTS, normalize, parsePrice, understand, type DirectorIntent, type Understanding } from './hebrew';
+import { DIRECTOR_INTENTS, NO_BUDGET_RE, normalize, parsePrice, parseValidity, stripChannel, understand, type DirectorIntent, type Understanding } from './hebrew';
 import { namesOnlyAKind } from './requirements';
 
 /**
@@ -35,6 +36,8 @@ export interface BrainInput {
   pendingApprovals?: string[];
   /** The last few messages (newest last), trimmed. */
   transcript?: { role: 'OWNER' | 'DIRECTOR'; text: string }[];
+  /** One line per marketing skill that applies to this business (its principles, not its texts). */
+  skills?: string[];
 }
 
 export interface DirectorBrain {
@@ -43,7 +46,9 @@ export interface DirectorBrain {
 }
 
 export function awaitedKeys(state: DirectorConversationState): FactKey[] | undefined {
-  return state.awaiting?.kind === 'FACTS' ? state.awaiting.keys : undefined;
+  if (state.awaiting?.kind === 'FACTS') return state.awaiting.keys;
+  if (state.awaiting?.kind === 'DECISION') return state.awaiting.questionKeys;
+  return undefined;
 }
 
 export class RuleBasedDirectorBrain implements DirectorBrain {
@@ -55,10 +60,20 @@ export class RuleBasedDirectorBrain implements DirectorBrain {
 
 // Strict structured outputs: every field is required (nullable instead of optional) and values are simple.
 // The model sees the "wire" variant (no string-length keywords, which strict mode may reject); the reply is then
-// validated against the bounded variant before anything is used.
+// validated against the bounded variant before anything is used. A string that is too long is cut, not a reason to
+// throw the whole reading away (a long date once sent a whole turn to the rules); every value is still checked below.
 function understandingSchema(bounded: boolean) {
-  const str = (max: number) => (bounded ? z.string().max(max) : z.string());
-  const factValue = z.union([bounded ? z.string().min(1).max(300) : z.string(), z.number(), z.boolean(), z.array(bounded ? z.string().min(1).max(120) : z.string()).min(1).max(20)]);
+  const str = (max: number) => (bounded ? z.string().transform((v) => v.slice(0, max)) : z.string());
+  const factValue = z.union([str(300), z.number(), z.boolean(), z.array(str(120)).min(1).max(20)]);
+  const decision = z.object({
+    /** The highest-impact next step for this business. */
+    action: MarketingActionSchema.nullable(),
+    /** What stops customers now, in the owner's words. */
+    blocker: str(160).nullable(),
+    /** The owner's words the suggestion rests on. */
+    evidence: str(300).nullable(),
+    paidAds: z.enum(['YES', 'NO', 'UNCLEAR']),
+  });
   return z.object({
     intent: z.enum(DIRECTOR_INTENTS as [DirectorIntent, ...DirectorIntent[]]),
     facts: z.array(z.object({ key: FactKeySchema, value: factValue, evidence: str(300) })).max(12),
@@ -92,7 +107,9 @@ function understandingSchema(bounded: boolean) {
       .nullable(),
     toolRequests: z.array(z.object({ tool: str(60), argsJson: str(400) })).max(3),
     /** One or two natural sentences to the owner (acknowledging, explaining). Checked before it is shown. */
-    reply: str(400).nullable(),
+    reply: bounded ? z.string().nullable() : z.string().nullable(),
+    /** The model's professional read of what to do next. Optional when reading older recorded replies. */
+    decision: bounded ? decision.nullable().optional() : decision.nullable(),
   });
 }
 export const LlmUnderstandingSchema = understandingSchema(true);
@@ -128,6 +145,18 @@ export const DIRECTOR_SYSTEM_PROMPT = [
   'toolRequests: only read-only lookups (ReadBusinessProfile, GetCampaignHistory, GetAvailableAssets,',
   'GetProductionStatus), with argsJson "{}". Anything else will be refused.',
   '',
+  'decision: your professional read of the next step, or null when the message is not about the business\'s marketing.',
+  'action is the highest-impact next step. PAID_ADVERTISING only when customers can complete the purchase (a working',
+  'order or booking channel), there is room for more customers and money to spend. CONVERSION_PROCESS_FIX when',
+  'interested customers get stuck (unanswered phone, broken link, abandoned checkout); OFFER_OPTIMIZATION when demand',
+  'exceeds capacity; ORGANIC_CONTENT or LOCAL_VISIBILITY without a budget or to become known locally;',
+  'CUSTOMER_RETENTION to bring customers back; BUSINESS_RESEARCH when one missing fact decides it. blocker: what stops',
+  'customers, quoted. evidence: the exact owner words it rests on (required with an action). paidAds: YES, NO or UNCLEAR.',
+  'Situations are facts too: capacity.full (true when full, false when they say there is room), conversion.problem and',
+  'performance.notes (their words), location.region for a region like "השרון" (never as location.city), and',
+  'budget.monthlyIls 0 when they say there is no budget. context.skills holds professional principles for this',
+  'business: reason with them; never state numbers, rates or results that are not written.',
+  '',
   'reply: usually null. The system itself confirms what it recorded ("רשמתי: ..."), greets ("בשמחה"), and asks the',
   'next question. Write a reply only when it adds something the system will not say: one short, warm Hebrew',
   'sentence of empathy with a problem the owner described, or what you understood from an unclear message.',
@@ -152,7 +181,8 @@ const VERBATIM_KEYS: FactKey[] = [
  * written as "יותר הזמנות" instead of ORDERS) is dropped; the objective arrives in its own field. Offers arrive in
  * the offer field, where every part is checked.
  */
-function fitsKey(key: FactKey, value: unknown): boolean {
+function fitsKey(key: FactKey, value: unknown, message: string): boolean {
+  if (typeof value === 'string' && !value.trim()) return false;
   switch (key) {
     case 'business.model':
       return BusinessModelSchema.safeParse(value).success;
@@ -161,7 +191,14 @@ function fitsKey(key: FactKey, value: unknown): boolean {
     case 'media.realPhotos':
       return typeof value === 'boolean';
     case 'budget.monthlyIls':
-      return typeof value === 'number' && value > 0;
+      // 0 only when the owner said there is no budget; any other number must be written (checked as verbatim).
+      return typeof value === 'number' && (value > 0 || (value === 0 && NO_BUDGET_RE.test(normalize(message))));
+    case 'capacity.full':
+      return typeof value === 'boolean';
+    case 'conversion.problem':
+    case 'performance.notes':
+    case 'location.region':
+      return typeof value === 'string';
     case 'offer.current':
       return false;
     // Contacts and links become the ad's destination: the words must quote the owner and also be one.
@@ -243,6 +280,7 @@ export class LlmDirectorBrain implements DirectorBrain {
       pendingApprovals: (input.pendingApprovals ?? []).slice(0, 5),
       recentWork: input.recentWork.slice(0, 5),
       lastMessages: (input.transcript ?? []).slice(-6).map((m) => ({ from: m.role === 'OWNER' ? 'owner' : 'director', text: m.text.slice(0, 300) })),
+      skills: (input.skills ?? []).slice(0, 4),
     };
   }
 
@@ -283,9 +321,14 @@ export class LlmDirectorBrain implements DirectorBrain {
   /** Validates the model's reading against the message and merges it with the deterministic one. */
   static merge(input: BrainInput, rules: Understanding, data: LlmUnderstanding): Understanding {
     const facts: FactProposal[] = [];
-    for (const f of data.facts) {
-      if (!fitsKey(f.key, f.value)) continue;
-      const ok = grounded(input.text, f.value, f.evidence);
+    for (const raw of data.facts) {
+      // "נרות ריחניים דרך האתר שלי": where it is sold is not part of the product's name.
+      const f = ['offering.main', 'offering.products'].includes(raw.key)
+        ? { ...raw, value: Array.isArray(raw.value) ? raw.value.map((v) => stripChannel(v)).filter(Boolean) : typeof raw.value === 'string' ? stripChannel(raw.value) : raw.value }
+        : raw;
+      if (Array.isArray(f.value) && !f.value.length) continue;
+      if (!fitsKey(f.key, f.value, input.text)) continue;
+      const ok = grounded(input.text, f.value, f.evidence) || (f.key === 'budget.monthlyIls' && f.value === 0);
       if (!ok && VERBATIM_KEYS.includes(f.key)) continue;
       // The rules parsed this key from the owner's words; an unquoted model value must not demote it to a proposal.
       if (!ok && rules.facts.some((r) => r.key === f.key)) continue;
@@ -327,7 +370,21 @@ export class LlmDirectorBrain implements DirectorBrain {
       modify,
       toolRequests: data.toolRequests.map((r) => ({ tool: r.tool, args: safeJson(r.argsJson) })),
       reply: guardReply(data.reply, input),
+      decisionHint: LlmDirectorBrain.hint(input, data),
     };
+  }
+
+  /**
+   * The model's suggestion for the next step, kept only when its evidence quotes the owner (the message or what the
+   * owner confirmed). The decision engine decides whether to use it; the model never decides alone.
+   */
+  private static hint(input: BrainInput, data: LlmUnderstanding): Understanding['decisionHint'] {
+    const d = data.decision;
+    if (!d?.action || !d.evidence?.trim()) return undefined;
+    const known = normalize([input.text, ...(input.memory ?? []).map((m) => m.value)].join(' '));
+    if (!known.includes(normalize(d.evidence))) return undefined;
+    const blocker = d.blocker && known.includes(normalize(d.blocker)) ? d.blocker : undefined;
+    return { action: d.action, evidence: d.evidence, paidAds: d.paidAds, ...(blocker ? { blocker } : {}) };
   }
 
   /** The offer parts the model read, each kept only if the owner wrote it. */
@@ -349,7 +406,8 @@ export class LlmDirectorBrain implements DirectorBrain {
     const day = o.validUntil?.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
     if (day && !patch.validUntil) {
       const [, mm, dd] = day.split('-');
-      if (new RegExp(`\\b0?${Number(dd)}[./]0?${Number(mm)}\\b`).test(m)) patch.validUntil = day;
+      // "15.11", or a long form ("עד ה-15 בנובמבר") that the deterministic parser reads as the same day.
+      if (new RegExp(`\\b0?${Number(dd)}[./]0?${Number(mm)}\\b`).test(m) || parseValidity(m, input.now)?.validUntil === day) patch.validUntil = day;
     }
     if (o.ongoing && !patch.validUntil && /קבוע|ללא (הגבלת זמן|תאריך)|אין (לו )?(תאריך|הגבלה)|כל הזמן|תמיד/.test(m)) patch.ongoing = true;
     return Object.keys(patch).length ? patch : undefined;
