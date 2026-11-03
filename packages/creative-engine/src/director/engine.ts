@@ -413,6 +413,9 @@ export class DirectorEngine {
     }
     if (u.intent === 'FORBIDDEN') return this.refuse(t, u.forbidden!);
     if (await this.resolveConflict(t, u)) return this.continueOrFallback(t, { ...u, yes: false, no: false });
+    // "What do you remember about my business?": the profile the model asked to read is shown, not just looked up.
+    if (lookups.has('ReadBusinessProfile') && ['HISTORY', 'UNKNOWN', 'PROVIDE_INFO', 'GREETING'].includes(u.intent) && !u.facts.length && !u.offerPatch)
+      return this.profileReply(t);
     if (['UNKNOWN', 'PROVIDE_INFO'].includes(u.intent) && !u.facts.length && !t.state.awaiting) {
       if (lookups.has('GetProductionStatus')) return this.status(t);
       if (lookups.has('GetCampaignHistory')) return this.historyReply(t);
@@ -500,7 +503,8 @@ export class DirectorEngine {
       case 'LAUNCH':
         return this.startCampaign(t, u.intent, u);
       case 'MODIFY':
-        return this.startModify(t, u, text);
+        // A modify reading without a target (possible from a model) is not something we can act on.
+        return u.modify ? this.startModify(t, u, text) : this.continueOrFallback(t, u);
       case 'GREETING':
         return this.greet(t);
       default:
@@ -846,6 +850,23 @@ export class DirectorEngine {
     }
     for (const r of recs.slice(0, 3)) t.cards.push({ kind: 'RECOMMENDATION', recommendation: r, conversion: null });
     t.say(`${intro ? `${intro} ` : ''}הייתי מתחיל ב: ${recs[0]!.title}. ${recs[0]!.reasoning}`);
+  }
+
+  private async profileReply(t: Turn) {
+    await t.call('ReadBusinessProfile', {}, () => TOOL_SPECS.ReadBusinessProfile.label);
+    const known = Object.values(t.memory).filter((f) => f && f.status === 'CONFIRMED' && f.value !== false && factState(f, t.now) === 'USABLE');
+    if (!known.length) {
+      t.say('עוד לא סיפרת לי על העסק. איך קוראים לו ומה הוא עושה?');
+      return;
+    }
+    t.cards.push({ kind: 'FACTS', facts: known.slice(0, 20).map((f) => ({ key: f.key, label: FACT_SPECS[f.key].label, value: displayFact(f.key, f.value), status: f.status })) });
+    const history = await t.loadHistory();
+    t.say(
+      `זה מה שאני זוכר על העסק: ${known.slice(0, 5).map((f) => `${FACT_SPECS[f.key].label} – ${displayFact(f.key, f.value)}`).join(', ')}.` +
+        (history.length ? ` הכנו עד עכשיו ${history.length === 1 ? 'קמפיין אחד' : `${history.length} קמפיינים`}.` : ' עוד לא הכנו קמפיינים.') +
+        ' אם משהו השתנה, כתוב לי ואעדכן.',
+    );
+    this.remind(t);
   }
 
   private remind(t: Turn) {

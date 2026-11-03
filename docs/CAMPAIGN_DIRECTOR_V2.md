@@ -1,8 +1,7 @@
 # Campaign Director V2: intelligence and production readiness
 
-Status (2026-11-02): implemented and verified offline with mock providers. **No paid LLM call has been made.** The
-LLM path is wired end to end and stays off until the validation budget is approved
-([DIRECTOR_LLM_VALIDATION_PLAN.md](DIRECTOR_LLM_VALIDATION_PLAN.md)).
+Status (2026-11-03): implemented. The paid LLM validation has run under the approved $5 cap
+([DIRECTOR_LLM_VALIDATION_REPORT.md](DIRECTOR_LLM_VALIDATION_REPORT.md)). The LLM path stays off in the demo.
 
 ## 1. Audit of V1: what is real and what is hardcoded
 
@@ -146,7 +145,9 @@ paid validation run measures.
 
 ## 7. Still open (needs a decision)
 
-- The paid LLM validation run: proposed cap $5 ([plan](DIRECTOR_LLM_VALIDATION_PLAN.md)).
+- The open items from the LLM validation ([report](DIRECTOR_LLM_VALIDATION_REPORT.md), section 8): playbooks that
+  always include paid ads, the repeated question when an answer does not fill the key, and a separate paid switch
+  for the Director's LLM.
 - The pilot hosting: Railway Pro + R2 recommended ([proposal](PILOT_INFRASTRUCTURE.md)).
 - The identity provider for OIDC, and the web sign-in flow that goes with it.
 - 19 leftover scenario businesses from earlier runs in the demo org (בורגר הנמל ×7, נשימה ×6, קפה על גלגלים ×6).

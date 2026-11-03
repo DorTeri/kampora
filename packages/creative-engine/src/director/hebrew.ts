@@ -61,6 +61,10 @@ export interface Understanding {
   reply?: string;
   /** Which reading this is (shown in diagnostics, never to the owner). */
   brain?: 'rules' | 'llm' | 'rules-fallback';
+  /** Keys read from a bare message as the answer to the open question (a guess, not a parse). */
+  guessed?: FactKey[];
+  /** Why the model's reading was not used (schema or provider error), for logs and evaluation. */
+  fallbackReason?: string;
 }
 
 /** Hebrew without niqqud, single spaces, Latin lower-cased; punctuation kept (URLs, prices). */
@@ -462,6 +466,7 @@ export function understand(raw: string, ctx: UnderstandContext): Understanding {
   if (!facts.some((f) => awaiting.includes(f.key))) {
     const first = awaiting.map((k) => fallbacks.find((f) => f.key === k)).find(Boolean);
     if (first) for (const p of [first, ...first.extra]) owner(p.key, p.value);
+    if (first) u.guessed = [first.key, ...first.extra.map((p) => p.key)];
   }
 
   // ── Offer ──

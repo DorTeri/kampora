@@ -1,0 +1,129 @@
+{
+ "summary": {
+  "model": "gpt-6.1-terra",
+  "stage": "probe",
+  "runs": 4,
+  "fullyCorrect": 1,
+  "checksPassed": 6,
+  "checksTotal": 9,
+  "spend": {
+   "calls": 4,
+   "failures": 3,
+   "inputTokens": 580,
+   "cachedInputTokens": 0,
+   "outputTokens": 523,
+   "reportedUsd": 0.003195,
+   "chargedUsd": 0.03763,
+   "p50LatencyMs": 9442,
+   "p95LatencyMs": 9442
+  },
+  "stoppedBy": "three provider failures in a row"
+ },
+ "results": [
+  {
+   "id": "m-coffee-cart",
+   "rep": 0,
+   "organicFirst": null,
+   "ms": 9450,
+   "passed": 6,
+   "total": 6,
+   "checks": [
+    {
+     "name": "valid structured reply",
+     "ok": true
+    },
+    {
+     "name": "conversion in NAVIGATION,INSTAGRAM_DM",
+     "ok": true
+    },
+    {
+     "name": "destination grounded",
+     "ok": true
+    },
+    {
+     "name": "no invented numbers",
+     "ok": true
+    },
+    {
+     "name": "no invented links",
+     "ok": true
+    },
+    {
+     "name": "no promises",
+     "ok": true
+    }
+   ],
+   "data": {
+    "howTheBusinessMakesMoney": "מכירת קפה ומאפים ללקוחות שעוצרים בעגלה בנמל יפו.",
+    "realConstraint": "עדיין לא ברור אם החסם הוא חשיפה לעוברים בנמל, היכולת למצוא את העגלה או סיבה אחרת.",
+    "firstAction": "ORGANIC_CONTENT",
+    "whyFirst": "כדאי להתחיל בחשיפה מקומית ללא תקציב פרסום, עם תמונות אמיתיות ומיקום ברור. כך אפשר לבדוק אם יותר אנשים עוצרים לפני שמשקיעים במודעות או בהקמת ערוץ פעיל.",
+    "strategy": [
+     "להשתמש בתמונות הקיימות כדי להכין פרסום קצר לקבוצות מקומיות רלוונטיות, בהתאם לכללי הקבוצות.",
+     "לציין בפרסום: קפה נמל, ליד המזח מול הכניסה לנמל, פתוח מ־6:30 עד 12:00, עם אספרסו כפול וקרואסון חמאה.",
+     "לבדוק אם אפשר להציב שילוט ברור באזור העגלה, בכפוף לאישור הנדרש.",
+     "לשאול לקוחות חדשים איך שמעו על העגלה, כדי להבין אם הפרסום והשילוט עוזרים."
+    ],
+    "formats": [
+     "NONE"
+    ],
+    "conversionAction": "NAVIGATION",
+    "destination": null,
+    "questionsStillNeeded": [
+     "האם יש לך אפשרות להציב שילוט ליד העגלה או בדרך אליה?",
+     "האם יש שעות בבוקר שבהן העגלה כבר עמוסה?",
+     "האם יש קישור למיקום העגלה במפה שאפשר לשתף?"
+    ],
+    "replyToOwner": "כדאי להתחיל מחשיפה מקומית פשוטה: לפרסם תמונות אמיתיות בקבוצות רלוונטיות ולציין שאתם ליד המזח, מול הכניסה לנמל, פתוחים מ־6:30 עד 12:00. אם מותר, שילוט ברור ליד העגלה יכול לעזור לאנשים שעוברים באזור למצוא אתכם. אחר כך אפשר לשאול לקוחות חדשים איך שמעו עליכם ולבדוק מה עובד. יש לך אפשרות להציב שילוט, וקישור למיקום העגלה במפה?"
+   }
+  },
+  {
+   "id": "m-burger-wolt",
+   "rep": 0,
+   "organicFirst": null,
+   "ms": 8297,
+   "passed": 0,
+   "total": 1,
+   "checks": [
+    {
+     "name": "valid structured reply",
+     "ok": false,
+     "got": "OpenAI API error 0: Connection error."
+    }
+   ],
+   "data": null
+  },
+  {
+   "id": "m-cafe-neighbourhood",
+   "rep": 0,
+   "organicFirst": null,
+   "ms": 448,
+   "passed": 0,
+   "total": 1,
+   "checks": [
+    {
+     "name": "valid structured reply",
+     "ok": false,
+     "got": "OpenAI API error 0: Connection error."
+    }
+   ],
+   "data": null
+  },
+  {
+   "id": "m-pilates-trial",
+   "rep": 0,
+   "organicFirst": null,
+   "ms": 139,
+   "passed": 0,
+   "total": 1,
+   "checks": [
+    {
+     "name": "valid structured reply",
+     "ok": false,
+     "got": "OpenAI API error 0: Connection error."
+    }
+   ],
+   "data": null
+  }
+ ]
+}

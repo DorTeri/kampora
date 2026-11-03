@@ -43,9 +43,13 @@ export function taskObjective(task: DirectorTask, memory: Memory, now: Date): Ma
 /** A product mention like "ההמבורגר החדש" names a kind, not a product: the owner must say which one. */
 export function isGenericProduct(product: string, memory: Memory, now: Date): boolean {
   const known = [...((usable(memory, 'offering.products', now) as string[] | undefined) ?? []), usableText(memory, 'offering.main', now) ?? ''];
-  if (known.some((k) => k && (product.includes(k) || k.includes(product.replace(/^ה/, ''))))) return false;
-  const words = product.replace(/^ה/, '').split(' ');
-  return words.length <= 2 && /חדש|חדשה/.test(product);
+  if (known.some((k) => k && !namesOnlyAKind(k) && (product.includes(k) || k.includes(product.replace(/^ה/, ''))))) return false;
+  return namesOnlyAKind(product);
+}
+
+/** "המבורגר החדש": a kind and "new", not a product's name. */
+export function namesOnlyAKind(text: string): boolean {
+  return text.replace(/^ה/, '').split(' ').length <= 2 && /חדש|חדשה/.test(text);
 }
 
 /** Every unmet requirement of the task, most important first. */
@@ -65,13 +69,15 @@ export function requirementsFor(task: DirectorTask, memory: Memory, now: Date): 
   if (model !== 'ECOMMERCE' && missing('location.city')) out.push(req('location.city', true, 'מודעה מקומית מוצגת רק לאנשים באזור שלך.'));
 
   const product = task.params.product;
-  if (task.kind === 'LAUNCH' && product && isGenericProduct(product, memory, now))
+  // A new product named only generically ("ההמבורגר החדש") needs its real name, whether the task is a launch or not.
+  if ((task.kind === 'LAUNCH' || task.params.productIsNew) && product && isGenericProduct(product, memory, now))
     out.push(
       req(
         'offering.products',
         true,
         'אני לא ממציא שם או מרכיבים של מוצר.',
-        `איך קוראים ל${product.replace(/^ה/, '')} ומה מיוחד בו?`,
+        // No prefix on the product: the model's "המבורגר החדש" has no article to drop ("למבורגר").
+        `מה השם של ${product} ומה מיוחד בו?`,
         [],
       ),
     );

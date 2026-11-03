@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  BusinessModelSchema,
   FactKeySchema,
   MarketingObjectiveSchema,
   type DirectorConversationState,
@@ -9,6 +10,7 @@ import {
 } from '@kampora/shared';
 import type { LlmProvider } from '@kampora/media-providers';
 import { DIRECTOR_INTENTS, normalize, parsePrice, understand, type DirectorIntent, type Understanding } from './hebrew';
+import { namesOnlyAKind } from './requirements';
 
 /**
  * The conversation layer. It interprets the owner's message; it never executes anything. The rule-based brain is
@@ -112,6 +114,8 @@ export const DIRECTOR_SYSTEM_PROMPT = [
   'If the context says the Director is waiting for an answer, a short message usually answers that question.',
   'business.model must be one of RESTAURANT, CAFE, COFFEE_CART, FITNESS_STUDIO, BEAUTY, LOCAL_SERVICE, ECOMMERCE, OTHER;',
   'business.category is the owner\'s words for it (e.g. "מסעדת המבורגרים").',
+  'goal.primary is never a fact (use objective). conversion.ordering is one or more of exactly: Wolt, תן ביס, משלוחה,',
+  'טלפון, וואטסאפ, אתר; or false when they do not take orders. media.realPhotos is true or false.',
   '',
   'Intent: CAMPAIGN (wants marketing/more customers), PROMOTION (an offer/discount), LAUNCH (new product),',
   'MODIFY (change something already made), STATUS, HISTORY, RECOMMEND (asks what to do), APPROVE_TEXT (writes',
@@ -123,9 +127,11 @@ export const DIRECTOR_SYSTEM_PROMPT = [
   'toolRequests: only read-only lookups (ReadBusinessProfile, GetCampaignHistory, GetAvailableAssets,',
   'GetProductionStatus), with argsJson "{}". Anything else will be refused.',
   '',
-  'reply: at most two short, warm Hebrew sentences that acknowledge what the owner said or explain briefly, or null.',
-  'Do not ask questions in reply (the system asks), do not repeat facts back, do not promise results, numbers,',
-  'revenue or growth, and never say something was approved, published, sent or paid.',
+  'reply: usually null. The system itself confirms what it recorded ("רשמתי: ..."), greets ("בשמחה"), and asks the',
+  'next question. Write a reply only when it adds something the system will not say: one short, warm Hebrew',
+  'sentence of empathy with a problem the owner described, or what you understood from an unclear message.',
+  'Never open with "בשמחה", "מעולה" or "רשמתי". Do not ask questions, do not repeat facts back, do not promise',
+  'results, numbers, revenue or growth, and never say something was approved, published, sent or paid.',
 ].join('\n');
 
 /** Facts whose value must appear verbatim in the message: never guessed, not even as a proposal. */
@@ -139,6 +145,47 @@ const VERBATIM_KEYS: FactKey[] = [
   'budget.monthlyIls',
   'business.name',
 ];
+
+/**
+ * Keys with a fixed value shape. The engine reads these as codes or flags, so a model value in free text (a goal
+ * written as "יותר הזמנות" instead of ORDERS) is dropped; the objective arrives in its own field. Offers arrive in
+ * the offer field, where every part is checked.
+ */
+function fitsKey(key: FactKey, value: unknown): boolean {
+  switch (key) {
+    case 'business.model':
+      return BusinessModelSchema.safeParse(value).success;
+    case 'goal.primary':
+      return MarketingObjectiveSchema.safeParse(value).success;
+    case 'media.realPhotos':
+      return typeof value === 'boolean';
+    case 'budget.monthlyIls':
+      return typeof value === 'number' && value > 0;
+    case 'offer.current':
+      return false;
+    // Contacts and links become the ad's destination: the words must quote the owner and also be one.
+    case 'contact.phone':
+    case 'contact.whatsapp':
+      return value === false || (typeof value === 'string' && value.replace(/\D/g, '').length >= 9);
+    case 'channel.website':
+    case 'conversion.orderUrl':
+    case 'conversion.bookingUrl':
+      return value === false || (typeof value === 'string' && /^(https?:\/\/|www\.)\S+$|^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(value.trim()));
+    case 'channel.instagram':
+      return value === false || (typeof value === 'string' && /^@?[a-z0-9._]{2,30}$|instagram\.com\//i.test(value.trim()));
+    case 'conversion.ordering':
+      return value === false || (Array.isArray(value) ? value : [value]).every((v) => ORDER_CHANNELS.includes(v as string));
+    // "ההמבורגר החדש" is what the owner must still name, not a product to remember.
+    case 'offering.main':
+    case 'offering.products':
+      return !(Array.isArray(value) ? value : [value]).some((v) => typeof v === 'string' && namesOnlyAKind(v));
+    default:
+      return true;
+  }
+}
+
+/** The ordering channels the engine knows (the same names the rules write). */
+const ORDER_CHANNELS = ['Wolt', 'תן ביס', 'משלוחה', 'טלפון', 'וואטסאפ', 'אתר'];
 
 function digits(s: string): string {
   return s.replace(/\D/g, '');
@@ -221,10 +268,13 @@ export class LlmDirectorBrain implements DirectorBrain {
         schemaName: 'director_understanding',
       });
       const parsed = LlmUnderstandingSchema.safeParse(result.data);
-      if (!parsed.success) return { ...rules, brain: 'rules-fallback' };
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return { ...rules, brain: 'rules-fallback', fallbackReason: `schema: ${issue?.path.join('.')} ${issue?.message}`.slice(0, 200) };
+      }
       data = parsed.data;
-    } catch {
-      return { ...rules, brain: 'rules-fallback' };
+    } catch (e) {
+      return { ...rules, brain: 'rules-fallback', fallbackReason: `provider: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200) };
     }
     return LlmDirectorBrain.merge(input, rules, data);
   }
@@ -233,23 +283,38 @@ export class LlmDirectorBrain implements DirectorBrain {
   static merge(input: BrainInput, rules: Understanding, data: LlmUnderstanding): Understanding {
     const facts: FactProposal[] = [];
     for (const f of data.facts) {
+      if (!fitsKey(f.key, f.value)) continue;
       const ok = grounded(input.text, f.value, f.evidence);
       if (!ok && VERBATIM_KEYS.includes(f.key)) continue;
+      // The rules parsed this key from the owner's words; an unquoted model value must not demote it to a proposal.
+      if (!ok && rules.facts.some((r) => r.key === f.key)) continue;
       // Ungrounded facts stay proposals: the owner confirms them before they are used.
       facts.push({ key: f.key, value: f.value, evidence: f.evidence.slice(0, 300), source: ok ? 'OWNER_STATED' : 'AI_INFERRED' });
     }
     const keys = new Set(facts.map((f) => f.key));
+    // When the Director waits for an answer, the rules read a bare message as that answer ("בפארק הירקון" as the
+    // name). If the model read the message itself, those guesses give way to its reading; the rules' parses
+    // (channels, links, phones, prices) stay.
+    const guessed = data.facts.length ? (rules.guessed ?? []) : [];
+    const rulesFacts = rules.facts.filter((f) => !keys.has(f.key) && !guessed.includes(f.key));
     const offerPatch = LlmDirectorBrain.offer(input, rules, data);
     const choice = data.recommendedChoice ? ('RECOMMENDED' as const) : (data.choice ?? undefined);
     const forbidden = rules.forbidden;
+    const modify = rules.modify ?? (data.modify ? { target: data.modify.target, instruction: input.text, hasContent: data.modify.hasContent, reference: data.modify.reference } : undefined);
+    // MODIFY without a target cannot be acted on: the rules' reading stands.
+    let intent = data.intent === 'UNKNOWN' || (data.intent === 'MODIFY' && !modify) ? rules.intent : data.intent;
+    // Picking an option while the Director waits for a choice ("את המומלץ") answers it; it never starts a new task.
+    const choosing = ['CONCEPT', 'CLARIFY'].includes(input.state.awaiting?.kind ?? '') && (choice ?? rules.choice) !== undefined;
+    if (choosing && ['CAMPAIGN', 'PROMOTION', 'LAUNCH'].includes(intent) && !facts.length && !data.offer) intent = 'PROVIDE_INFO';
     return {
       ...rules,
       brain: 'llm',
       // The model may make a reading stricter (FORBIDDEN), never looser; when it is unsure the rules' reading stands.
-      intent: forbidden || data.intent === 'FORBIDDEN' ? 'FORBIDDEN' : data.intent === 'UNKNOWN' ? rules.intent : data.intent,
+      intent: forbidden || data.intent === 'FORBIDDEN' ? 'FORBIDDEN' : intent,
       forbidden: forbidden ?? (data.intent === 'FORBIDDEN' ? 'INJECTION' : undefined),
-      facts: [...facts, ...rules.facts.filter((f) => !keys.has(f.key))],
-      ...(offerPatch ? { offerPatch } : {}),
+      facts: [...facts, ...rulesFacts],
+      // Set even when empty: `...rules` must not bring back an offer the model's reading excluded.
+      offerPatch,
       objective: data.objective ?? rules.objective,
       growth: data.growth || rules.growth,
       product: data.product && normalize(input.text).includes(normalize(data.product).replace(/^ה/, '')) ? { text: data.product, isNew: data.productIsNew } : rules.product,
@@ -258,7 +323,7 @@ export class LlmDirectorBrain implements DirectorBrain {
       yes: data.yes || rules.yes,
       no: data.no || rules.no,
       skip: data.skip || rules.skip,
-      modify: rules.modify ?? (data.modify ? { target: data.modify.target, instruction: input.text, hasContent: data.modify.hasContent, reference: data.modify.reference } : undefined),
+      modify,
       toolRequests: data.toolRequests.map((r) => ({ tool: r.tool, args: safeJson(r.argsJson) })),
       reply: guardReply(data.reply, input),
     };
@@ -267,7 +332,12 @@ export class LlmDirectorBrain implements DirectorBrain {
   /** The offer parts the model read, each kept only if the owner wrote it. */
   private static offer(input: BrainInput, rules: Understanding, data: LlmUnderstanding): Partial<OfferFact> | undefined {
     const o = data.offer;
-    if (!o) return rules.offerPatch;
+    // No offer in the model's reading: the deterministic parts (price, date) stay, the rules' guess at offer text
+    // does not ("תכין סרטון על המבצע שלנו" refers to the existing offer, it is not a new one).
+    if (!o) {
+      const { text: _text, ...parts } = rules.offerPatch ?? {};
+      return Object.keys(parts).length ? { ...parts, ...(rules.offerPatch?.text && (parts.price || parts.validUntil) ? { text: rules.offerPatch.text } : {}) } : undefined;
+    }
     const m = normalize(input.text);
     const patch: Partial<OfferFact> = { ...(rules.offerPatch ?? {}) };
     if (o.text && !patch.text && m.includes(normalize(o.text).slice(0, 20))) patch.text = o.text;

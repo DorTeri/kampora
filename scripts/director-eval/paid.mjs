@@ -20,7 +20,7 @@ const { PriceCatalog } = await load('packages/cost-engine/dist/index.js');
 export const TOTAL_CAP_USD = 5;
 const MARGIN = 1.1;
 const LEDGER = path.join(root, 'docs/director/llm-validation/ledger.json');
-export const FROZEN = ['scripts/director-eval/holdout-v2.json', 'scripts/director-eval/marketing.json'];
+export const FROZEN = ['scripts/director-eval/holdout-v2.json', 'scripts/director-eval/marketing.json', 'scripts/director-eval/holdout-v3.json'];
 
 export function sha256(file) {
   return createHash('sha256').update(readFileSync(path.join(root, file))).digest('hex');
@@ -46,7 +46,16 @@ export function freezeHoldout() {
     writeLedger(ledger);
     return;
   }
-  for (const f of FROZEN) if (ledger.frozen.files[f] !== now[f]) throw new Error(`${f} changed after it was frozen.`);
+  let added = false;
+  for (const f of FROZEN) {
+    // A set written later is frozen at its first paid run (its hash and time are recorded then).
+    if (!ledger.frozen.files[f]) {
+      ledger.frozen.files[f] = now[f];
+      (ledger.frozen.added ??= {})[f] = new Date().toISOString();
+      added = true;
+    } else if (ledger.frozen.files[f] !== now[f]) throw new Error(`${f} changed after it was frozen.`);
+  }
+  if (added) writeLedger(ledger);
 }
 
 export const charged = (calls) => calls.reduce((n, c) => n + c.chargedUsd, 0);
@@ -114,7 +123,7 @@ const round = (n) => Math.round(n * 1e6) / 1e6;
 
 export function spendSummary(filter = () => true) {
   const calls = readLedger().calls.filter(filter);
-  const lat = calls.filter((c) => c.ok).map((c) => c.latencyMs).sort((a, b) => a - b);
+  const lat = calls.filter((c) => c.ok && c.latencyMs != null).map((c) => c.latencyMs).sort((a, b) => a - b);
   return {
     calls: calls.length,
     failures: calls.filter((c) => !c.ok).length,

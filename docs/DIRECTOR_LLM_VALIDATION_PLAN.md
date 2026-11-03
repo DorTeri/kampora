@@ -1,7 +1,8 @@
 # Campaign Director: paid LLM validation plan
 
-Status: **proposal, not run.** No paid LLM call has been made for the Director. Everything below is ready to run
-once the spending cap is approved.
+Status: **run** (2026-11-02 to 2026-11-03) under the approved $5 cap. Results:
+[DIRECTOR_LLM_VALIDATION_REPORT.md](DIRECTOR_LLM_VALIDATION_REPORT.md). The plan below is kept as written before
+the run.
 
 ## Why a paid run is needed
 

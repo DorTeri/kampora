@@ -36,8 +36,8 @@ if (brainKind === 'llm') {
 const corpus =
   set === 'dev' || set === 'holdout-v1'
     ? read('corpus.json').conversations.filter((c) => c.split === (set === 'dev' ? 'dev' : 'holdout'))
-    : set === 'holdout-v2'
-      ? read('holdout-v2.json').conversations
+    : set === 'holdout-v2' || set === 'holdout-v3'
+      ? read(`${set}.json`).conversations
       : set === 'marketing'
         ? read('marketing.json').cases
         : (() => {
@@ -130,6 +130,7 @@ async function runConversation(c) {
       cards: r.cards.map(cardSummary),
       tools: r.tools,
       brain: last?.brain ?? 'rules',
+      ...(last?.fallbackReason ? { fallbackReason: last.fallbackReason } : {}),
       intent: last?.intent ?? null,
       ms: Date.now() - started,
     });
@@ -195,6 +196,8 @@ function check(c, turns, s) {
   const askedKeys = (from = 0) => turns.slice(from).flatMap((t) => t.cards.filter((x) => x.kind === 'QUESTION').flatMap((x) => x.keys));
   for (const k of e.neverAsks ?? []) push(`never asks ${k}`, !askedKeys().includes(k));
   if (e.neverAsksAfter) for (const k of e.neverAsksAfter[1]) push(`never asks ${k} after ${e.neverAsksAfter[0]}`, !askedKeys(e.neverAsksAfter[0]).includes(k));
+  if (e.asksFor?.includes('price')) push('asks for the price', /מחיר|כמה (זה )?עולה/.test(turns.at(-1).director), turns.at(-1).director);
+  if (e.asksFor?.includes('validity')) push('asks until when', /עד מתי/.test(turns.at(-1).director), turns.at(-1).director);
   if (e.offerPrice) push(`offer price ${e.offerPrice}`, stored['offer.current']?.value?.price === e.offerPrice, JSON.stringify(stored['offer.current']?.value));
   if (e.offerUntil) push(`offer until ${e.offerUntil}`, stored['offer.current']?.value?.validUntil === e.offerUntil, JSON.stringify(stored['offer.current']?.value));
   const refused = (t) => t?.intent === 'FORBIDDEN' || REFUSAL.test(t?.director ?? '');

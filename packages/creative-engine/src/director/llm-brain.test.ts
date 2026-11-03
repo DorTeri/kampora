@@ -255,3 +255,174 @@ describe('Director behaviour with either brain', () => {
     expect(stored(s, 'business.name')?.value).toBe('בורגר דרום');
   });
 });
+
+// Defects found by the paid smoke run (2026-11-02).
+describe('model readings the engine cannot act on', () => {
+  it('a MODIFY reading without a target does not crash the turn', async () => {
+    const { provider } = scripted(
+      { intent: 'CAMPAIGN', facts: [{ key: 'business.model', value: 'CAFE', evidence: 'בית קפה' }], objective: 'LOCAL_AWARENESS' },
+      { intent: 'MODIFY', modify: null, objective: 'ORDERS' },
+    );
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider) });
+    await s.send('יש לי בית קפה ורוצה שיכירו אותנו');
+    const r = await s.send('בעצם עדיף לי יותר הזמנות');
+    expect(r.text).not.toMatch(/ERROR|undefined/);
+    expect(s.tasks.at(-1)?.params.objective).toBe('ORDERS');
+  });
+
+  it('drops facts whose value does not fit the key (a goal in free text, an unknown business model)', async () => {
+    const { provider } = scripted({
+      intent: 'CAMPAIGN',
+      facts: [
+        { key: 'goal.primary', value: 'יותר הזמנות', evidence: 'יותר הזמנות' },
+        { key: 'business.model', value: 'בית קפה', evidence: 'בית קפה' },
+        { key: 'media.realPhotos', value: 'כן', evidence: 'כן' },
+      ],
+      objective: 'ORDERS',
+    });
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider) });
+    await s.send('יש לי בית קפה, רוצה יותר הזמנות, כן');
+    const stored = Object.fromEntries(s.executor.data.facts.map((f) => [f.key, f.value]));
+    expect(stored['goal.primary']).not.toBe('יותר הזמנות');
+    expect(stored['business.model']).not.toBe('בית קפה');
+    expect(stored['media.realPhotos']).not.toBe('כן');
+  });
+});
+
+describe('merging the model with the rules (defects found on held-out set v2)', () => {
+  it("an awaited answer is the model's reading, not the rules' bare-message guess", async () => {
+    const { provider } = scripted(
+      { intent: 'GREETING' },
+      { intent: 'PROVIDE_INFO', facts: [{ key: 'location.address', value: 'בפארק הירקון, ליד הכניסה', evidence: 'בפארק הירקון, ליד הכניסה' }] },
+    );
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider) });
+    await s.send('שלום');
+    await s.send('בפארק הירקון, ליד הכניסה');
+    const stored = Object.fromEntries(s.executor.data.facts.map((f) => [f.key, f.value]));
+    expect(stored['location.address']).toBe('בפארק הירקון, ליד הכניסה');
+    expect(stored['business.name']).toBeUndefined();
+  });
+
+  it('"what do you remember?" shows the business profile', async () => {
+    const { provider } = scripted({ intent: 'HISTORY', toolRequests: [{ tool: 'ReadBusinessProfile', argsJson: '{}' }] });
+    const data = { facts: [fact('business.name', 'הספר של רועי'), fact('location.city', 'נתניה')], campaigns: [], approvals: [] };
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider), data });
+    const r = await s.send('מה אתה זוכר על העסק שלי?');
+    expect(r.text).toContain('הספר של רועי');
+    expect(r.cards.some((c) => c.kind === 'FACTS')).toBe(true);
+  });
+
+  it('a request about "our offer" does not replace the expired offer with the request text', async () => {
+    const { provider } = scripted({ intent: 'PROMOTION', offer: null });
+    const data = {
+      facts: [fact('business.name', 'סביח עוזי'), fact('business.model', 'RESTAURANT'), fact('location.city', 'גבעתיים'), fact('offering.main', 'סביח'), fact('offer.current', { text: '1+1 על סביח', price: '35 ₪', validUntil: '2026-10-15' })],
+      campaigns: [],
+      approvals: [],
+    };
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider), data });
+    const r = await s.send('תכין סרטון על המבצע שלנו');
+    expect(r.text).toMatch(/הסתיים/);
+    expect(s.executor.data.facts.find((f) => f.key === 'offer.current')?.value).toMatchObject({ text: '1+1 על סביח' });
+  });
+});
+
+describe('ordering channel codes (defect found in the API scenario run)', () => {
+  it('an ordering channel in free text ("בוולט") gives way to the parsed channel', async () => {
+    const { provider } = scripted({ intent: 'PROVIDE_INFO', facts: [{ key: 'conversion.ordering', value: 'בוולט', evidence: 'בוולט' }] });
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider) });
+    await s.send('בוולט');
+    expect(s.executor.data.facts.find((f) => f.key === 'conversion.ordering')?.value).toBe('Wolt');
+  });
+
+  it('an unquoted model value does not demote the rules parse to a proposal (no repeated question)', async () => {
+    const { provider } = scripted({ intent: 'PROVIDE_INFO', facts: [{ key: 'conversion.ordering', value: 'Wolt', evidence: 'בוולט' }] });
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider) });
+    await s.send('בוולט');
+    expect(s.executor.data.facts.find((f) => f.key === 'conversion.ordering')).toMatchObject({ value: 'Wolt', status: 'CONFIRMED' });
+  });
+});
+
+describe('an awaited answer the rules parsed (defect found in the API scenario run)', () => {
+  it('keeps the parsed channel when the model gives an unquoted value for the awaited key', async () => {
+    const { provider } = scripted({ intent: 'PROVIDE_INFO', facts: [{ key: 'conversion.ordering', value: ['Wolt'], evidence: 'בוולט' }] });
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider) });
+    s.state = { ...s.state, awaiting: { kind: 'FACTS', keys: ['conversion.ordering'] } };
+    await s.send('בוולט');
+    expect(s.executor.data.facts.find((f) => f.key === 'conversion.ordering')).toMatchObject({ value: 'Wolt', status: 'CONFIRMED' });
+  });
+});
+
+describe('choosing a concept (defect found in the API scenario run)', () => {
+  it('"את המומלץ" read as a new campaign still picks the recommended concept', async () => {
+    const state = { ...new DirectorSandbox().state, awaiting: { kind: 'CONCEPT', taskId: 't', campaignId: 'c', conceptIds: ['a', 'b', 'c'], recommendedId: 'c' } } as DirectorSandbox['state'];
+    const brain = new LlmDirectorBrain(scripted({ intent: 'CAMPAIGN', recommendedChoice: true, choice: 3 }).provider);
+    const u = await brain.interpret({ text: 'את המומלץ', now: NOW, state, knownFacts: [], recentWork: [] });
+    expect(u.intent).toBe('PROVIDE_INFO');
+    expect(u.choice).toBe('RECOMMENDED');
+  });
+});
+
+describe('a new product named generically (defect found in the API scenario run)', () => {
+  it('asks for the name before building concepts, even when the model reads a regular campaign', async () => {
+    const { provider } = scripted({ intent: 'CAMPAIGN', product: 'ההמבורגר החדש', productIsNew: true });
+    const data = {
+      facts: [fact('business.name', 'בורגר הנמל'), fact('business.model', 'RESTAURANT'), fact('location.city', 'חיפה'), fact('offering.main', 'המבורגר עשן'), fact('goal.primary', 'ORDERS'), fact('conversion.ordering', 'Wolt'), fact('conversion.orderUrl', 'https://wolt.com/he/isr/haifa/restaurant/x-demo'), fact('media.realPhotos', true)],
+      campaigns: [],
+      approvals: [],
+    };
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider), data });
+    const r = await s.send('בוא נקדם השבוע את ההמבורגר החדש');
+    expect(r.cards.some((c) => c.kind === 'CONCEPTS')).toBe(false);
+    expect(r.text).toMatch(/מה השם של/);
+  });
+
+  it('a generic mention the model saves as a product is not a product name', async () => {
+    const { provider } = scripted({
+      intent: 'CAMPAIGN',
+      product: 'המבורגר החדש',
+      productIsNew: true,
+      facts: [{ key: 'offering.products', value: ['המבורגר החדש'], evidence: 'ההמבורגר החדש' }],
+    });
+    const data = {
+      facts: [fact('business.name', 'בורגר הנמל'), fact('business.model', 'RESTAURANT'), fact('location.city', 'חיפה'), fact('offering.main', 'המבורגר עשן'), fact('goal.primary', 'ORDERS'), fact('conversion.ordering', 'Wolt'), fact('conversion.orderUrl', 'https://wolt.com/he/isr/haifa/restaurant/x-demo'), fact('media.realPhotos', true)],
+      campaigns: [],
+      approvals: [],
+    };
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider), data });
+    const r = await s.send('בוא נקדם השבוע את ההמבורגר החדש');
+    expect(r.cards.some((c) => c.kind === 'CONCEPTS')).toBe(false);
+    expect(r.text).toMatch(/מה השם של המבורגר החדש/);
+  });
+});
+
+describe('contacts and links must have their shape (defect found in the marketing runs)', () => {
+  it('"הכל בוואטסאפ" is not a WhatsApp number, and "אין" is not a link', async () => {
+    const { provider } = scripted({
+      intent: 'PROVIDE_INFO',
+      facts: [
+        { key: 'contact.whatsapp', value: 'הכל בוואטסאפ', evidence: 'הכל בוואטסאפ' },
+        { key: 'conversion.bookingUrl', value: 'אין', evidence: 'אין' },
+      ],
+    });
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider) });
+    await s.send('אין, הכל בוואטסאפ');
+    const stored = Object.fromEntries(s.executor.data.facts.map((f) => [f.key, f.value]));
+    expect(stored['contact.whatsapp']).toBeUndefined();
+    expect(stored['conversion.bookingUrl']).not.toBe('אין');
+  });
+
+  it('keeps a real number and a real link', async () => {
+    const { provider } = scripted({
+      intent: 'PROVIDE_INFO',
+      facts: [
+        { key: 'contact.whatsapp', value: '052-1234567', evidence: '052-1234567' },
+        { key: 'channel.website', value: 'https://or-rach-candles.co.il', evidence: 'https://or-rach-candles.co.il' },
+      ],
+    });
+    const s = new DirectorSandbox({ now, newId: ids(), brain: new LlmDirectorBrain(provider) });
+    await s.send('052-1234567, האתר https://or-rach-candles.co.il');
+    const stored = Object.fromEntries(s.executor.data.facts.map((f) => [f.key, f.value]));
+    expect(stored['contact.whatsapp']).toBe('052-1234567');
+    expect(stored['channel.website']).toBe('https://or-rach-candles.co.il');
+  });
+});
